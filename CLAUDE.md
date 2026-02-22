@@ -1,0 +1,78 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## プロジェクト概要
+
+kintone の REST API をローカルでエミュレートするサーバー。`@kintone/rest-api-client` をそのまま使ってリクエスト可能。インメモリ SQLite を使用するため起動が速く、テスト後にデータが残らない。
+
+## コマンド
+
+```sh
+pnpm install          # 依存関係のインストール
+pnpm dev              # 開発サーバー起動（ポート 12345）
+pnpm build            # プロダクションビルド
+pnpm start            # 本番サーバー起動（要ビルド）
+pnpm lint             # ESLint 実行
+pnpm typecheck        # 型チェック
+pnpm test             # テスト一度実行（サーバー起動が別途必要）
+pnpm test:watch       # テストウォッチモード（サーバー起動が別途必要）
+pnpm exec             # サーバー起動 + テスト実行 + サーバー停止を一括実行
+```
+
+単一テストファイルの実行:
+
+```sh
+pnpm test tests/api/record/record.test.ts
+```
+
+## アーキテクチャ
+
+### 技術スタック
+
+- **Remix 2.x** — ファイルベースルーティング、サーバー/クライアント統合
+- **Vite** — ビルドツール（開発ポート: 12345）
+- **SQLite3（インメモリ）** — セッション別独立データストア
+- **Vitest** — テストフレームワーク（forkプール、singleFork設定）
+
+### ルーティング構造（`app/routes/`）
+
+Remix のファイルベースルーティングで kintone API をエミュレート。`($session)` が URL プレフィックスでセッションを分離する。
+
+| ファイル名パターン | エンドポイント |
+|---|---|
+| `($session).initialize.tsx` | POST `/{session}/initialize` |
+| `($session).finalize.tsx` | POST `/{session}/finalize` |
+| `($session).k.v1.record[.]json.tsx` | GET/POST/PUT `/{session}/k/v1/record.json` |
+| `($session).k.v1.records[.]json.tsx` | GET `/{session}/k/v1/records.json` |
+| `($session).k.v1.app.form.fields[.]json.tsx` | GET/POST `/{session}/k/v1/app/form/fields.json` |
+| `($session).k.v1.preview.app.form.fields[.]json.tsx` | POST/DELETE `/{session}/k/v1/preview/app/form/fields.json` |
+| `($session).k.v1.file[.]json.tsx` | GET/POST `/{session}/k/v1/file.json` |
+
+### データ層（`app/utils/`）
+
+- **`db.server.ts`** — SQLite 接続管理。`dbSession(session?)` でセッション別インメモリDBを返す。`serialize()`, `run()`, `all()` でSQL操作を抽象化
+- **`singleton.server.ts`** — グローバルシングルトン管理。Remix の開発時ホットリロードでも DB インスタンスを保持するために使用
+- **`query.ts`** — kintone クエリ構文を SQLite 互換 SQL に変換。`node-sql-parser` で AST 解析後、フィールド型（日時型は `datetime()` 関数）に応じて変換。`$id` → `id`、`NOW()` → `datetime('now')` に対応
+
+### セッション分離の仕組み
+
+URLプレフィックス（`/{session}/`）でセッションを識別し、セッション毎に独立したインメモリSQLiteを保持。テスト前に `initialize`、テスト後に `finalize` を呼ぶことでテストの並列実行が可能。
+
+### SQLite テーブル構造
+
+`initialize` で以下のテーブルを作成:
+- `fields` — アプリのフォームフィールド定義（`app_id`, `field_code`, `field_type`, `properties` JSON）
+- `records` — レコードデータ（`app_id`, `record` JSON, `revision`）
+- `files` — アップロードファイル（`file_key`, `file_name`, `content_type`, `data` BLOB）
+
+## テスト
+
+テストは `tests/api/` 以下にあり、実際に HTTP リクエストを送るインテグレーションテスト。`tests/api/config.ts` でホスト（`localhost:12345`）を設定。
+
+各テストは `beforeEach` で `initialize`、`afterEach` で `finalize` を実行してセッションを管理。
+
+```ts
+const SESSION = "unique-test-session-name";
+const BASE_URL = `http://${host}/${SESSION}`;
+```
