@@ -1,17 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createApp, createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const SESSION = "layout-test-session";
-const BASE_URL = `http://${host}/${SESSION}`;
+const BASE_URL = createBaseUrl("layout-test-session");
 
 describe("フォームレイアウト取得API", () => {
   beforeEach(async () => {
-    await fetch(`${BASE_URL}/initialize`, { method: "POST" });
+    await initializeSession(BASE_URL);
   });
 
   afterEach(async () => {
-    await fetch(`${BASE_URL}/finalize`, { method: "POST" });
+    await finalizeSession(BASE_URL);
   });
 
   test("layout なしでアプリを作成すると layout が空配列で返る", async () => {
@@ -20,13 +19,7 @@ describe("フォームレイアウト取得API", () => {
       auth: { apiToken: "test" },
     });
 
-    const response = await fetch(`${BASE_URL}/setup/app.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "レイアウトなしアプリ" }),
-    });
-    const data = await response.json();
-    const appId = Number(data.app);
+    const appId = await createApp(BASE_URL, { name: "レイアウトなしアプリ" });
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual([]);
@@ -52,16 +45,7 @@ describe("フォームレイアウト取得API", () => {
       },
     ];
 
-    const response = await fetch(`${BASE_URL}/setup/app.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "レイアウトありアプリ",
-        layout,
-      }),
-    });
-    const data = await response.json();
-    const appId = Number(data.app);
+    const appId = await createApp(BASE_URL, { name: "レイアウトありアプリ", layout });
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual(layout);

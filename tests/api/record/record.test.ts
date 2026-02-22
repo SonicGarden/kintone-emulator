@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const SESSION = "record-test-session";
-const BASE_URL = `http://${host}/${SESSION}`;
+const BASE_URL = createBaseUrl("record-test-session");
 
 describe("アプリのレコードAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await fetch(`${BASE_URL}/initialize`, {
-      method: "POST",
-    });
+    await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,
       auth: {
@@ -30,9 +27,7 @@ describe("アプリのレコードAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`${BASE_URL}/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("アプリにレコードを追加し、変更し、検索できる", async () => {

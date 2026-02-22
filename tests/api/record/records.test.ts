@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
+
+const BASE_URL = createBaseUrl("records");
 
 describe("アプリのレコード一覧のAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await fetch(`http://${host}/records/initialize`, {
-      method: "POST",
-    });
+    await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
-      baseUrl: `http://${host}/records`,
+      baseUrl: BASE_URL,
       auth: {
         apiToken: "test",
       },
@@ -37,9 +37,7 @@ describe("アプリのレコード一覧のAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`http://${host}/records/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("アプリのレコードを検索するとデータが返ってくる", async () => {

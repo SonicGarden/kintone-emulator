@@ -1,30 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createApp, createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const SESSION = "app-form-test-session";
-const BASE_URL = `http://${host}/${SESSION}`;
+const BASE_URL = createBaseUrl("app-form-test-session");
 
 describe("アプリのフォームフィールドAPI", () => {
   let appId: number;
 
   beforeEach(async () => {
-    await fetch(`${BASE_URL}/initialize`, {
-      method: "POST",
-    });
-    const response = await fetch(`${BASE_URL}/setup/app.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "テストアプリ" }),
-    });
-    const data = await response.json();
-    appId = Number(data.app);
+    await initializeSession(BASE_URL);
+    appId = await createApp(BASE_URL, { name: "テストアプリ" });
   });
 
   afterEach(async () => {
-    await fetch(`${BASE_URL}/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("アプリにフィールドを追加し、確認し、削除できる", async () => {

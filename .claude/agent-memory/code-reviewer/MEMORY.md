@@ -24,7 +24,9 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `@kintone/rest-api-client` の `KintoneRestAPIClient` を使って実際のAPIをテスト
 
 ## よく見られる課題
-- `CLAUDE.md` / `README.md` のルーティングテーブルへの新規エンドポイント追記忘れ
+- `CLAUDE.md` / `README.md` のルーティングテーブルへの新規エンドポイント追記忘れ（追記済みの例: `app[.]json.tsx`, `apps[.]json.tsx`）
+- クエリパラメーターの配列形式（`ids[0]=1&ids[1]=2`）は `key.includes('ids')` ではなく `key.startsWith('ids')` で解析する（`apps[.]json.tsx` で修正済み）
+- 必須クエリパラメーター（`id` など）が欠落した場合は 400 を返す明示的バリデーションを追加する（`app[.]json.tsx` で実装済み）
 - テストのセッション管理で `SESSION` 定数を使わずURLをハードコードするパターン（`record.test.ts`: `record`セッション, `records.test.ts`: `records`セッション, `file.test.ts`: `form`セッションをハードコード）→ 他テストとのセッション衝突リスク。`SESSION` 定数 + `BASE_URL` を使う正しいパターンは `app.test.ts`, `form.test.ts`, `layout.test.ts` で確認済み
 - `apps` テーブルのカラム定義がCLAUDE.mdに `name`, `revision` のみ記載（実際は `layout` も追加済み）
 - アプリが存在しない場合の404エラーハンドリング未実装パターン → `fields[.]json.tsx` および `layout[.]json.tsx` で修正済み
