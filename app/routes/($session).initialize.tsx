@@ -36,6 +36,16 @@ const CREATE_TABLE_FILES = dedent`
   )
 `;
 
+const CREATE_TABLE_APPS = dedent`
+  CREATE TABLE IF NOT EXISTS apps (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    revision INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function action({ params }: ActionFunctionArgs) {
   const db = dbSession(params.session);
@@ -43,6 +53,7 @@ export async function action({ params }: ActionFunctionArgs) {
     db.run(CREATE_TABLE_FIELDS);
     db.run(CREATE_TABLE_RECORDS);
     db.run(CREATE_TABLE_FILES);
+    db.run(CREATE_TABLE_APPS);
   });
 
   return Response.json({ result: 'ok' });

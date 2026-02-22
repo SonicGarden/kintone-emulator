@@ -6,13 +6,16 @@ export async function action({ params }: ActionFunctionArgs) {
   const db = dbSession(params.session);
   await serialize(db, () => {
     db.run(
-      "DROP TABLE fields",
+      "DROP TABLE IF EXISTS fields",
     );
     db.run(
-      "DROP TABLE records"
+      "DROP TABLE IF EXISTS records"
     );
     db.run(
-      "DROP TABLE files"
+      "DROP TABLE IF EXISTS files"
+    );
+    db.run(
+      "DROP TABLE IF EXISTS apps"
     )
   });
 
