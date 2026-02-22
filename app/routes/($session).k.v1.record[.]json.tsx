@@ -1,5 +1,5 @@
 import { ActionFunctionArgs } from "@remix-run/node";
-import { all, dbSession, run } from "~/utils/db.server";
+import { all, dbSession } from "~/utils/db.server";
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 
 type Record = {
@@ -32,17 +32,22 @@ export const loader = async ({
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
+  let recordResult: { id: number, revision: number }[];
   switch (request.method) {
     case 'POST': {
-      await run(db, "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?)", body.app, JSON.stringify(body.record));
+      recordResult = await all<{ id: number, revision: number }>(db, "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision", body.app, JSON.stringify(body.record));
       break;
     }
     case 'PUT': {
-      await run(db, "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ?", JSON.stringify(body.record), body.id);
+      recordResult = await all<{ id: number, revision: number }>(db, "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision", JSON.stringify(body.record), body.id);
       break;
     }
+    default:
+      return Response.json({ message: 'Method Not Allowed' }, { status: 405 });
   }
-  const recordResult = await all<{ id: number, revision: number }>(db, `SELECT id,revision FROM records WHERE rowid = last_insert_rowid()`);
+  if (recordResult.length === 0) {
+    return Response.json({ message: 'Record not found.' }, { status: 404 });
+  }
   return Response.json({
     id: recordResult[0].id.toString(),
     revision: recordResult[0].revision.toString(),

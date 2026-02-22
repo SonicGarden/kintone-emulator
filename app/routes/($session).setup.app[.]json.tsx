@@ -1,20 +1,16 @@
 import { ActionFunctionArgs } from "@remix-run/node";
-import { all, dbSession, run } from "~/utils/db.server";
+import { all, dbSession } from "~/utils/db.server";
 import { insertFields } from "~/utils/fields.server";
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  await run(
-    db,
-    "INSERT INTO apps (name, layout) VALUES (?, ?)",
-    body.name,
-    body.layout ? JSON.stringify(body.layout) : '[]'
-  );
   const result = await all<{ id: number; revision: number }>(
     db,
-    "SELECT id, revision FROM apps WHERE rowid = last_insert_rowid()"
+    "INSERT INTO apps (name, layout) VALUES (?, ?) RETURNING id, revision",
+    body.name,
+    body.layout ? JSON.stringify(body.layout) : '[]'
   );
 
   const appId = result[0].id;

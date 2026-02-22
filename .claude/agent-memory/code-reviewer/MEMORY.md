@@ -13,7 +13,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 ## コードパターン・規約
 - ルートファイル名: `($session).k.v1.xxx[.]json.tsx` (`[.]` でドットエスケープ)
 - DBアクセス: `dbSession(params.session)` でセッション別DB取得
-- SQLクエリ: `run()` (INSERT/UPDATE/DELETE), `all<T>()` (SELECT)
+- SQLクエリ: `run()` (戻り値不要のINSERT/UPDATE/DELETE), `all<T>()` (SELECT、およびRETURNING句付きINSERT/UPDATE)
 - テーブル初期化: `serialize()` + `db.run()` を `($session).initialize.tsx` で行う
 - JSON カラム: SQLiteに文字列で保存し、読み出し時に `JSON.parse()` する
 - revision: 数値で保存し、レスポンス時に `.toString()` で文字列化
@@ -31,7 +31,9 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `setup/app.json` でlayout保存時にINSERTとUPDATEを別クエリで実行（1クエリにできる）→ 修正済み
 - `app/form/fields`では `revision` が常に `'1'` の固定値を返す（実際のappsテーブルと連動していない）
 - `app/form/layout` でapp_idが存在しない場合でも200を返す（エミュレーターとして許容範囲かもしれないが）
-- PUT後に `last_insert_rowid()` でレコード取得しているため、UPDATEのレスポンスが正しくないバグが存在（record[.]json.tsx）
+- PUT後に `last_insert_rowid()` でレコード取得していたバグは `RETURNING` 句への変更で修正済み（record[.]json.tsx）
+- `RETURNING` 句を使う場合は `run()` ではなく `all<T>()` を使う（規約変更）
+- UPDATE/INSERT後に `RETURNING` が0件の場合の404ガードが抜けやすい → `recordResult.length === 0` チェックを忘れずに
 
 ## 既知のアーキテクチャ決定
 - インメモリSQLiteのため `finalize` でテーブルをDROP（セッションIDごとに独立）

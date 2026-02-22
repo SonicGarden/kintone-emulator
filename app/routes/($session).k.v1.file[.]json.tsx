@@ -1,5 +1,5 @@
 import { ActionFunctionArgs, unstable_composeUploadHandlers, unstable_createMemoryUploadHandler, unstable_parseMultipartFormData } from "@remix-run/node";
-import { all, dbSession, run } from "~/utils/db.server";
+import { all, dbSession } from "~/utils/db.server";
 
 export const loader = async ({ request, params }: ActionFunctionArgs) => {
   const db = dbSession(params.session);
@@ -30,11 +30,10 @@ export const action = async ({
       }
       const _data = await new Blob(raw).arrayBuffer();
       const buffer = Buffer.from(_data);
-      await run(db,
-        `INSERT INTO files (filename, data, content_type) VALUES (?, ?, ?)`,
+      const recordResult = await all<{ id: number }>(db,
+        `INSERT INTO files (filename, data, content_type) VALUES (?, ?, ?) RETURNING id`,
         filename, buffer, contentType
       );
-      const recordResult = await all<{ id: number }>(db, `SELECT id FROM files WHERE rowid = last_insert_rowid()`);
 
       return recordResult[0].id.toString();
     },

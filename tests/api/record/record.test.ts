@@ -95,4 +95,18 @@ describe("アプリのレコードAPI", () => {
       },
     });
   });
+
+  test("存在しないレコードをPUTすると404が返る", async () => {
+    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+    const response = await fetch(`http://${host}/record/k/v1/record.json`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        id: "99999",
+        record: { test: { value: "test" } },
+      }),
+    });
+    expect(response.status).toBe(404);
+  });
 });
