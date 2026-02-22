@@ -25,13 +25,17 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 
 ## よく見られる課題
 - `CLAUDE.md` / `README.md` のルーティングテーブルへの新規エンドポイント追記忘れ
-- `apps` テーブルのカラム定義がCLAUDE.mdに `name`, `revision` のみ記載（実際は `layout` も追加済み → 70行目で修正確認済み）
+- テストのセッション管理で `SESSION` 定数を使わずURLをハードコードするパターン（`form/initialize` 等）→ セッション衝突リスク
+- `apps` テーブルのカラム定義がCLAUDE.mdに `name`, `revision` のみ記載（実際は `layout` も追加済み）
 - アプリが存在しない場合の404エラーハンドリング未実装パターン（`app/form/layout` も同様）
 - `setup/app.json` でlayout保存時にINSERTとUPDATEを別クエリで実行（1クエリにできる）→ 修正済み
 - `app/form/fields`では `revision` が常に `'1'` の固定値を返す（実際のappsテーブルと連動していない）
 - `app/form/layout` でapp_idが存在しない場合でも200を返す（エミュレーターとして許容範囲かもしれないが）
+- PUT後に `last_insert_rowid()` でレコード取得しているため、UPDATEのレスポンスが正しくないバグが存在（record[.]json.tsx）
 
 ## 既知のアーキテクチャ決定
 - インメモリSQLiteのため `finalize` でテーブルをDROP（セッションIDごとに独立）
 - `singleton.server.ts` でホットリロード時もDBインスタンスを維持
 - JSON型カラムはSQLiteに文字列として格納（`body JSON`, `layout JSON`）
+- `fields` テーブル: 旧 `type`, `label` カラムは廃止され `body JSON` に全属性を格納。`code` カラムは検索用に残しつつ `body` にも重複して保存
+- JSON path: SQLiteのJSON演算子 `body->>'$.type'` でJSONフィールドを直接クエリ可能（`query.ts`, `record[.]json.tsx` で使用）

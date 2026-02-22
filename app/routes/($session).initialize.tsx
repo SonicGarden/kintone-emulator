@@ -6,11 +6,10 @@ const CREATE_TABLE_FIELDS = dedent`
   CREATE TABLE IF NOT EXISTS fields (
     id INTEGER PRIMARY KEY,
     app_id INTEGER,
+    code TEXT UNIQUE,
+    body JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    type TEXT,
-    code TEXT unique,
-    label TEXT
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `;
 

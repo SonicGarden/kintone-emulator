@@ -18,7 +18,7 @@ export const loader = async ({
   const body: Record = JSON.parse(recordResult[0].body);
   const id = recordResult[0].id;
   const revision = recordResult[0].revision;
-  const fieldsResult = await all<{ code: string, type: KintoneRecordField.OneOf['type'] }>(db, `SELECT code, type FROM fields WHERE app_id = ?`, app);
+  const fieldsResult = await all<{ code: string, type: KintoneRecordField.OneOf['type'] }>(db, `SELECT code, body->>'$.type' as type FROM fields WHERE app_id = ?`, app);
   for (const field of fieldsResult) {
     if (body[field.code]) {
       body[field.code].type = field.type;
