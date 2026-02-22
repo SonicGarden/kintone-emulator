@@ -6,7 +6,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  await run(db, "INSERT INTO apps (name) VALUES (?)", body.name);
+  await run(
+    db,
+    "INSERT INTO apps (name, layout) VALUES (?, ?)",
+    body.name,
+    body.layout ? JSON.stringify(body.layout) : '[]'
+  );
   const result = await all<{ id: number; revision: number }>(
     db,
     "SELECT id, revision FROM apps WHERE rowid = last_insert_rowid()"

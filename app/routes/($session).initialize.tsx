@@ -41,6 +41,7 @@ const CREATE_TABLE_APPS = dedent`
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     revision INTEGER DEFAULT 1,
+    layout JSON DEFAULT '[]',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
