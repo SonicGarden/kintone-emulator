@@ -1,9 +1,6 @@
 import { ActionFunctionArgs } from "@remix-run/node";
 import { dbSession, serialize } from "~/utils/db.server";
-
-const insertSql = `
-INSERT INTO fields (app_id, type, code, label) VALUES (?, ?, ?, ?)
-`
+import { insertFields } from "~/utils/fields.server";
 
 export async function action({
   request,
@@ -15,11 +12,7 @@ export async function action({
   switch (method) {
     case 'POST': {
       const requestData = await request.json();
-      await serialize(db, () => {
-        for (const key in requestData.properties) {
-          db.run(insertSql, requestData.app, requestData.properties[key].type, key, requestData.properties.test.label);
-        }
-      });
+      await insertFields(db, requestData.app, requestData.properties);
       break;
     }
     case 'DELETE': {
