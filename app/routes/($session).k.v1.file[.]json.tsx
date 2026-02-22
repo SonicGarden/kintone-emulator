@@ -5,6 +5,9 @@ export const loader = async ({ request, params }: ActionFunctionArgs) => {
   const db = dbSession(params.session);
   const fileKey = new URL(request.url).searchParams.get('fileKey');
   const recordResult = await all<{ data: ArrayBuffer, content_type: string, filename: string }>(db, `SELECT data, content_type, filename FROM files WHERE id = ?`, fileKey);
+  if (recordResult.length === 0) {
+    return Response.json({ message: 'File not found.' }, { status: 404 });
+  }
   const blob = new Blob([new Uint8Array(recordResult[0].data)], { type: recordResult[0].content_type });
   return new Response(
     await blob.arrayBuffer(),

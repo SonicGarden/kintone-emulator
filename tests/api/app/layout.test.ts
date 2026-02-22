@@ -67,4 +67,10 @@ describe("フォームレイアウト取得API", () => {
     expect(layoutResult.layout).toEqual(layout);
     expect(layoutResult.revision).toEqual(expect.any(String));
   });
+
+  test("存在しないアプリのフォームレイアウトをGETすると404が返る", async () => {
+    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+    const response = await fetch(`${BASE_URL}/k/v1/app/form/layout.json?app=99999`);
+    expect(response.status).toBe(404);
+  });
 });

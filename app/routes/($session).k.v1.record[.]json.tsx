@@ -15,6 +15,9 @@ export const loader = async ({
   const app = url.searchParams.get('app');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recordResult = await all<{ body: any, id: number, revision: number }>(db, `SELECT id, revision, body FROM records WHERE app_id = ? and id = ?`, app, url.searchParams.get('id'));
+  if (recordResult.length === 0) {
+    return Response.json({ message: 'Record not found.' }, { status: 404 });
+  }
   const body: Record = JSON.parse(recordResult[0].body);
   const id = recordResult[0].id;
   const revision = recordResult[0].revision;

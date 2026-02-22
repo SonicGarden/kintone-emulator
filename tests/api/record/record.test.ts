@@ -2,14 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { host } from "tests/config";
 
+const SESSION = "record-test-session";
+const BASE_URL = `http://${host}/${SESSION}`;
+
 describe("アプリのレコードAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await fetch(`http://${host}/record/initialize`, {
+    await fetch(`${BASE_URL}/initialize`, {
       method: "POST",
     });
     client = new KintoneRestAPIClient({
-      baseUrl: `http://${host}/record`,
+      baseUrl: BASE_URL,
       auth: {
         apiToken: "test",
       },
@@ -27,7 +30,7 @@ describe("アプリのレコードAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`http://${host}/record/finalize`, {
+    await fetch(`${BASE_URL}/finalize`, {
       method: "POST",
     });
   });
@@ -96,9 +99,15 @@ describe("アプリのレコードAPI", () => {
     });
   });
 
+  test("存在しないレコードをGETすると404が返る", async () => {
+    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+    const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1&id=99999`);
+    expect(response.status).toBe(404);
+  });
+
   test("存在しないレコードをPUTすると404が返る", async () => {
     // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
-    const response = await fetch(`http://${host}/record/k/v1/record.json`, {
+    const response = await fetch(`${BASE_URL}/k/v1/record.json`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

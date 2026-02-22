@@ -12,8 +12,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     appId
   );
 
+  if (!appResult[0]) {
+    return Response.json({ message: 'App not found.' }, { status: 404 });
+  }
+
   return Response.json({
-    layout: appResult[0] ? JSON.parse(appResult[0].layout) : [],
-    revision: appResult[0] ? appResult[0].revision.toString() : '1',
+    layout: JSON.parse(appResult[0].layout),
+    revision: appResult[0].revision.toString(),
   });
 }

@@ -25,12 +25,12 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 
 ## よく見られる課題
 - `CLAUDE.md` / `README.md` のルーティングテーブルへの新規エンドポイント追記忘れ
-- テストのセッション管理で `SESSION` 定数を使わずURLをハードコードするパターン（`form/initialize` 等）→ セッション衝突リスク
+- テストのセッション管理で `SESSION` 定数を使わずURLをハードコードするパターン（`record.test.ts`: `record`セッション, `records.test.ts`: `records`セッション, `file.test.ts`: `form`セッションをハードコード）→ 他テストとのセッション衝突リスク。`SESSION` 定数 + `BASE_URL` を使う正しいパターンは `app.test.ts`, `form.test.ts`, `layout.test.ts` で確認済み
 - `apps` テーブルのカラム定義がCLAUDE.mdに `name`, `revision` のみ記載（実際は `layout` も追加済み）
-- アプリが存在しない場合の404エラーハンドリング未実装パターン（`app/form/layout` も同様）
+- アプリが存在しない場合の404エラーハンドリング未実装パターン → `fields[.]json.tsx` および `layout[.]json.tsx` で修正済み
 - `setup/app.json` でlayout保存時にINSERTとUPDATEを別クエリで実行（1クエリにできる）→ 修正済み
 - `app/form/fields`では `revision` が常に `'1'` の固定値を返す（実際のappsテーブルと連動していない）
-- `app/form/layout` でapp_idが存在しない場合でも200を返す（エミュレーターとして許容範囲かもしれないが）
+- `loader` 関数に `ActionFunctionArgs` を誤って使うパターンに注意。`loader` には `LoaderFunctionArgs`、`action` には `ActionFunctionArgs` が正しい（実行時差異はないが型として不正確）→ `fields[.]json.tsx` で修正済み
 - PUT後に `last_insert_rowid()` でレコード取得していたバグは `RETURNING` 句への変更で修正済み（record[.]json.tsx）
 - `RETURNING` 句を使う場合は `run()` ではなく `all<T>()` を使う（規約変更）
 - UPDATE/INSERT後に `RETURNING` が0件の場合の404ガードが抜けやすい → `recordResult.length === 0` チェックを忘れずに
