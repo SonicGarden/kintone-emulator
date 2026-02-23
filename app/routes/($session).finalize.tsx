@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { action as coreAction } from "~/core/handlers/finalize";
+import { post } from "~/core/handlers/finalize";
 
 export const action = ({ request, params }: ActionFunctionArgs) =>
-  coreAction({ request, params });
+  post({ request, params });

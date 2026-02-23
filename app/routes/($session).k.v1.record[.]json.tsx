@@ -1,8 +1,13 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { loader as coreLoader, action as coreAction } from "~/core/handlers/record";
+import { get, post, put } from "~/core/handlers/record";
 
 export const loader = ({ request, params }: LoaderFunctionArgs) =>
-  coreLoader({ request, params });
+  get({ request, params });
 
-export const action = ({ request, params }: ActionFunctionArgs) =>
-  coreAction({ request, params });
+export const action = ({ request, params }: ActionFunctionArgs) => {
+  switch (request.method) {
+    case 'POST': return post({ request, params });
+    case 'PUT': return put({ request, params });
+    default: return Response.json({ message: 'Method Not Allowed' }, { status: 405 });
+  }
+};

@@ -19,7 +19,7 @@ const toAppResponse = (row: AppRow) => ({
   modifier: { code: "", name: "" },
 });
 
-export const loader = async ({ request, params }: HandlerArgs) => {
+export const get = async ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
 

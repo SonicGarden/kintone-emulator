@@ -2,7 +2,7 @@ import { all, dbSession } from "../db";
 import { insertFields } from "../fields";
 import type { HandlerArgs } from "./types";
 
-export const action = async ({ request, params }: HandlerArgs) => {
+export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
@@ -12,6 +12,10 @@ export const action = async ({ request, params }: HandlerArgs) => {
     body.name,
     body.layout ? JSON.stringify(body.layout) : '[]'
   );
+
+  if (result.length === 0) {
+    return Response.json({ message: 'Failed to create app.' }, { status: 500 });
+  }
 
   const appId = result[0].id;
 

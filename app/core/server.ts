@@ -26,51 +26,51 @@ type RouteEntry = {
 const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?initialize$/,
-    POST: initialize.action,
+    POST: initialize.post,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?finalize$/,
-    POST: finalize.action,
+    POST: finalize.post,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\.json$/,
-    GET: record.loader,
-    POST: record.action,
-    PUT: record.action,
+    GET: record.get,
+    POST: record.post,
+    PUT: record.put,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
-    GET: records.loader,
+    GET: records.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
-    GET: appRoute.loader,
+    GET: appRoute.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
-    GET: appsRoute.loader,
+    GET: appsRoute.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,
-    GET: fields.loader,
+    GET: fields.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/layout\.json$/,
-    GET: layout.loader,
+    GET: layout.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/preview\/app\/form\/fields\.json$/,
-    POST: previewFields.action,
-    DELETE: previewFields.action,
+    POST: previewFields.post,
+    DELETE: previewFields.del,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/file\.json$/,
-    GET: file.loader,
-    POST: file.action,
+    GET: file.get,
+    POST: file.post,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?setup\/app\.json$/,
-    POST: setupApp.action,
+    POST: setupApp.post,
   },
 ];
 

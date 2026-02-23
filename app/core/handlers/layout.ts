@@ -1,7 +1,7 @@
 import { all, dbSession } from "../db";
 import type { HandlerArgs } from "./types";
 
-export async function loader({ request, params }: HandlerArgs) {
+export const get = async ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const appId = Number(url.searchParams.get('app'));
@@ -12,7 +12,7 @@ export async function loader({ request, params }: HandlerArgs) {
     appId
   );
 
-  if (!appResult[0]) {
+  if (appResult.length === 0) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }
 

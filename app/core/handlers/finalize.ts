@@ -2,7 +2,7 @@ import { dbSession, serialize } from "../db";
 import type { HandlerArgs } from "./types";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function action({ params }: HandlerArgs) {
+export const post = async ({ params }: HandlerArgs) => {
   const db = dbSession(params.session);
   await serialize(db, () => {
     db.run(

@@ -47,7 +47,7 @@ const CREATE_TABLE_APPS = dedent`
 `;
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function action({ params }: HandlerArgs) {
+export const post = async ({ params }: HandlerArgs) => {
   const db = dbSession(params.session);
   await serialize(db, () => {
     db.run(CREATE_TABLE_FIELDS);

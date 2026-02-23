@@ -6,7 +6,7 @@ type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
 }
 
-export const loader = async ({
+export const get = async ({
   request,
   params,
 }: HandlerArgs) => {
@@ -32,22 +32,23 @@ export const loader = async ({
   return Response.json({ record: body });
 }
 
-export const action = async ({ request, params }: HandlerArgs) => {
+export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  let recordResult: { id: number, revision: number }[];
-  switch (request.method) {
-    case 'POST': {
-      recordResult = await all<{ id: number, revision: number }>(db, "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision", body.app, JSON.stringify(body.record));
-      break;
-    }
-    case 'PUT': {
-      recordResult = await all<{ id: number, revision: number }>(db, "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision", JSON.stringify(body.record), body.id);
-      break;
-    }
-    default:
-      return Response.json({ message: 'Method Not Allowed' }, { status: 405 });
+  const recordResult = await all<{ id: number, revision: number }>(db, "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision", body.app, JSON.stringify(body.record));
+  if (recordResult.length === 0) {
+    return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
+  return Response.json({
+    id: recordResult[0].id.toString(),
+    revision: recordResult[0].revision.toString(),
+  });
+}
+
+export const put = async ({ request, params }: HandlerArgs) => {
+  const body = await request.json();
+  const db = dbSession(params.session);
+  const recordResult = await all<{ id: number, revision: number }>(db, "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision", JSON.stringify(body.record), body.id);
   if (recordResult.length === 0) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }

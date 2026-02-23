@@ -72,7 +72,7 @@ const hasWhereClause = (query: string) => {
     && !query.trim().toLowerCase().startsWith('offset')
 }
 
-export const loader = async ({
+export const get = async ({
   request,
   params,
 }: HandlerArgs) => {
@@ -126,9 +126,8 @@ export const loader = async ({
     }
   } catch (e) {
     return Response.json({
-      id: 'test',
       code: 'error',
-      message: e
+      message: String(e)
     }, { status: 500 });
   }
 }

@@ -1,10 +1,10 @@
 import { all, dbSession } from "../db";
 import type { HandlerArgs } from "./types";
 
-export async function loader({
+export const get = async ({
   request,
   params,
-}: HandlerArgs) {
+}: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const appId = Number(url.searchParams.get('app'));
