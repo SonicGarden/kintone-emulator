@@ -112,6 +112,9 @@ describe("アプリのレコード一覧のAPI", () => {
             postedAt: {
               value: "2022-01-01T00:00:00Z",
             },
+            テスト: {
+              value: "テスト",
+            },
           },
         }),
         await client!.record.addRecord({
@@ -125,6 +128,9 @@ describe("アプリのレコード一覧のAPI", () => {
             },
             postedAt: {
               value: "2100-01-01T00:00:00Z",
+            },
+            テスト: {
+              value: "テスト2",
             },
           },
         }),
@@ -173,6 +179,35 @@ describe("アプリのレコード一覧のAPI", () => {
         query: "$id = 1",
       });
       expect(records.totalCount).toEqual("1");
+    });
+    test("日本語のフィールドで検索する", async () => {
+      const records = await client!.record.getRecords({
+        app: 1,
+        query: "テスト = 'テスト'",
+      });
+      expect(records.totalCount).toEqual("1");
+    });
+    test("日本語フィールドが複数ある場合で検索する", async () => {
+      const records = await client!.record.getRecords({
+        app: 1,
+        query: "テスト = 'テスト' or テスト = 'テスト2'",
+      });
+      expect(records.totalCount).toEqual("2");
+    });
+    test('"で囲った値で検索する', async () => {
+      const records = await client!.record.getRecords({
+        app: 1,
+        query: 'test = "test"',
+      });
+      expect(records.totalCount).toEqual("1");
+    });
+    test("複雑なクエリで検索する", async () => {
+      const records = await client!.record.getRecords({
+        app: 1,
+        query:
+          '((理由 in ("") and 理由_new in ("")) or 日時 != "" ) and 日時 = "" and 理由 in ("") and ステータス in ("あ","い","う")',
+      });
+      expect(records.totalCount).toEqual("0");
     });
   });
 });

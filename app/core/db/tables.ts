@@ -35,6 +35,18 @@ const CREATE_TABLE_FILES = dedent`
   )
 `;
 
+const CREATE_TABLE_COMMENTS = dedent`
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    app_id INTEGER,
+    record_id INTEGER,
+    message TEXT,
+    mentions JSON
+  )
+`;
+
 const CREATE_TABLE_APPS = dedent`
   CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY,
@@ -52,6 +64,7 @@ export const createTables = async (db: sqlite3.Database) => {
     db.run(CREATE_TABLE_RECORDS);
     db.run(CREATE_TABLE_FILES);
     db.run(CREATE_TABLE_APPS);
+    db.run(CREATE_TABLE_COMMENTS);
   });
 };
 
@@ -61,5 +74,6 @@ export const dropTables = async (db: sqlite3.Database) => {
     db.run("DROP TABLE IF EXISTS records");
     db.run("DROP TABLE IF EXISTS files");
     db.run("DROP TABLE IF EXISTS apps");
+    db.run("DROP TABLE IF EXISTS comments");
   });
 };

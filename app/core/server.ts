@@ -11,6 +11,7 @@ import * as layout from "./handlers/layout";
 import * as previewFields from "./handlers/preview-fields";
 import * as file from "./handlers/file";
 import * as setupApp from "./handlers/setup-app";
+import * as comment from "./handlers/comment";
 import type { HandlerArgs } from "./handlers/types";
 
 type RouteHandler = (args: HandlerArgs) => Promise<Response>;
@@ -71,6 +72,11 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?setup\/app\.json$/,
     POST: setupApp.post,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
+    POST: comment.post,
+    DELETE: comment.del,
   },
 ];
 

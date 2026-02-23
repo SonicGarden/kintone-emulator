@@ -7,7 +7,7 @@
     "build": "pnpm typecheck && remix vite:build",
     "dev": "remix vite:dev",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
-    "start": "remix-serve ./build/server/index.js",
+    "start": "PORT=12345 HOST=0.0.0.0 remix-serve ./build/server/index.js",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "test:watch": "vitest --watch",
@@ -23,6 +23,7 @@
     "node-sql-parser": "^5.3.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "remix-utils": "^8.5.0",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {

@@ -36,3 +36,16 @@ export const updateRecord = (db: sqlite3.Database, id: string, record: unknown) 
     JSON.stringify(record),
     id
   );
+
+export const findRecordByKey = (
+  db: sqlite3.Database,
+  appId: string | number,
+  fieldCode: string,
+  fieldValue: string
+) =>
+  all<RecordRow>(
+    db,
+    `SELECT id, revision, body FROM records WHERE app_id = ? AND body->>'$.${fieldCode}.value' = ?`,
+    appId,
+    fieldValue
+  );

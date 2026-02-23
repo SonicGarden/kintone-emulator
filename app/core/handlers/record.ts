@@ -1,5 +1,5 @@
 import { dbSession } from "../db/client";
-import { findRecord, insertRecord, updateRecord } from "../db/records";
+import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { findFieldTypes } from "../db/fields";
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 import type { HandlerArgs } from "./types";
@@ -46,7 +46,20 @@ export const post = async ({ request, params }: HandlerArgs) => {
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const result = await updateRecord(db, body.id, body.record);
+
+  let targetRows;
+  if (body.updateKey) {
+    targetRows = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
+  } else {
+    targetRows = await findRecord(db, body.app, body.id);
+  }
+
+  if (targetRows.length === 0) {
+    return Response.json({ message: 'Record not found.' }, { status: 404 });
+  }
+
+  const mergedRecord = { ...JSON.parse(targetRows[0].body), ...body.record };
+  const result = await updateRecord(db, String(targetRows[0].id), mergedRecord);
   if (result.length === 0) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }

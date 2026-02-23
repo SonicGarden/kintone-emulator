@@ -78,12 +78,18 @@ const hasWhereClause = (query: string) =>
   && !query.trim().toLowerCase().startsWith('limit')
   && !query.trim().toLowerCase().startsWith('offset');
 
+const replaceUniCodeField = (query: string) => {
+  const includedJp = /(?<!['"\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf])\w*[\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf]+\w*(?!['"])/g;
+  return query.replace(includedJp, (match) => `\`${match}\``);
+};
+
 export const get = async ({ request, params }: HandlerArgs) => {
   try {
     const db = dbSession(params.session);
     const url = new URL(request.url);
     const app = url.searchParams.get('app');
-    const query = url.searchParams.get('query');
+    const rawQuery = url.searchParams.get('query');
+    const query = rawQuery ? replaceUniCodeField(rawQuery).replaceAll('"', "'") : null;
     const fields: string[] = [];
     for (const [key, value] of url.searchParams.entries()) {
       if (key.startsWith('fields')) {

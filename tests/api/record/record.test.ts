@@ -116,4 +116,49 @@ describe("アプリのレコードAPI", () => {
     });
     expect(response.status).toBe(404);
   });
+
+  test("日本語のフィールドを持つキーで更新をかける", async () => {
+    const result = await client!.record.addRecord({
+      app: 1,
+      record: {
+        レコード番号: {
+          value: "test",
+        },
+        内容: {
+          value: "test",
+        },
+      },
+    });
+    await client!.record.updateRecord({
+      app: 1,
+      updateKey: { field: "レコード番号", value: "test" },
+      record: {
+        内容: {
+          value: "test2",
+        },
+      },
+    });
+    const updatedRecord = await client!.record.getRecord({
+      app: 1,
+      id: result.id,
+    });
+    expect(updatedRecord).toEqual({
+      record: {
+        $id: {
+          value: result.id,
+          type: "RECORD_NUMBER",
+        },
+        $revision: {
+          value: "2",
+          type: "__REVISION__",
+        },
+        レコード番号: {
+          value: "test",
+        },
+        内容: {
+          value: "test2",
+        },
+      },
+    });
+  });
 });
