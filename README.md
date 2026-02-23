@@ -78,13 +78,26 @@ const BASE_URL = `http://localhost:12345/${SESSION}`;
 // 初期化
 await fetch(`${BASE_URL}/initialize`, { method: "POST" });
 
+// テスト用アプリの作成
+const setupRes = await fetch(`${BASE_URL}/setup/app.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "テストアプリ",
+    properties: {
+      title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
+    },
+  }),
+});
+const { app } = await setupRes.json();
+
 // @kintone/rest-api-client をそのまま使用
 const client = new KintoneRestAPIClient({
   baseUrl: BASE_URL,
   auth: { apiToken: "dummy" },
 });
 
-await client.record.addRecord({ app: 1, record: { title: { value: "test" } } });
+await client.record.addRecord({ app, record: { title: { value: "test" } } });
 
 // クリーンアップ
 await fetch(`${BASE_URL}/finalize`, { method: "POST" });
