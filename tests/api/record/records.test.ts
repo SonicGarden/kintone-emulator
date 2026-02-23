@@ -94,7 +94,7 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
       fields: ["test"],
     });
-    expect(records.records[0]).not.toHaveProperty("test2");
+    expect(records.records[0]!).not.toHaveProperty("test2");
   });
 
   describe("queryが存在する時、", () => {

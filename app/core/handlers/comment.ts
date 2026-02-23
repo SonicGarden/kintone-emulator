@@ -37,14 +37,25 @@ export const post = async ({ request, params }: HandlerArgs) => {
 };
 
 export const del = async ({ request, params }: HandlerArgs) => {
-  const body: CommentBody = await request.json();
+  const url = new URL(request.url);
+  const app = url.searchParams.get("app");
+  const record = url.searchParams.get("record");
+  const commentId = url.searchParams.get("comment");
+
+  if (!app || !record || !commentId) {
+    return Response.json({ message: "app, record, comment are required." }, { status: 400 });
+  }
+
   const db = dbSession(params.session);
 
-  const records = await findRecord(db, body.app, body.record);
+  const records = await findRecord(db, app, record);
   if (records.length === 0) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
 
-  await deleteComment(db, body.app, body.record, body.comment as string | number);
+  const [deleted] = await deleteComment(db, app, record, commentId);
+  if (!deleted) {
+    return Response.json({ message: "Comment not found." }, { status: 404 });
+  }
   return Response.json({});
 };

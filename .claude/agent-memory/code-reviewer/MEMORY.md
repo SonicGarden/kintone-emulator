@@ -40,6 +40,12 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 
 ## よく見られる課題
 - `CLAUDE.md` のデータ層の記述（`app/core/` セクション）が古いまま残りやすい（Issue 02 後は `db/` ディレクトリ構造を記述する必要あり）
+- CLAUDE.md のルーティングテーブルとSQLiteテーブル構造は新機能追加時に漏れやすい（コメントAPIで発生）
+- `db/` の関数名が他モジュールと衝突しやすい（`db/comments.ts` の `findRecord` vs `db/records.ts` の `findRecord`）。意図を明確にした名前を推奨
+- `deleteComment` など DELETE 系ハンドラーで RETURNING 句の戻り値チェック（404ガード）が抜けやすい
+- JSON path に外部入力を文字列結合する `findRecordByKey` 型の関数はSQLインジェクションリスクがある。ハンドラー層でフィールドコードのバリデーションが必要
+- `del` ハンドラーで型アサーション（`as string | number`）を使う前に、入力がスカラー値であることをバリデーションする必要がある
+- テスト追加時に DELETE/PUT の異常系（存在しないIDへの操作）が抜けやすい
 - クエリパラメーターの配列形式（`ids[0]=1&ids[1]=2`）は `key.startsWith('ids')` で解析（修正済み）
 - 必須クエリパラメーター（`id` など）が欠落した場合は 400 を返す明示的バリデーションを追加する
 - `app/form/fields`では `revision` が常に `'1'` の固定値を返す（実際のappsテーブルと連動していない）
@@ -49,6 +55,8 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `app.ts` / `apps.ts` の `toAppResponse` 関数が重複している（既知の DRY 違反）
 - `record.ts` で `findRecords` を import しているが使っていない（未使用 import）
 - `findRecordsByClause` の第4引数 `hasWhere: boolean` は caller（handlers/records.ts）とのインターフェース設計として責務の分散あり（既知）
+- `db/comments.ts` には GET（一覧）が未実装。エンドポイントとして定義しない場合は TODO コメントを残すのが望ましい
+- `comment.ts` の `del` ハンドラーはクエリパラメーター方式（kintone クライアントが DELETE をクエリパラメーターで送るため）。`request.json()` ではなく `url.searchParams.get()` で読む
 
 ## コードスタイル規約
 - `app/core/handlers/` 内は全て `export const fn = async () => {}` スタイルに統一済み

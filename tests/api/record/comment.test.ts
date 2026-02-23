@@ -103,4 +103,29 @@ describe("アプリのレコードコメントAPI", () => {
       })
     ).rejects.toThrow();
   });
+
+  test("コメントを削除できる", async () => {
+    const added = await client!.record.addRecordComment({
+      app: 1,
+      record: recordId,
+      comment: { text: "削除するコメント" },
+    });
+    await expect(
+      client!.record.deleteRecordComment({
+        app: 1,
+        record: recordId,
+        comment: added.id,
+      })
+    ).resolves.not.toThrow();
+  });
+
+  test("存在しないコメントIDを削除しようとするとエラーになる", async () => {
+    await expect(
+      client!.record.deleteRecordComment({
+        app: 1,
+        record: recordId,
+        comment: "9999",
+      })
+    ).rejects.toThrow();
+  });
 });

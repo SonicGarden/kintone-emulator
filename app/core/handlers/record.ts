@@ -43,12 +43,19 @@ export const post = async ({ request, params }: HandlerArgs) => {
   });
 };
 
+// フィールドコードに使用可能な文字: ASCII英数字・アンダースコア(\w)、ひらがな・カタカナ・漢字(\u3000-\u9fff)、全角英数字・記号(\uff00-\uffef)
+// SQL の JSON path 式にフィールドコードを直接埋め込むため、クォートや = など SQL で意味を持つ文字を弾く
+const FIELD_CODE_PATTERN = /^[\w\u3000-\u9fff\uff00-\uffef]+$/;
+
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  let targetRows;
+  let targetRows: Awaited<ReturnType<typeof findRecord>>;
   if (body.updateKey) {
+    if (!FIELD_CODE_PATTERN.test(body.updateKey.field)) {
+      return Response.json({ message: 'Invalid field code.' }, { status: 400 });
+    }
     targetRows = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
   } else {
     targetRows = await findRecord(db, body.app, body.id);
