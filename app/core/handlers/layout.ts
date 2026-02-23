@@ -1,23 +1,17 @@
-import { all, dbSession } from "../db";
+import { dbSession } from "../db/client";
+import { findApp } from "../db/apps";
 import type { HandlerArgs } from "./types";
 
 export const get = async ({ request, params }: HandlerArgs) => {
-  const db = dbSession(params.session);
-  const url = new URL(request.url);
-  const appId = Number(url.searchParams.get('app'));
+  const appId = Number(new URL(request.url).searchParams.get('app'));
+  const result = await findApp(dbSession(params.session), appId);
 
-  const appResult = await all<{ layout: string; revision: number }>(
-    db,
-    `SELECT layout, revision FROM apps WHERE id = ?`,
-    appId
-  );
-
-  if (appResult.length === 0) {
+  if (result.length === 0) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }
 
   return Response.json({
-    layout: JSON.parse(appResult[0].layout),
-    revision: appResult[0].revision.toString(),
+    layout: JSON.parse(result[0].layout),
+    revision: result[0].revision.toString(),
   });
-}
+};

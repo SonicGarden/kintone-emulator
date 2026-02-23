@@ -1,14 +1,17 @@
-import { all, dbSession } from "../db";
+import { dbSession } from "../db/client";
+import { findRecords, findRecordsByClause } from "../db/records";
+import { findFieldTypes } from "../db/fields";
+import type { FieldTypeRow } from "../db/fields";
 import sqlParser from 'node-sql-parser';
-import { FieldTypes, getFieldTypes } from "../query";
 import type { HandlerArgs } from "./types";
+
+type FieldTypes = { [key: string]: FieldTypeRow["type"] };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
   const { expression, fieldTypes } = param;
   switch (expression.type) {
     case 'binary_expr':
-      // 左辺と右辺を再帰的に探索
       replaceField({ expression: expression.left, fieldTypes });
       replaceField({ expression: expression.right, fieldTypes });
       break;
@@ -45,9 +48,13 @@ const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
           break;
       }
   }
-}
+};
 
-const generateRecords = ({ recordResult, fieldTypes, fields }: { recordResult: { id: number, body: string, revision: number }[], fieldTypes: FieldTypes, fields: string[] }) => {
+const generateRecords = ({ recordResult, fieldTypes, fields }: {
+  recordResult: { id: number, body: string, revision: number }[],
+  fieldTypes: FieldTypes,
+  fields: string[]
+}) => {
   return recordResult.map((record) => {
     const body = JSON.parse(record.body);
     for (const key in body) {
@@ -64,18 +71,14 @@ const generateRecords = ({ recordResult, fieldTypes, fields }: { recordResult: {
     body['$id'] = { value: record.id.toString(), type: 'RECORD_NUMBER' };
     return body;
   });
-}
+};
 
-const hasWhereClause = (query: string) => {
-  return !query.trim().toLowerCase().startsWith('order')
-    && !query.trim().toLowerCase().startsWith('limit')
-    && !query.trim().toLowerCase().startsWith('offset')
-}
+const hasWhereClause = (query: string) =>
+  !query.trim().toLowerCase().startsWith('order')
+  && !query.trim().toLowerCase().startsWith('limit')
+  && !query.trim().toLowerCase().startsWith('offset');
 
-export const get = async ({
-  request,
-  params,
-}: HandlerArgs) => {
+export const get = async ({ request, params }: HandlerArgs) => {
   try {
     const db = dbSession(params.session);
     const url = new URL(request.url);
@@ -87,16 +90,24 @@ export const get = async ({
         fields.push(value);
       }
     }
-    const fieldTypes = await getFieldTypes(db, app!);
-    if (query === null) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recordResult = await all<{ body: any, id: number, revision: number }>(db, `SELECT id, revision, body FROM records WHERE app_id = ?`, app);
-      return Response.json({ totalCount: recordResult.length.toString(), records: generateRecords({ recordResult, fieldTypes, fields }) });
 
+    const fieldTypeRows = await findFieldTypes(db, app!);
+    const fieldTypes: FieldTypes = {};
+    for (const row of fieldTypeRows) {
+      fieldTypes[row.code] = row.type;
     }
+
+    if (query === null) {
+      const recordResult = await findRecords(db, app);
+      return Response.json({
+        totalCount: recordResult.length.toString(),
+        records: generateRecords({ recordResult, fieldTypes, fields }),
+      });
+    }
+
     const parser = new sqlParser.Parser();
     const prefixSql = `select 1 from records ${hasWhereClause(query) ? 'where ' : ''}`;
-    const ast = parser.astify(prefixSql + query!);
+    const ast = parser.astify(prefixSql + query);
 
     if ('where' in ast && ast.where !== null) {
       replaceField({ expression: ast.where, fieldTypes });
@@ -106,28 +117,23 @@ export const get = async ({
         replaceField({ expression: order.expr, fieldTypes });
       }
     }
+
     const newQuery = parser.sqlify(ast, { database: 'sqlite' });
-    const afterQuery = newQuery.replaceAll('"', '').replace(/SELECT 1 FROM records (WHERE)?/g, '');
+    const clause = newQuery.replaceAll('"', '').replace(/SELECT 1 FROM records (WHERE)?/g, '');
+
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recordResult = await all<{ body: any, id: number, revision: number }>(db, `SELECT id, revision, body FROM records WHERE app_id = ? ${hasWhereClause(query) ? 'and' : ''} ${afterQuery}`, app);
+      const recordResult = await findRecordsByClause(db, app, clause, hasWhereClause(query));
       return Response.json({
         totalCount: recordResult.length.toString(),
         records: generateRecords({ recordResult, fieldTypes, fields }),
       });
     } catch (e) {
       return Response.json(
-        {
-          id: '1505999166-897850006',
-          code: 'CB_VA01',
-          message: 'query: クエリ記法が間違っています。'
-
-        }, { status: 400 });
+        { id: '1505999166-897850006', code: 'CB_VA01', message: 'query: クエリ記法が間違っています。' },
+        { status: 400 }
+      );
     }
   } catch (e) {
-    return Response.json({
-      code: 'error',
-      message: String(e)
-    }, { status: 500 });
+    return Response.json({ code: 'error', message: String(e) }, { status: 500 });
   }
-}
+};

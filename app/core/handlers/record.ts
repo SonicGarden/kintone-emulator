@@ -1,4 +1,6 @@
-import { all, dbSession } from "../db";
+import { dbSession } from "../db/client";
+import { findRecord, insertRecord, updateRecord } from "../db/records";
+import { findFieldTypes } from "../db/fields";
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 import type { HandlerArgs } from "./types";
 
@@ -6,54 +8,50 @@ type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
 }
 
-export const get = async ({
-  request,
-  params,
-}: HandlerArgs) => {
+export const get = async ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recordResult = await all<{ body: any, id: number, revision: number }>(db, `SELECT id, revision, body FROM records WHERE app_id = ? and id = ?`, app, url.searchParams.get('id'));
-  if (recordResult.length === 0) {
+
+  const rows = await findRecord(db, app, url.searchParams.get('id'));
+  if (rows.length === 0) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
-  const body: Record = JSON.parse(recordResult[0].body);
-  const id = recordResult[0].id;
-  const revision = recordResult[0].revision;
-  const fieldsResult = await all<{ code: string, type: KintoneRecordField.OneOf['type'] }>(db, `SELECT code, body->>'$.type' as type FROM fields WHERE app_id = ?`, app);
-  for (const field of fieldsResult) {
+
+  const body: Record = JSON.parse(rows[0].body);
+  const fieldTypes = await findFieldTypes(db, app!);
+  for (const field of fieldTypes) {
     if (body[field.code]) {
       body[field.code].type = field.type;
     }
   }
-  body['$id'] = { value: id.toString(), type: 'RECORD_NUMBER' };
-  body['$revision'] = { value: revision.toString(), type: '__REVISION__' };
+  body['$id'] = { value: rows[0].id.toString(), type: 'RECORD_NUMBER' };
+  body['$revision'] = { value: rows[0].revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
-}
+};
 
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const recordResult = await all<{ id: number, revision: number }>(db, "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision", body.app, JSON.stringify(body.record));
-  if (recordResult.length === 0) {
+  const result = await insertRecord(db, body.app, body.record);
+  if (result.length === 0) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
   return Response.json({
-    id: recordResult[0].id.toString(),
-    revision: recordResult[0].revision.toString(),
+    id: result[0].id.toString(),
+    revision: result[0].revision.toString(),
   });
-}
+};
 
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const recordResult = await all<{ id: number, revision: number }>(db, "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision", JSON.stringify(body.record), body.id);
-  if (recordResult.length === 0) {
+  const result = await updateRecord(db, body.id, body.record);
+  if (result.length === 0) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
   return Response.json({
-    id: recordResult[0].id.toString(),
-    revision: recordResult[0].revision.toString(),
+    id: result[0].id.toString(),
+    revision: result[0].revision.toString(),
   });
-}
+};

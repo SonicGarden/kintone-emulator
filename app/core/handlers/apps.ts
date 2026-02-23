@@ -1,10 +1,10 @@
 // GET k/v1/apps.json
 // https://cybozu.dev/ja/kintone/docs/rest-api/apps/get-apps/
 
-import { all, dbSession } from "../db";
+import { dbSession } from "../db/client";
+import { findApps } from "../db/apps";
+import type { AppRow } from "../db/apps";
 import type { HandlerArgs } from "./types";
-
-type AppRow = { id: number; name: string; created_at: string; updated_at: string };
 
 const toAppResponse = (row: AppRow) => ({
   appId: row.id.toString(),
@@ -20,7 +20,6 @@ const toAppResponse = (row: AppRow) => ({
 });
 
 export const get = async ({ request, params }: HandlerArgs) => {
-  const db = dbSession(params.session);
   const url = new URL(request.url);
 
   const ids: number[] = [];
@@ -30,31 +29,12 @@ export const get = async ({ request, params }: HandlerArgs) => {
     }
   }
 
-  const name = url.searchParams.get('name');
-  const offset = Number(url.searchParams.get('offset') ?? '0');
-  const limit = Math.min(Number(url.searchParams.get('limit') ?? '100'), 100);
-
-  const conditions: string[] = [];
-  const sqlParams: unknown[] = [];
-
-  if (ids.length > 0) {
-    conditions.push(`id IN (${ids.map(() => '?').join(', ')})`);
-    sqlParams.push(...ids);
-  }
-
-  if (name) {
-    conditions.push(`name LIKE ?`);
-    sqlParams.push(`%${name}%`);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  sqlParams.push(limit, offset);
-
-  const result = await all<AppRow>(
-    db,
-    `SELECT id, name, created_at, updated_at FROM apps ${where} LIMIT ? OFFSET ?`,
-    ...sqlParams
-  );
+  const result = await findApps(dbSession(params.session), {
+    ids,
+    name: url.searchParams.get('name') ?? undefined,
+    limit: Math.min(Number(url.searchParams.get('limit') ?? '100'), 100),
+    offset: Number(url.searchParams.get('offset') ?? '0'),
+  });
 
   return Response.json({ apps: result.map(toAppResponse) });
 };
