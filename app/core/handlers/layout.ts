@@ -4,7 +4,7 @@ import type { HandlerArgs } from "./types";
 
 export const get = async ({ request, params }: HandlerArgs) => {
   const appId = Number(new URL(request.url).searchParams.get('app'));
-  const [row] = await findApp(dbSession(params.session), appId);
+  const row = await findApp(dbSession(params.session), appId);
 
   if (!row) {
     return Response.json({ message: 'App not found.' }, { status: 404 });

@@ -8,7 +8,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
   const appId = Number(new URL(request.url).searchParams.get('app'));
 
   const appResult = await findApp(db, appId);
-  if (appResult.length === 0) {
+  if (!appResult) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }
 

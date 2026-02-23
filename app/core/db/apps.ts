@@ -18,7 +18,8 @@ type FindAppsOptions = {
 };
 
 export const findApp = (db: sqlite3.Database, id: number) =>
-  all<AppRow>(db, `SELECT id, name, revision, layout, created_at, updated_at FROM apps WHERE id = ?`, id);
+  all<AppRow>(db, `SELECT id, name, revision, layout, created_at, updated_at FROM apps WHERE id = ?`, id)
+    .then(rows => rows[0]);
 
 export const findApps = (db: sqlite3.Database, options: FindAppsOptions) => {
   const { ids, name, limit, offset } = options;
@@ -51,4 +52,4 @@ export const insertApp = (db: sqlite3.Database, name: string, layout: string) =>
     "INSERT INTO apps (name, layout) VALUES (?, ?) RETURNING id, revision",
     name,
     layout
-  );
+  ).then(rows => rows[0]);

@@ -4,7 +4,8 @@ import { all } from "./client";
 export type CommentRow = { id: number; message: string; mentions: string };
 
 export const findRecord = (db: sqlite3.Database, appId: string | number, recordId: string | number) =>
-  all<{ id: number }>(db, `SELECT id FROM records WHERE app_id = ? AND id = ?`, appId, recordId);
+  all<{ id: number }>(db, `SELECT id FROM records WHERE app_id = ? AND id = ?`, appId, recordId)
+    .then(rows => rows[0]);
 
 export const insertComment = (
   db: sqlite3.Database,
@@ -20,7 +21,7 @@ export const insertComment = (
     recordId,
     message,
     JSON.stringify(mentions)
-  );
+  ).then(rows => rows[0]);
 
 export const deleteComment = (
   db: sqlite3.Database,
@@ -34,4 +35,4 @@ export const deleteComment = (
     appId,
     recordId,
     commentId
-  );
+  ).then(rows => rows[0]);

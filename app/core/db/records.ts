@@ -4,7 +4,8 @@ import { all } from "./client";
 export type RecordRow = { id: number; body: string; revision: number };
 
 export const findRecord = (db: sqlite3.Database, appId: string | null, id: string | null) =>
-  all<RecordRow>(db, `SELECT id, revision, body FROM records WHERE app_id = ? AND id = ?`, appId, id);
+  all<RecordRow>(db, `SELECT id, revision, body FROM records WHERE app_id = ? AND id = ?`, appId, id)
+    .then(rows => rows[0]);
 
 export const findRecords = (db: sqlite3.Database, appId: string | null) =>
   all<RecordRow>(db, `SELECT id, revision, body FROM records WHERE app_id = ?`, appId);
@@ -27,7 +28,7 @@ export const insertRecord = (db: sqlite3.Database, appId: string, record: unknow
     "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision",
     appId,
     JSON.stringify(record)
-  );
+  ).then(rows => rows[0]);
 
 export const updateRecord = (db: sqlite3.Database, id: string, record: unknown) =>
   all<{ id: number; revision: number }>(
@@ -35,7 +36,7 @@ export const updateRecord = (db: sqlite3.Database, id: string, record: unknown) 
     "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision",
     JSON.stringify(record),
     id
-  );
+  ).then(rows => rows[0]);
 
 export const findRecordByKey = (
   db: sqlite3.Database,

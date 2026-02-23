@@ -4,7 +4,8 @@ import { all } from "./client";
 export type FileRow = { data: ArrayBuffer; content_type: string; filename: string };
 
 export const findFile = (db: sqlite3.Database, fileKey: string | null) =>
-  all<FileRow>(db, `SELECT data, content_type, filename FROM files WHERE id = ?`, fileKey);
+  all<FileRow>(db, `SELECT data, content_type, filename FROM files WHERE id = ?`, fileKey)
+    .then(rows => rows[0]);
 
 export const insertFile = (
   db: sqlite3.Database,
@@ -18,4 +19,4 @@ export const insertFile = (
     filename,
     data,
     contentType
-  );
+  ).then(rows => rows[0]);

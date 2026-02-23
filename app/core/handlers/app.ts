@@ -26,7 +26,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: 'id is required.' }, { status: 400 });
   }
 
-  const [row] = await findApp(dbSession(params.session), Number(idParam));
+  const row = await findApp(dbSession(params.session), Number(idParam));
   if (!row) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }

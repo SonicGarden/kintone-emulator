@@ -14,8 +14,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body: CommentBody = await request.json();
   const db = dbSession(params.session);
 
-  const records = await findRecord(db, body.app, body.record);
-  if (records.length === 0) {
+  const record = await findRecord(db, body.app, body.record);
+  if (!record) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
 
@@ -23,7 +23,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: "Invalid comment" }, { status: 400 });
   }
 
-  const [inserted] = await insertComment(
+  const inserted = await insertComment(
     db,
     body.app,
     body.record,
@@ -48,12 +48,12 @@ export const del = async ({ request, params }: HandlerArgs) => {
 
   const db = dbSession(params.session);
 
-  const records = await findRecord(db, app, record);
-  if (records.length === 0) {
+  const recordRow = await findRecord(db, app, record);
+  if (!recordRow) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
 
-  const [deleted] = await deleteComment(db, app, record, commentId);
+  const deleted = await deleteComment(db, app, record, commentId);
   if (!deleted) {
     return Response.json({ message: "Comment not found." }, { status: 404 });
   }

@@ -13,7 +13,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
 
-  const [row] = await findRecord(db, app, url.searchParams.get('id'));
+  const row = await findRecord(db, app, url.searchParams.get('id'));
   if (!row) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
@@ -33,7 +33,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const [inserted] = await insertRecord(db, body.app, body.record);
+  const inserted = await insertRecord(db, body.app, body.record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
@@ -51,23 +51,23 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  let targetRows: Awaited<ReturnType<typeof findRecord>>;
+  let target: Awaited<ReturnType<typeof findRecord>>;
   if (body.updateKey) {
     if (!FIELD_CODE_PATTERN.test(body.updateKey.field)) {
       return Response.json({ message: 'Invalid field code.' }, { status: 400 });
     }
-    targetRows = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
+    const rows = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
+    target = rows[0];
   } else {
-    targetRows = await findRecord(db, body.app, body.id);
+    target = await findRecord(db, body.app, body.id);
   }
 
-  const [target] = targetRows;
   if (!target) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
-  const [updated] = await updateRecord(db, String(target.id), mergedRecord);
+  const updated = await updateRecord(db, String(target.id), mergedRecord);
   if (!updated) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
