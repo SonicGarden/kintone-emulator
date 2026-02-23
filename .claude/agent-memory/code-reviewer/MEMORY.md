@@ -15,7 +15,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `app/core/server.ts` — インプロセスHTTPサーバー本体。ルートテーブルを管理
 - `app/server.ts` — `startServer` の re-export のみ
 - `tests/api/` — インテグレーションテスト（実際にHTTPリクエストを送る）
-- `tests/config.ts` — テストホスト設定（localhost:12345）
+- `tests/config.ts` — `getHost()` 関数でホストを動的取得（`TEST_PORT` 環境変数を遅延評価。フォールバック: 12345）
 - `tests/helpers.ts` — `createBaseUrl()`, `initializeSession()`, `finalizeSession()`, `createApp()` ヘルパー
 
 ## コードパターン・規約
@@ -28,7 +28,8 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 
 ## テストパターン
 - 各テストは `beforeEach` で `initialize`、`afterEach` で `finalize`
-- `SESSION` 定数でテストファイルごとに一意のセッション名を使用
+- `BASE_URL` はモジュールレベルでなく `let BASE_URL: string` + `beforeAll(() => { BASE_URL = createBaseUrl("...") })` で代入（`TEST_PORT` 遅延評価のため）
+- `KintoneRestAPIClient` も describe 内で `let client + beforeAll` で初期化（`BASE_URL` が確定してから渡す）
 - `@kintone/rest-api-client` の `KintoneRestAPIClient` を使って実際のAPIをテスト
 
 ## よく見られる課題（セットアップ・テスト関連）
