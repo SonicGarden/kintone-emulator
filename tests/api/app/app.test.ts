@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const BASE_URL = createBaseUrl("app-test-session");
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("app-test-session");
+});
 
 describe("アプリ作成API", () => {
   beforeEach(async () => {
@@ -96,9 +99,12 @@ describe("アプリ作成API", () => {
 });
 
 describe("アプリ情報取得API", () => {
-  const client = new KintoneRestAPIClient({
-    baseUrl: BASE_URL,
-    auth: { apiToken: "test" },
+  let client: KintoneRestAPIClient;
+  beforeAll(() => {
+    client = new KintoneRestAPIClient({
+      baseUrl: BASE_URL,
+      auth: { apiToken: "test" },
+    });
   });
 
   beforeEach(async () => {

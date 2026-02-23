@@ -156,7 +156,7 @@ async function handler(
   res.end(JSON.stringify({ message: "Not Found" }));
 }
 
-export function startServer(port: number): Promise<http.Server> {
+export function startServer(port = 0): Promise<http.Server> {
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler);
     server.on("error", reject);

@@ -1,11 +1,14 @@
 import { afterAll, beforeAll } from "vitest";
 import { startServer } from "~/server";
 import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 
 let server: Server;
 
 beforeAll(async () => {
-  server = await startServer(12345);
+  server = await startServer();
+  const { port } = server.address() as AddressInfo;
+  process.env.TEST_PORT = String(port);
 });
 
 afterAll(async () => {

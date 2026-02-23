@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const BASE_URL = createBaseUrl("app-form-test-session");
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("app-form-test-session");
+});
 
 describe("アプリのフォームフィールドAPI", () => {
   let appId: number;

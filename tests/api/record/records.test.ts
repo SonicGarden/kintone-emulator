@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 
-const BASE_URL = createBaseUrl("records");
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("records");
+});
 
 describe("アプリのレコード一覧のAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;

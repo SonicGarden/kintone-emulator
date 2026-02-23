@@ -1,1 +1,2 @@
-export const host = `localhost:${process.env.TEST_PORT ?? "12345"}`;
+export const getHost = (): string =>
+  `localhost:${process.env.TEST_PORT ?? "12345"}`;

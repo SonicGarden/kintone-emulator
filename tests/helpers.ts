@@ -1,7 +1,7 @@
-import { host } from "tests/config";
+import { getHost } from "tests/config";
 
 export const createBaseUrl = (session: string): string =>
-  `http://${host}/${session}-${process.pid}`;
+  `http://${getHost()}/${session}-${process.pid}`;
 
 export const initializeSession = (baseUrl: string) =>
   fetch(`${baseUrl}/initialize`, { method: "POST" });
