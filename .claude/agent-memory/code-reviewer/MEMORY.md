@@ -43,3 +43,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - JSON型カラムはSQLiteに文字列として格納（`body JSON`, `layout JSON`）
 - `fields` テーブル: 旧 `type`, `label` カラムは廃止され `body JSON` に全属性を格納。`code` カラムは検索用に残しつつ `body` にも重複して保存
 - JSON path: SQLiteのJSON演算子 `body->>'$.type'` でJSONフィールドを直接クエリ可能（`query.ts`, `record[.]json.tsx` で使用）
+- `app/server.ts` + `tests/setup.ts`: Vitestインプロセス起動用サーバー。`vitest.config.ts` の `setupFiles` で `beforeAll`/`afterAll` 管理
+- `tests/helpers.ts`: セッション名を `${name}-${process.pid}` 形式で生成する `createBaseUrl()` ヘルパー。テスト並列実行時の衝突回避に使用
+- インプロセスサーバー実装時の注意: ルートテーブル（`server.ts`）で全メソッドを漏れなく登録する。`fields[.]json.tsx` のように GET と POST 両方 export するルートは両方登録が必要（過去に POST 登録漏れあり）
+- Node.js IncomingMessage → Web API Request 変換: `Readable.toWeb(req)` + `duplex: "half"` パターンを使用。マルチパート（ファイルアップロード）は `unstable_parseMultipartFormData` がストリームを消費するため要検証
