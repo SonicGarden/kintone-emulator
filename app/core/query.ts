@@ -1,5 +1,5 @@
 import { Database } from "sqlite3";
-import { all } from "./db.server";
+import { all } from "./db";
 import { KintoneRecordField } from "@kintone/rest-api-client";
 
 export type FieldTypes = { [key: string]: KintoneRecordField.OneOf["type"] };

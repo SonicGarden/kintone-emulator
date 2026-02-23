@@ -1,4 +1,4 @@
-import { singleton } from "./singleton.server";
+import { singleton } from "./singleton";
 import sqlite3 from "sqlite3";
 
 export const dbSession = (session?: string) =>

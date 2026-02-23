@@ -1,29 +1,5 @@
-import { LoaderFunctionArgs } from "@remix-run/node";
-import { all, dbSession } from "~/utils/db.server";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { loader as coreLoader } from "~/core/handlers/fields";
 
-export async function loader({
-  request,
-  params,
-}: LoaderFunctionArgs) {
-  const db = dbSession(params.session);
-  const url = new URL(request.url);
-  const appId = Number(url.searchParams.get('app'));
-
-  const appResult = await all<{ id: number }>(db, `SELECT id FROM apps WHERE id = ?`, appId);
-  if (appResult.length === 0) {
-    return Response.json({ message: 'App not found.' }, { status: 404 });
-  }
-
-  const result = await all<{ code: string; body: string }>(
-    db,
-    `SELECT code, body FROM fields WHERE app_id = ?`,
-    appId
-  );
-
-  const properties: Record<string, unknown> = {};
-  for (const row of result) {
-    properties[row.code] = { noLabel: false, ...JSON.parse(row.body) };
-  }
-
-  return Response.json({ properties, revision: '1' });
-}
+export const loader = ({ request, params }: LoaderFunctionArgs) =>
+  coreLoader({ request, params });

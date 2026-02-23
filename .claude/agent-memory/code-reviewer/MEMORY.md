@@ -4,11 +4,17 @@
 kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + Vitest。
 
 ## 重要ファイルパス
-- `app/routes/` — Remixルート（`($session)` プレフィックスでセッション分離）
-- `app/utils/db.server.ts` — DB操作: `dbSession()`, `run()`, `all()`, `serialize()`
-- `app/utils/singleton.server.ts` — グローバルシングルトン管理
+- `app/routes/` — Remixルート（`($session)` プレフィックスでセッション分離）。薄いラッパーのみ
+- `app/core/db.ts` — DB操作: `dbSession()`, `run()`, `all()`, `serialize()`（旧 `app/utils/db.server.ts`）
+- `app/core/singleton.ts` — グローバルシングルトン管理（旧 `app/utils/singleton.server.ts`）
+- `app/core/fields.ts` — フィールド挿入ヘルパー `insertFields()`（旧 `app/utils/fields.server.ts`）
+- `app/core/query.ts` — `getFieldTypes()` のみ。クエリ変換ロジックは `app/core/handlers/records.ts` に移動済み
+- `app/core/handlers/` — 各APIハンドラー（Remix非依存の純粋な関数）
+- `app/core/server.ts` — インプロセスHTTPサーバー本体。ルートテーブルを管理
+- `app/server.ts` — `startServer` の re-export のみ
 - `tests/api/` — インテグレーションテスト（実際にHTTPリクエストを送る）
-- `tests/api/config.ts` — テストホスト設定（localhost:12345）
+- `tests/config.ts` — テストホスト設定（localhost:12345）
+- `tests/helpers.ts` — `createBaseUrl()`, `initializeSession()`, `finalizeSession()`, `createApp()` ヘルパー
 
 ## コードパターン・規約
 - ルートファイル名: `($session).k.v1.xxx[.]json.tsx` (`[.]` でドットエスケープ)
@@ -27,7 +33,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `CLAUDE.md` / `README.md` のルーティングテーブルへの新規エンドポイント追記忘れ（追記済みの例: `app[.]json.tsx`, `apps[.]json.tsx`）
 - クエリパラメーターの配列形式（`ids[0]=1&ids[1]=2`）は `key.includes('ids')` ではなく `key.startsWith('ids')` で解析する（`apps[.]json.tsx` で修正済み）
 - 必須クエリパラメーター（`id` など）が欠落した場合は 400 を返す明示的バリデーションを追加する（`app[.]json.tsx` で実装済み）
-- テストのセッション管理で `SESSION` 定数を使わずURLをハードコードするパターン（`record.test.ts`: `record`セッション, `records.test.ts`: `records`セッション, `file.test.ts`: `form`セッションをハードコード）→ 他テストとのセッション衝突リスク。`SESSION` 定数 + `BASE_URL` を使う正しいパターンは `app.test.ts`, `form.test.ts`, `layout.test.ts` で確認済み
+- テストのセッション管理で `createBaseUrl()` を正しく使うパターンに移行済み（`record-test-session`, `records`, `file-test-session` など）。ただし `records.test.ts` で `createApp` を呼ばず `app: 1` をハードコードしている既存問題あり（変更差分外）
 - `apps` テーブルのカラム定義がCLAUDE.mdに `name`, `revision` のみ記載（実際は `layout` も追加済み）
 - アプリが存在しない場合の404エラーハンドリング未実装パターン → `fields[.]json.tsx` および `layout[.]json.tsx` で修正済み
 - `setup/app.json` でlayout保存時にINSERTとUPDATEを別クエリで実行（1クエリにできる）→ 修正済み
@@ -45,5 +51,8 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - JSON path: SQLiteのJSON演算子 `body->>'$.type'` でJSONフィールドを直接クエリ可能（`query.ts`, `record[.]json.tsx` で使用）
 - `app/server.ts` + `tests/setup.ts`: Vitestインプロセス起動用サーバー。`vitest.config.ts` の `setupFiles` で `beforeAll`/`afterAll` 管理
 - `tests/helpers.ts`: セッション名を `${name}-${process.pid}` 形式で生成する `createBaseUrl()` ヘルパー。テスト並列実行時の衝突回避に使用
-- インプロセスサーバー実装時の注意: ルートテーブル（`server.ts`）で全メソッドを漏れなく登録する。`fields[.]json.tsx` のように GET と POST 両方 export するルートは両方登録が必要（過去に POST 登録漏れあり）
-- Node.js IncomingMessage → Web API Request 変換: `Readable.toWeb(req)` + `duplex: "half"` パターンを使用。マルチパート（ファイルアップロード）は `unstable_parseMultipartFormData` がストリームを消費するため要検証
+- インプロセスサーバー実装時の注意: ルートテーブル（`app/core/server.ts`）で全メソッドを漏れなく登録する。CLAUDE.md に GET/POST と記載されているエンドポイントは両方登録が必要
+- `app/routes/($session).k.v1.app.form.fields[.]json.tsx` は CLAUDE.md で GET/POST とされているが、Remixルート側に action が未実装（POST は preview-fields ルートが担う想定の可能性あり）
+- Node.js IncomingMessage → Web API Request 変換: `Readable.toWeb(req)` + `duplex: "half"` パターンを使用
+- ファイルアップロード: `unstable_parseMultipartFormData` から `request.formData()` に変更済み（Web標準API）
+- `app/core/query.ts` にはクエリ変換ロジックが存在せず `getFieldTypes()` のみ。クエリ変換ロジック（`replaceField`, `hasWhereClause`）は `app/core/handlers/records.ts` に移動済み。ファイル名と責務が乖離しているため要注意
