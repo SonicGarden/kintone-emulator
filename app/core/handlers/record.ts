@@ -13,33 +13,33 @@ export const get = async ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
 
-  const rows = await findRecord(db, app, url.searchParams.get('id'));
-  if (rows.length === 0) {
+  const [row] = await findRecord(db, app, url.searchParams.get('id'));
+  if (!row) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
 
-  const body: Record = JSON.parse(rows[0].body);
+  const body: Record = JSON.parse(row.body);
   const fieldTypes = await findFieldTypes(db, app!);
   for (const field of fieldTypes) {
     if (body[field.code]) {
-      body[field.code].type = field.type;
+      body[field.code]!.type = field.type;
     }
   }
-  body['$id'] = { value: rows[0].id.toString(), type: 'RECORD_NUMBER' };
-  body['$revision'] = { value: rows[0].revision.toString(), type: '__REVISION__' };
+  body['$id'] = { value: row.id.toString(), type: 'RECORD_NUMBER' };
+  body['$revision'] = { value: row.revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
 };
 
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const result = await insertRecord(db, body.app, body.record);
-  if (result.length === 0) {
+  const [inserted] = await insertRecord(db, body.app, body.record);
+  if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
   return Response.json({
-    id: result[0].id.toString(),
-    revision: result[0].revision.toString(),
+    id: inserted.id.toString(),
+    revision: inserted.revision.toString(),
   });
 };
 
@@ -54,17 +54,18 @@ export const put = async ({ request, params }: HandlerArgs) => {
     targetRows = await findRecord(db, body.app, body.id);
   }
 
-  if (targetRows.length === 0) {
+  const [target] = targetRows;
+  if (!target) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
 
-  const mergedRecord = { ...JSON.parse(targetRows[0].body), ...body.record };
-  const result = await updateRecord(db, String(targetRows[0].id), mergedRecord);
-  if (result.length === 0) {
+  const mergedRecord = { ...JSON.parse(target.body), ...body.record };
+  const [updated] = await updateRecord(db, String(target.id), mergedRecord);
+  if (!updated) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
   return Response.json({
-    id: result[0].id.toString(),
-    revision: result[0].revision.toString(),
+    id: updated.id.toString(),
+    revision: updated.revision.toString(),
   });
 };

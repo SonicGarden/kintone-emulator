@@ -68,9 +68,9 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
     });
     expect(records.totalCount).toEqual("2");
-    expect(records.records[0]["$id"].value).toEqual("1");
-    expect(records.records[0].test.value).toEqual("test");
-    expect(records.records[0].test.type).toEqual("SINGLE_LINE_TEXT");
+    expect(records.records[0]!["$id"]!.value).toEqual("1");
+    expect(records.records[0]!.test!.value).toEqual("test");
+    expect(records.records[0]!.test!.type).toEqual("SINGLE_LINE_TEXT");
   });
 
   test("fieldsを指定するとそこのデータだけ出力される", async () => {
@@ -171,7 +171,7 @@ describe("アプリのレコード一覧のAPI", () => {
         query: "order by test desc",
       });
       expect(records.totalCount).toEqual("2");
-      expect(records.records[0].test.value).toEqual("test2");
+      expect(records.records[0]!.test!.value).toEqual("test2");
     });
     test("idを指定する", async () => {
       const records = await client!.record.getRecords({

@@ -156,7 +156,7 @@ describe("アプリ情報取得API", () => {
 
     const result = await client.app.getApps({ ids: [id1] });
     expect(result.apps).toHaveLength(1);
-    expect(result.apps[0].name).toBe("アプリX");
+    expect(result.apps[0]!.name).toBe("アプリX");
   });
 
   test("名前で絞り込んで取得できる", async () => {
@@ -186,6 +186,6 @@ describe("アプリ情報取得API", () => {
     expect(all.apps).toHaveLength(5);
     const result = await client.app.getApps({ offset: 2 });
     expect(result.apps).toHaveLength(3);
-    expect(result.apps[0].appId).toBe(all.apps[2].appId);
+    expect(result.apps[0]!.appId).toBe(all.apps[2]!.appId);
   });
 });

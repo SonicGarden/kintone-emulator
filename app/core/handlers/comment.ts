@@ -23,14 +23,17 @@ export const post = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: "Invalid comment" }, { status: 400 });
   }
 
-  const result = await insertComment(
+  const [inserted] = await insertComment(
     db,
     body.app,
     body.record,
     body.comment.text,
     body.comment.mentions ?? []
   );
-  return Response.json({ id: result[0].id.toString() });
+  if (!inserted) {
+    return Response.json({ message: 'Failed to create comment.' }, { status: 500 });
+  }
+  return Response.json({ id: inserted.id.toString() });
 };
 
 export const del = async ({ request, params }: HandlerArgs) => {
