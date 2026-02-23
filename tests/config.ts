@@ -1,1 +1,1 @@
-export const host = "localhost:12345";
+export const host = `localhost:${process.env.TEST_PORT ?? "12345"}`;

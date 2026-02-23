@@ -31,6 +31,12 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `SESSION` 定数でテストファイルごとに一意のセッション名を使用
 - `@kintone/rest-api-client` の `KintoneRestAPIClient` を使って実際のAPIをテスト
 
+## よく見られる課題（セットアップ・テスト関連）
+- 外部プロセス起動セットアップでは `serverProcess.once("exit", ...)` でクラッシュ早期検知が必要（`Promise.race` パターン）
+- `spawn` 後の `afterAll` は `serverProcess.kill()` だけでなく `once("exit", resolve)` で完了を待つ
+- `stdio: "pipe"` にするとサーバーログが全破棄される。`stderr` は `process.stderr` に pipe 推奨
+- 外部プロセス起動テスト（e2e）は `pnpm build` が前提。スクリプト定義か CLAUDE.md に明記が必要
+
 ## よく見られる課題
 - `CLAUDE.md` のデータ層の記述（`app/core/` セクション）が古いまま残りやすい（Issue 02 後は `db/` ディレクトリ構造を記述する必要あり）
 - クエリパラメーターの配列形式（`ids[0]=1&ids[1]=2`）は `key.startsWith('ids')` で解析（修正済み）
@@ -54,6 +60,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `fields` テーブル: 旧 `type`, `label` カラムは廃止され `body JSON` に全属性を格納。`code` カラムは検索用に残しつつ `body` にも重複して保存
 - JSON path: SQLiteのJSON演算子 `body->>'$.type'` でJSONフィールドを直接クエリ可能
 - `app/server.ts` + `tests/setup.ts`: Vitestインプロセス起動用サーバー。`vitest.config.ts` の `setupFiles` で `beforeAll`/`afterAll` 管理
+- `tests/setup.e2e.ts` + `vitest.config.e2e.ts`: 外部プロセス（remix-serve）起動用E2Eセットアップ。`pnpm test:e2e` で実行（要 `pnpm build`）。ポート 12346 を使用
 - `tests/helpers.ts`: セッション名を `${name}-${process.pid}` 形式で生成する `createBaseUrl()` ヘルパー。テスト並列実行時の衝突回避に使用
 - `app/routes/($session).k.v1.app.form.fields[.]json.tsx` は GET のみ実装。POST は `/k/v1/preview/app/form/fields.json` が担う設計
 - Node.js IncomingMessage → Web API Request 変換: `Readable.toWeb(req)` + `duplex: "half"` パターン
