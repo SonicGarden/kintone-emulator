@@ -1,5 +1,5 @@
 import { dbSession } from "../db/client";
-import { deleteComment, findRecord, insertComment } from "../db/comments";
+import { deleteComment, findRecordExists, insertComment } from "../db/comments";
 import type { HandlerArgs } from "./types";
 
 type CommentBody = {
@@ -14,7 +14,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body: CommentBody = await request.json();
   const db = dbSession(params.session);
 
-  const record = await findRecord(db, body.app, body.record);
+  const record = await findRecordExists(db, body.app, body.record);
   if (!record) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
@@ -48,7 +48,7 @@ export const del = async ({ request, params }: HandlerArgs) => {
 
   const db = dbSession(params.session);
 
-  const recordRow = await findRecord(db, app, record);
+  const recordRow = await findRecordExists(db, app, record);
   if (!recordRow) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }

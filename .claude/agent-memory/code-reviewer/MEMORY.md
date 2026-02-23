@@ -7,7 +7,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `app/routes/` — Remixルート（`($session)` プレフィックスでセッション分離）。薄いラッパーのみ
 - `app/core/db/client.ts` — DB操作: `dbSession()`, `run()`, `all()`, `serialize()`、singleton 統合済み
 - `app/core/db/tables.ts` — DDL: `createTables()` / `dropTables()`
-- `app/core/db/records.ts` — `findRecord` / `findRecords` / `findRecordsByClause` / `insertRecord` / `updateRecord`
+- `app/core/db/records.ts` — `findRecord` / `findRecords` / `findRecordsByClause` / `findRecordByKey` / `insertRecord` / `updateRecord`
 - `app/core/db/apps.ts` — `findApp` / `findApps` / `insertApp`
 - `app/core/db/fields.ts` — `findFields` / `findFieldTypes` / `insertFields` / `deleteFields`、`FieldProperties` 型
 - `app/core/db/files.ts` — `findFile` / `insertFile`
@@ -41,7 +41,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 ## よく見られる課題
 - `CLAUDE.md` のデータ層の記述（`app/core/` セクション）が古いまま残りやすい（Issue 02 後は `db/` ディレクトリ構造を記述する必要あり）
 - CLAUDE.md のルーティングテーブルとSQLiteテーブル構造は新機能追加時に漏れやすい（コメントAPIで発生）
-- `db/` の関数名が他モジュールと衝突しやすい（`db/comments.ts` の `findRecord` vs `db/records.ts` の `findRecord`）。意図を明確にした名前を推奨
+- `db/` の関数名が他モジュールと衝突しやすい（`db/comments.ts` の `findRecord` は `findRecordExists` にリネーム済み）。意図を明確にした名前を推奨
 - `deleteComment` など DELETE 系ハンドラーで RETURNING 句の戻り値チェック（404ガード）が抜けやすい
 - JSON path に外部入力を文字列結合する `findRecordByKey` 型の関数はSQLインジェクションリスクがある。ハンドラー層でフィールドコードのバリデーションが必要
 - `del` ハンドラーで型アサーション（`as string | number`）を使う前に、入力がスカラー値であることをバリデーションする必要がある
@@ -53,7 +53,7 @@ kintone REST APIエミュレーター。Remix 2.x + SQLite (インメモリ) + V
 - `RETURNING` 句を使う場合は `run()` ではなく `all<T>()` を使う
 - UPDATE/INSERT後に `RETURNING` が0件の場合の404/500ガードが抜けやすい
 - `app.ts` / `apps.ts` の `toAppResponse` 関数が重複している（既知の DRY 違反）
-- `record.ts` で `findRecords` を import しているが使っていない（未使用 import）
+- `record.ts` で `findRecords` を import していたが使っていない未使用 import は修正済み
 - `findRecordsByClause` の第4引数 `hasWhere: boolean` は caller（handlers/records.ts）とのインターフェース設計として責務の分散あり（既知）
 - `db/comments.ts` には GET（一覧）が未実装。エンドポイントとして定義しない場合は TODO コメントを残すのが望ましい
 - `comment.ts` の `del` ハンドラーはクエリパラメーター方式（kintone クライアントが DELETE をクエリパラメーターで送るため）。`request.json()` ではなく `url.searchParams.get()` で読む

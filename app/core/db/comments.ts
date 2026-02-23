@@ -3,7 +3,7 @@ import { all } from "./client";
 
 export type CommentRow = { id: number; message: string; mentions: string };
 
-export const findRecord = (db: sqlite3.Database, appId: string | number, recordId: string | number) =>
+export const findRecordExists = (db: sqlite3.Database, appId: string | number, recordId: string | number) =>
   all<{ id: number }>(db, `SELECT id FROM records WHERE app_id = ? AND id = ?`, appId, recordId)
     .then(rows => rows[0]);
 

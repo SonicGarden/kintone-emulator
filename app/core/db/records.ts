@@ -49,4 +49,4 @@ export const findRecordByKey = (
     `SELECT id, revision, body FROM records WHERE app_id = ? AND body->>'$.${fieldCode}.value' = ?`,
     appId,
     fieldValue
-  );
+  ).then(rows => rows[0]);

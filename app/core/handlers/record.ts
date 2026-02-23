@@ -56,8 +56,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
     if (!FIELD_CODE_PATTERN.test(body.updateKey.field)) {
       return Response.json({ message: 'Invalid field code.' }, { status: 400 });
     }
-    const rows = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
-    target = rows[0];
+    target = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
   } else {
     target = await findRecord(db, body.app, body.id);
   }
