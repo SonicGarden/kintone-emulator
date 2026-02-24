@@ -1,15 +1,18 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
+
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("record-test-session");
+});
 
 describe("アプリのレコードAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await fetch(`http://${host}/record/initialize`, {
-      method: "POST",
-    });
+    await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
-      baseUrl: `http://${host}/record`,
+      baseUrl: BASE_URL,
       auth: {
         apiToken: "test",
       },
@@ -27,9 +30,7 @@ describe("アプリのレコードAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`http://${host}/record/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("アプリにレコードを追加し、変更し、検索できる", async () => {
@@ -95,7 +96,28 @@ describe("アプリのレコードAPI", () => {
       },
     });
   });
-  test.only("日本語のフィールドを持つキーで更新をかける", async () => {
+
+  test("存在しないレコードをGETすると404が返る", async () => {
+    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+    const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1&id=99999`);
+    expect(response.status).toBe(404);
+  });
+
+  test("存在しないレコードをPUTすると404が返る", async () => {
+    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+    const response = await fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        id: "99999",
+        record: { test: { value: "test" } },
+      }),
+    });
+    expect(response.status).toBe(404);
+  });
+
+  test("日本語のフィールドを持つキーで更新をかける", async () => {
     const result = await client!.record.addRecord({
       app: 1,
       record: {

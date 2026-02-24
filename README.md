@@ -1,40 +1,111 @@
-# Welcome to Remix!
+# kintone-emulator
 
-- 📖 [Remix docs](https://remix.run/docs)
+kintone の REST API をローカルでエミュレートするサーバーです。実際の kintone 環境なしに、kintone アプリの開発・テストができます。
 
-## Development
+## 特徴
 
-Run the dev server:
+- **kintone REST API 互換** — `@kintone/rest-api-client` をそのまま使ってリクエスト可能
+- **セッション分離** — URL プレフィックスでセッションを分けられるため、テストの並列実行に対応
+- **インメモリ SQLite** — 起動が速く、テスト後にデータが残らない
+- **kintone クエリ構文に対応** — `=`, `!=`, `<`, `>`, `order by`, `limit`, `NOW()`, `$id` など
 
-```shellscript
-npm run dev
-```
+## エミュレートしている API
 
-## Deployment
+| メソッド | エンドポイント | 内容 |
+|---|---|---|
+| GET | `/k/v1/record.json` | レコード取得 |
+| POST | `/k/v1/record.json` | レコード追加 |
+| PUT | `/k/v1/record.json` | レコード更新 |
+| GET | `/k/v1/records.json` | レコード一覧取得（クエリ対応） |
+| GET | `/k/v1/app.json` | アプリ情報取得 |
+| GET | `/k/v1/apps.json` | アプリ一覧取得（`ids`, `name`, `offset`, `limit` 対応） |
+| GET | `/k/v1/app/form/fields.json` | フォームフィールド取得 |
+| GET | `/k/v1/app/form/layout.json` | フォームレイアウト取得 |
+| POST | `/k/v1/app/form/fields.json` | フォームフィールド追加 |
+| GET | `/k/v1/preview/app/form/fields.json` | プレビュー版フォームフィールド取得 |
+| GET | `/k/v1/file.json` | ファイルダウンロード |
+| POST | `/k/v1/file.json` | ファイルアップロード |
 
-First, build your app for production:
+### テストサポート API
+
+| メソッド | エンドポイント | 内容 |
+|---|---|---|
+| POST | `/[session]/initialize` | テーブルの初期化（テスト前に実行） |
+| POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
+| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout` を指定可能） |
+
+## セットアップ
 
 ```sh
-npm run build
+pnpm install
 ```
 
-Then run the app in production mode:
+## 起動
 
 ```sh
-npm start
+pnpm dev      # 開発サーバー（ポート 12345）
+pnpm start    # 本番サーバー（要ビルド）
 ```
 
-Now you'll need to pick a host to deploy it to.
+## テスト
 
-### DIY
+インプロセスサーバーを自動起動してテストを実行:
 
-If you're familiar with deploying Node applications, the built-in Remix app server is production-ready.
+```sh
+pnpm test
+```
 
-Make sure to deploy the output of `npm run build`
+ウォッチモード:
 
-- `build/server`
-- `build/client`
+```sh
+pnpm test:watch
+```
 
-## Styling
+E2E テスト（事前に `pnpm build` が必要）:
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever css framework you prefer. See the [Vite docs on css](https://vitejs.dev/guide/features.html#css) for more information.
+```sh
+pnpm test:e2e
+```
+
+## セッションの使い方
+
+URL の先頭にセッション名を付けることで、テストごとに独立したデータベースを使用できます。
+
+```ts
+const SESSION = "my-test-session";
+const BASE_URL = `http://localhost:12345/${SESSION}`;
+
+// 初期化
+await fetch(`${BASE_URL}/initialize`, { method: "POST" });
+
+// テスト用アプリの作成
+const setupRes = await fetch(`${BASE_URL}/setup/app.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "テストアプリ",
+    properties: {
+      title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
+    },
+  }),
+});
+const { app } = await setupRes.json();
+
+// @kintone/rest-api-client をそのまま使用
+const client = new KintoneRestAPIClient({
+  baseUrl: BASE_URL,
+  auth: { apiToken: "dummy" },
+});
+
+await client.record.addRecord({ app, record: { title: { value: "test" } } });
+
+// クリーンアップ
+await fetch(`${BASE_URL}/finalize`, { method: "POST" });
+```
+
+## 技術スタック
+
+- [Remix](https://remix.run/) — サーバーフレームワーク
+- [SQLite (sqlite3)](https://github.com/TryGhost/node-sqlite3) — インメモリデータストア
+- [Tailwind CSS](https://tailwindcss.com/) — スタイリング
+- [@kintone/rest-api-client](https://github.com/kintone/js-sdk) — 型定義・クライアント（devDependencies）

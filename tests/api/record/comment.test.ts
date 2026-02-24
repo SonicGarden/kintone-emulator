@@ -1,17 +1,20 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
+
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("comment-test-session");
+});
 
 describe("アプリのレコードコメントAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   let recordId: string;
 
   beforeEach(async () => {
-    await fetch(`http://${host}/record/initialize`, {
-      method: "POST",
-    });
+    await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
-      baseUrl: `http://${host}/record`,
+      baseUrl: BASE_URL,
       auth: {
         apiToken: "test",
       },
@@ -40,9 +43,7 @@ describe("アプリのレコードコメントAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`http://${host}/record/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("レコードにコメントを追加できる", async () => {
@@ -99,6 +100,31 @@ describe("アプリのレコードコメントAPI", () => {
         comment: {
           text: "テストコメント",
         },
+      })
+    ).rejects.toThrow();
+  });
+
+  test("コメントを削除できる", async () => {
+    const added = await client!.record.addRecordComment({
+      app: 1,
+      record: recordId,
+      comment: { text: "削除するコメント" },
+    });
+    await expect(
+      client!.record.deleteRecordComment({
+        app: 1,
+        record: recordId,
+        comment: added.id,
+      })
+    ).resolves.not.toThrow();
+  });
+
+  test("存在しないコメントIDを削除しようとするとエラーになる", async () => {
+    await expect(
+      client!.record.deleteRecordComment({
+        app: 1,
+        record: recordId,
+        comment: "9999",
       })
     ).rejects.toThrow();
   });

@@ -1,15 +1,18 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { host } from "tests/config";
+import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
+
+let BASE_URL: string;
+beforeAll(() => {
+  BASE_URL = createBaseUrl("records");
+});
 
 describe("アプリのレコード一覧のAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await fetch(`http://${host}/records/initialize`, {
-      method: "POST",
-    });
+    await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
-      baseUrl: `http://${host}/records`,
+      baseUrl: BASE_URL,
       auth: {
         apiToken: "test",
       },
@@ -37,9 +40,7 @@ describe("アプリのレコード一覧のAPI", () => {
   });
 
   afterEach(async () => {
-    await fetch(`http://${host}/records/finalize`, {
-      method: "POST",
-    });
+    await finalizeSession(BASE_URL);
   });
 
   test("アプリのレコードを検索するとデータが返ってくる", async () => {
@@ -67,9 +68,9 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
     });
     expect(records.totalCount).toEqual("2");
-    expect(records.records[0]["$id"].value).toEqual("1");
-    expect(records.records[0].test.value).toEqual("test");
-    expect(records.records[0].test.type).toEqual("SINGLE_LINE_TEXT");
+    expect(records.records[0]!["$id"]!.value).toEqual("1");
+    expect(records.records[0]!.test!.value).toEqual("test");
+    expect(records.records[0]!.test!.type).toEqual("SINGLE_LINE_TEXT");
   });
 
   test("fieldsを指定するとそこのデータだけ出力される", async () => {
@@ -93,7 +94,7 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
       fields: ["test"],
     });
-    expect(records.records[0]).not.toHaveProperty("test2");
+    expect(records.records[0]!).not.toHaveProperty("test2");
   });
 
   describe("queryが存在する時、", () => {
@@ -170,7 +171,7 @@ describe("アプリのレコード一覧のAPI", () => {
         query: "order by test desc",
       });
       expect(records.totalCount).toEqual("2");
-      expect(records.records[0].test.value).toEqual("test2");
+      expect(records.records[0]!.test!.value).toEqual("test2");
     });
     test("idを指定する", async () => {
       const records = await client!.record.getRecords({

@@ -1,45 +1,10 @@
-import { ActionFunctionArgs } from "@remix-run/node";
-import { dbSession, serialize } from "~/utils/db.server";
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { post, del } from "~/core/handlers/preview-fields";
 
-const insertSql = `
-INSERT INTO fields (app_id, type, code, label) VALUES (?, ?, ?, ?)
-`
-
-export async function action({
-  request,
-  params,
-}: ActionFunctionArgs) {
-  const method = request.method;
-  const db = dbSession(params.session);
-  const url = new URL(request.url);
-  switch (method) {
-    case 'POST': {
-      const requestData = await request.json();
-      await serialize(db, () => {
-        for (const key in requestData.properties) {
-          db.run(insertSql, requestData.app, requestData.properties[key].type, key, requestData.properties.test.label);
-        }
-      });
-      break;
-    }
-    case 'DELETE': {
-      const hasQuery = url.search.length > 0;
-      const json = hasQuery ? {} : await request.json();
-      for (const [key, value] of url.searchParams.entries()) {
-        if (key.includes('fields')) {
-          json.fields = json.fields || [];
-          json.fields.push(value);
-        } else {
-          json[key] = value;
-        }
-      }
-      await serialize(db, () => {
-        for (const code of json.fields) {
-          db.run('DELETE FROM fields WHERE app_id = ? AND code = ?', json.app, code);
-        }
-      });
-      break;
-    }
+export const action = ({ request, params }: ActionFunctionArgs) => {
+  switch (request.method) {
+    case 'POST': return post({ request, params });
+    case 'DELETE': return del({ request, params });
+    default: return Response.json({ message: 'Method Not Allowed' }, { status: 405 });
   }
-  return Response.json({ revision: "1" });
-}
+};
