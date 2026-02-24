@@ -14,7 +14,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsup",
     "prepack": "pnpm build",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "test": "vitest run",

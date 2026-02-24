@@ -1,5 +1,6 @@
 node_modules
 /.cache
+/tmp
 .env
 
 # remix build output
