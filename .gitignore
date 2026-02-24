@@ -1,7 +1,16 @@
 node_modules
-
-/build
 /.cache
 .env
 
+# remix build output
+/build
+
+# Local agent memory
+# https://code.claude.com/docs/en/sub-agents#enable-persistent-memory
+/.claude/agent-memory-local
+
+# Local-only files and personal notes (not committed)
 /.local
+
+# Directory for issues to be processed by agent
+/.issues
