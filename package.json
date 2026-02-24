@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "build": "pnpm --filter @kintone-emulator/core build && pnpm --filter @kintone-emulator/server build",
+    "clean": "pnpm -r clean",
     "dev": "pnpm --filter @kintone-emulator/server dev",
     "lint": "pnpm -r lint",
     "start": "pnpm --filter @kintone-emulator/server start",

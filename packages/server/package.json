@@ -6,6 +6,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "pnpm typecheck && remix vite:build",
+    "clean": "rm -rf build",
     "dev": "remix vite:dev",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "PORT=12345 HOST=0.0.0.0 remix-serve ./build/server/index.js",

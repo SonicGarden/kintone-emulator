@@ -3,7 +3,7 @@ node_modules
 /tmp
 .env
 
-# remix build output
+# build output
 /packages/server/build
 /packages/core/dist/
 
