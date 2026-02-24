@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  lint-and-type-check:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Run lint
+        run: pnpm lint
+
+      - name: Run type check
+        run: pnpm typecheck
+
+      - name: Build project
+        run: pnpm build
+
+  # lint-and-type-check が完了してから実行。
+  # これでビルドが成功し、最新のキャッシュが確定してから、
+  # テストを実行できる。
+  test:
+    needs: lint-and-type-check
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Run tests
+        run: pnpm test
+
+  # lint-and-type-check が完了してから実行。
+  # 同じく test と並列呼び出しされ、必要な依存関係がキャッシュされている状態で起動。
+  e2e:
+    needs: lint-and-type-check
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Run e2e tests
+        run: pnpm test:e2e
