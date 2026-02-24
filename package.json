@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.30.2",
   "scripts": {
-    "build": "pnpm --filter @kintone-emulator/server build",
+    "build": "pnpm --filter @kintone-emulator/core build && pnpm --filter @kintone-emulator/server build",
     "dev": "pnpm --filter @kintone-emulator/server dev",
     "lint": "pnpm -r lint",
     "start": "pnpm --filter @kintone-emulator/server start",
@@ -12,6 +12,16 @@
     "test:e2e": "pnpm --filter @kintone-emulator/server test:e2e",
     "test:watch": "pnpm --filter @kintone-emulator/core test:watch",
     "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@kintone/rest-api-client": "^5.6.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "eslint": "^8.38.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.1.6",
+    "vite-tsconfig-paths": "^4.2.1",
+    "vitest": "^2.1.8"
   },
   "engines": { "node": ">=20.0.0" }
 }
