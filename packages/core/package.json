@@ -1,0 +1,27 @@
+{
+  "name": "@kintone-emulator/core",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dedent": "^1.5.3",
+    "node-sql-parser": "^5.3.5",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@kintone/rest-api-client": "^5.6.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.1.6",
+    "vite-tsconfig-paths": "^4.2.1",
+    "vitest": "^2.1.8"
+  }
+}

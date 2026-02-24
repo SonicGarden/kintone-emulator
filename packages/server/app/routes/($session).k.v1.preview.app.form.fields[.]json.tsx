@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { post, del } from "~/core/handlers/preview-fields";
+import { post, del } from "@kintone-emulator/core/handlers/preview-fields";
 
 export const action = ({ request, params }: ActionFunctionArgs) => {
   switch (request.method) {

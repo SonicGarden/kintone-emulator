@@ -2,6 +2,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
 import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+
+const TEST_FILE_PATH = fileURLToPath(new URL("./test.txt", import.meta.url));
 
 let BASE_URL: string;
 beforeAll(() => {
@@ -26,14 +29,14 @@ describe("アプリのフォームフィールドAPI", () => {
     });
     const uploadResult = await client.file.uploadFile({
       file: {
-        path: "./tests/api/file/test.txt",
+        path: TEST_FILE_PATH,
       },
     });
 
     const result = await client.file.downloadFile({
       fileKey: uploadResult.fileKey,
     });
-    const targetFile = readFileSync("./tests/api/file/test.txt");
+    const targetFile = readFileSync(TEST_FILE_PATH);
     expect(new Uint8Array(result)).toStrictEqual(new Uint8Array(targetFile));
   });
 

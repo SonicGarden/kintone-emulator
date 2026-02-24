@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { get } from "~/core/handlers/app";
+import { get } from "@kintone-emulator/core/handlers/fields";
 
 export const loader = ({ request, params }: LoaderFunctionArgs) =>
   get({ request, params });

@@ -21,6 +21,9 @@ export default defineConfig({
     }),
     tsconfigPaths(),
   ],
+  ssr: {
+    external: ["sqlite3"],
+  },
   server: {
     port: 12345,
     cors: {

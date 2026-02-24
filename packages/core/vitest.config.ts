@@ -6,10 +6,9 @@ export default defineConfig({
   test: {
     setupFiles: ["tests/setup.ts"],
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
+    poolOptions: { forks: { singleFork: true } },
+    alias: {
+      "tests/": new URL("./tests/", import.meta.url).pathname,
     },
   },
 });

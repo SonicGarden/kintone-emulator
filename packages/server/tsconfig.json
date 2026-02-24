@@ -1,0 +1,26 @@
+{
+  "include": ["**/*.ts", "**/*.tsx", "**/.server/**/*.ts", "**/.client/**/*.ts"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["@remix-run/node", "vite/client"],
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "target": "ES2022",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./app/*"],
+      "@kintone-emulator/core": ["../core/src/index.ts"],
+      "@kintone-emulator/core/*": ["../core/src/*"]
+    },
+    "noEmit": true
+  }
+}

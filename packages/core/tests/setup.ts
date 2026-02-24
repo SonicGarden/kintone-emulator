@@ -1,5 +1,5 @@
 import { afterAll, beforeAll } from "vitest";
-import { startServer } from "~/server";
+import { startServer } from "../src/server";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 

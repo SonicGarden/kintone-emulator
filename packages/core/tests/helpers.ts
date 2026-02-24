@@ -1,4 +1,4 @@
-import { getHost } from "tests/config";
+import { getHost } from "./config";
 
 export const createBaseUrl = (session: string): string =>
   `http://${getHost()}/${session}-${process.pid}`;
