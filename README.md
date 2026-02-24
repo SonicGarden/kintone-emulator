@@ -126,6 +126,14 @@ const { port, close } = await startServer();
 await close();
 ```
 
+## core パッケージの tarball 生成
+
+`@kintone-emulator/core` を tarball として出力します。`prepack` フックで自動的にビルドが実行されます。
+
+```sh
+pnpm --filter @kintone-emulator/core pack
+```
+
 ## 技術スタック
 
 - [Remix](https://remix.run/) — サーバーフレームワーク（`packages/server`）
