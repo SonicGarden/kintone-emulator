@@ -11,7 +11,6 @@ WORKDIR /app
 
 FROM base AS prod-deps
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
-RUN cd node_modules/sqlite3;npm rebuild
 
 FROM base AS build
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
@@ -19,7 +18,8 @@ RUN pnpm run build
 
 FROM base
 COPY --from=prod-deps /app/node_modules /app/node_modules
-COPY --from=build /app/build /app/build
+COPY --from=prod-deps /app/packages/server/node_modules /app/packages/server/node_modules
+COPY --from=build /app/packages/server/build /app/packages/server/build
 
 EXPOSE 12345
 CMD [ "pnpm", "start"]
