@@ -1,5 +1,5 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { get, post, put } from "@kintone-emulator/core/handlers/record";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 
 export const loader = ({ request, params }: LoaderFunctionArgs) =>
   get({ request, params });

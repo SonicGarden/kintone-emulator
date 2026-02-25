@@ -1,6 +1,6 @@
-import { beforeAll, afterAll } from "vitest";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { beforeAll, afterAll } from "vitest";
 
 const PORT = process.env.TEST_PORT ?? "12346";
 let serverProcess: ChildProcess;

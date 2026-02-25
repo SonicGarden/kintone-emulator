@@ -1,9 +1,9 @@
 // GET /k/v1/app.json
 // https://cybozu.dev/ja/kintone/docs/rest-api/apps/get-app/
 
-import { dbSession } from "../db/client";
 import { findApp } from "../db/apps";
 import type { AppRow } from "../db/apps";
+import { dbSession } from "../db/client";
 import type { HandlerArgs } from "./types";
 
 const toAppResponse = (row: AppRow) => ({

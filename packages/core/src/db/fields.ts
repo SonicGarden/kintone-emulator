@@ -1,5 +1,5 @@
-import type sqlite3 from "sqlite3";
 import type { KintoneRecordField } from "@kintone/rest-api-client";
+import type sqlite3 from "sqlite3";
 import { all, serialize } from "./client";
 
 export type FieldRow = { code: string; body: string };

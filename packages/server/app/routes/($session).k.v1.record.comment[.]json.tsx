@@ -1,5 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/node";
 import { del, post } from "@kintone-emulator/core/handlers/comment";
+import type { ActionFunctionArgs } from "@remix-run/node";
 
 export const action = ({ request, params }: ActionFunctionArgs) => {
   switch (request.method) {

@@ -1,6 +1,6 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { createApp, createBaseUrl, finalizeSession, initializeSession } from "tests/helpers";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 
 let BASE_URL: string;
 beforeAll(() => {

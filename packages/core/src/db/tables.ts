@@ -1,6 +1,6 @@
+import dedent from "dedent";
 import type sqlite3 from "sqlite3";
 import { serialize } from "./client";
-import dedent from "dedent";
 
 const CREATE_TABLE_FIELDS = dedent`
   CREATE TABLE IF NOT EXISTS fields (

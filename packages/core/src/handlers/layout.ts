@@ -1,5 +1,5 @@
-import { dbSession } from "../db/client";
 import { findApp } from "../db/apps";
+import { dbSession } from "../db/client";
 import type { HandlerArgs } from "./types";
 
 export const get = async ({ request, params }: HandlerArgs) => {

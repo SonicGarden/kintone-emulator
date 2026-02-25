@@ -1,7 +1,7 @@
-import { dbSession } from "../db/client";
-import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
-import { findFieldTypes } from "../db/fields";
 import type { KintoneRecordField } from '@kintone/rest-api-client';
+import { dbSession } from "../db/client";
+import { findFieldTypes } from "../db/fields";
+import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
 
 type Record = {

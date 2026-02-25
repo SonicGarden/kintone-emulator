@@ -18,7 +18,7 @@ module.exports = {
       extends: ["plugin:@typescript-eslint/recommended"],
     },
     {
-      files: ["packages/server/**/*.{ts,tsx}"],
+      files: ["**/*.{ts,tsx}"],
       plugins: ["import"],
       settings: {
         "import/internal-regex": "^~/",
@@ -30,6 +30,11 @@ module.exports = {
             alwaysTryTypes: true,
           },
         },
+      },
+      rules: {
+        "import/order": ["error", {
+          alphabetize: { order: "asc", caseInsensitive: true },
+        }],
       },
       extends: ["plugin:import/recommended", "plugin:import/typescript"],
     },

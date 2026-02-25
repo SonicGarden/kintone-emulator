@@ -1,5 +1,5 @@
-import { dbSession } from "../db/client";
 import { insertApp } from "../db/apps";
+import { dbSession } from "../db/client";
 import { insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import type { HandlerArgs } from "./types";
