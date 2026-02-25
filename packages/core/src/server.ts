@@ -42,6 +42,7 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
     GET: records.get,
+    DELETE: records.del,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
