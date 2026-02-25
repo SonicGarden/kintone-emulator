@@ -79,6 +79,10 @@ const routes: RouteEntry[] = [
     POST: comment.post,
     DELETE: comment.del,
   },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comments\.json$/,
+    GET: comment.get,
+  },
 ];
 
 async function toWebRequest(

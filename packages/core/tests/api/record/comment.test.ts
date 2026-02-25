@@ -128,4 +128,106 @@ describe("アプリのレコードコメントAPI", () => {
       })
     ).rejects.toThrow();
   });
+
+  describe("コメント取得", () => {
+    test("レコードのコメント一覧を取得できる", async () => {
+      await client!.record.addRecordComment({
+        app: 1,
+        record: recordId,
+        comment: { text: "コメント1" },
+      });
+      await client!.record.addRecordComment({
+        app: 1,
+        record: recordId,
+        comment: { text: "コメント2" },
+      });
+
+      const result = await client!.record.getRecordComments({
+        app: 1,
+        record: recordId,
+      });
+
+      expect(result.comments).toHaveLength(2);
+      expect(result.comments[0]!.text).toEqual("コメント2");
+      expect(result.comments[1]!.text).toEqual("コメント1");
+      expect(result.older).toBe(false);
+      expect(result.newer).toBe(false);
+    });
+
+    test("order=ascで昇順に取得できる", async () => {
+      await client!.record.addRecordComment({
+        app: 1,
+        record: recordId,
+        comment: { text: "コメント1" },
+      });
+      await client!.record.addRecordComment({
+        app: 1,
+        record: recordId,
+        comment: { text: "コメント2" },
+      });
+
+      const result = await client!.record.getRecordComments({
+        app: 1,
+        record: recordId,
+        order: "asc",
+      });
+
+      expect(result.comments[0]!.text).toEqual("コメント1");
+      expect(result.comments[1]!.text).toEqual("コメント2");
+    });
+
+    test("offset・limitで取得範囲を制御できる", async () => {
+      for (let i = 1; i <= 3; i++) {
+        await client!.record.addRecordComment({
+          app: 1,
+          record: recordId,
+          comment: { text: `コメント${i}` },
+        });
+      }
+
+      const result = await client!.record.getRecordComments({
+        app: 1,
+        record: recordId,
+        order: "asc",
+        offset: 1,
+        limit: 1,
+      });
+
+      expect(result.comments).toHaveLength(1);
+      expect(result.comments[0]!.text).toEqual("コメント2");
+      expect(result.older).toBe(true);
+      expect(result.newer).toBe(true);
+    });
+
+    test("mentionsを含むコメントを取得できる", async () => {
+      await client!.record.addRecordComment({
+        app: 1,
+        record: recordId,
+        comment: {
+          text: "テスト",
+          mentions: [{ code: "user1", type: "USER" }],
+        },
+      });
+
+      const result = await client!.record.getRecordComments({
+        app: 1,
+        record: recordId,
+      });
+
+      expect(result.comments[0]!.mentions).toEqual([
+        { code: "user1", type: "USER" },
+      ]);
+    });
+
+    test("コメントが0件の場合は空配列が返る", async () => {
+      const result = await client!.record.getRecordComments({
+        app: 1,
+        record: recordId,
+      });
+
+      expect(result.comments).toEqual([]);
+      expect(result.older).toBe(false);
+      expect(result.newer).toBe(false);
+    });
+  });
 });
