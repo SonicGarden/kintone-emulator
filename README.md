@@ -35,6 +35,9 @@ packages/
 | POST | `/k/v1/file.json` | ファイルアップロード |
 | POST | `/k/v1/record/comment.json` | コメント追加 |
 | DELETE | `/k/v1/record/comment.json` | コメント削除 |
+| GET | `/k/v1/record/comments.json` | コメント一覧取得 |
+| DELETE | `/k/v1/records.json` | レコード一括削除 |
+| GET | `/k/v1/app/status.json` | プロセス管理の設定取得 |
 
 ### テストサポート API
 
@@ -42,7 +45,7 @@ packages/
 |---|---|---|
 | POST | `/[session]/initialize` | テーブルの初期化（テスト前に実行） |
 | POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
-| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout` を指定可能） |
+| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status` を指定可能） |
 
 ## セットアップ
 

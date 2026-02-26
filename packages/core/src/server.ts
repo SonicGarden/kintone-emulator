@@ -12,6 +12,7 @@ import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
+import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
 
 type RouteHandler = (args: HandlerArgs) => Promise<Response>;
@@ -51,6 +52,10 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
     GET: appsRoute.get,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
+    GET: status.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,

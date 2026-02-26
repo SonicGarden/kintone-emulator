@@ -11,7 +11,7 @@ export const finalizeSession = (baseUrl: string) =>
 
 export const createApp = async (
   baseUrl: string,
-  params: { name: string; properties?: Record<string, unknown>; layout?: unknown[] }
+  params: { name: string; properties?: Record<string, unknown>; layout?: unknown[]; status?: unknown }
 ): Promise<number> => {
   const response = await fetch(`${baseUrl}/setup/app.json`, {
     method: "POST",

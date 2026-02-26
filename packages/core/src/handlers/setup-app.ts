@@ -8,7 +8,12 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  const inserted = await insertApp(db, body.name, body.layout ? JSON.stringify(body.layout) : '[]');
+  const inserted = await insertApp(
+    db,
+    body.name,
+    body.layout ? JSON.stringify(body.layout) : '[]',
+    body.status ? JSON.stringify(body.status) : undefined
+  );
   if (!inserted) {
     return Response.json({ message: 'Failed to create app.' }, { status: 500 });
   }

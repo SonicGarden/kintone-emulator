@@ -53,6 +53,7 @@ const CREATE_TABLE_APPS = dedent`
     name TEXT NOT NULL,
     revision INTEGER DEFAULT 1,
     layout JSON DEFAULT '[]',
+    status JSON DEFAULT '{"enable":false,"states":null,"actions":null,"revision":"3"}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
