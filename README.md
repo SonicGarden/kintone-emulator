@@ -21,23 +21,23 @@ packages/
 
 | メソッド | エンドポイント | 内容 |
 |---|---|---|
-| GET | `/k/v1/record.json` | レコード取得 |
-| POST | `/k/v1/record.json` | レコード追加 |
-| PUT | `/k/v1/record.json` | レコード更新 |
-| GET | `/k/v1/records.json` | レコード一覧取得（クエリ対応） |
 | GET | `/k/v1/app.json` | アプリ情報取得 |
 | GET | `/k/v1/apps.json` | アプリ一覧取得（`ids`, `name`, `offset`, `limit` 対応） |
 | GET | `/k/v1/app/form/fields.json` | フォームフィールド取得 |
 | GET | `/k/v1/app/form/layout.json` | フォームレイアウト取得 |
 | POST | `/k/v1/preview/app/form/fields.json` | フォームフィールド追加 |
 | DELETE | `/k/v1/preview/app/form/fields.json` | フォームフィールド削除 |
-| GET | `/k/v1/file.json` | ファイルダウンロード |
-| POST | `/k/v1/file.json` | ファイルアップロード |
+| GET | `/k/v1/app/status.json` | プロセス管理の設定取得 |
+| GET | `/k/v1/record.json` | レコード取得 |
+| POST | `/k/v1/record.json` | レコード追加 |
+| PUT | `/k/v1/record.json` | レコード更新 |
+| GET | `/k/v1/records.json` | レコード一覧取得（クエリ対応） |
+| DELETE | `/k/v1/records.json` | レコード一括削除 |
+| GET | `/k/v1/record/comments.json` | コメント一覧取得 |
 | POST | `/k/v1/record/comment.json` | コメント追加 |
 | DELETE | `/k/v1/record/comment.json` | コメント削除 |
-| GET | `/k/v1/record/comments.json` | コメント一覧取得 |
-| DELETE | `/k/v1/records.json` | レコード一括削除 |
-| GET | `/k/v1/app/status.json` | プロセス管理の設定取得 |
+| GET | `/k/v1/file.json` | ファイルダウンロード |
+| POST | `/k/v1/file.json` | ファイルアップロード |
 
 ### テストサポート API
 
