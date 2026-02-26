@@ -5,22 +5,24 @@ import { serialize } from "./client";
 const CREATE_TABLE_FIELDS = dedent`
   CREATE TABLE IF NOT EXISTS fields (
     id INTEGER PRIMARY KEY,
-    app_id INTEGER,
-    code TEXT UNIQUE,
+    app_id INTEGER NOT NULL,
+    code TEXT NOT NULL,
     body JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(app_id, code)
   )
 `;
 
 const CREATE_TABLE_RECORDS = dedent`
   CREATE TABLE IF NOT EXISTS records (
-    id INTEGER PRIMARY KEY,
+    app_id INTEGER NOT NULL,
+    id INTEGER NOT NULL,
     revision INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    app_id INTEGER,
-    body JSON
+    body JSON,
+    PRIMARY KEY (app_id, id)
   )
 `;
 
@@ -47,11 +49,13 @@ const CREATE_TABLE_COMMENTS = dedent`
   )
 `;
 
+// status の revision の初期値が 3 なのは、Kintone でアプリを作成した直後に 3 だったのを再現しているため
 const CREATE_TABLE_APPS = dedent`
   CREATE TABLE IF NOT EXISTS apps (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     revision INTEGER DEFAULT 1,
+    record_id_seq INTEGER DEFAULT 0,
     layout JSON DEFAULT '[]',
     status JSON DEFAULT '{"enable":false,"states":null,"actions":null,"revision":"3"}',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

@@ -66,7 +66,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   }
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
-  const updated = await updateRecord(db, String(target.id), mergedRecord);
+  const updated = await updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }

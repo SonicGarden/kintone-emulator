@@ -22,19 +22,43 @@ export const findRecordsByClause = (
     appId
   );
 
-export const insertRecord = (db: sqlite3.Database, appId: string, record: unknown) =>
-  all<{ id: number; revision: number }>(
+// kintone の実仕様に合わせ、レコード ID は削除後も再利用しない。
+// apps.record_id_seq をシーケンスとして使い、単調増加する ID を採番する。
+export const insertRecord = async (db: sqlite3.Database, appId: string, record: unknown, id?: number) => {
+  if (id != null) {
+    // ID 指定時（setup 経由）: INSERT 後にシーケンスを追従させる
+    const result = await all<{ id: number; revision: number }>(
+      db,
+      "INSERT INTO records (app_id, id, revision, body) VALUES (?, ?, 1, ?) RETURNING id, revision",
+      appId, id, JSON.stringify(record)
+    ).then(rows => rows[0]);
+    await all(
+      db,
+      "UPDATE apps SET record_id_seq = MAX(record_id_seq, ?) WHERE id = ?",
+      id, appId
+    );
+    return result;
+  }
+  // setup/app.json を経由せず直接レコードが作られる場合に備え、apps 行がなければ作成する
+  await all(db, "INSERT OR IGNORE INTO apps (id, name, record_id_seq) VALUES (?, '', 0)", appId);
+  const { record_id_seq } = (await all<{ record_id_seq: number }>(
     db,
-    "INSERT INTO records (app_id, revision, body) VALUES (?, 1, ?) RETURNING id, revision",
-    appId,
-    JSON.stringify(record)
+    "UPDATE apps SET record_id_seq = record_id_seq + 1 WHERE id = ? RETURNING record_id_seq",
+    appId
+  ))[0]!;
+  return all<{ id: number; revision: number }>(
+    db,
+    "INSERT INTO records (app_id, id, revision, body) VALUES (?, ?, 1, ?) RETURNING id, revision",
+    appId, record_id_seq, JSON.stringify(record)
   ).then(rows => rows[0]);
+};
 
-export const updateRecord = (db: sqlite3.Database, id: string, record: unknown) =>
+export const updateRecord = (db: sqlite3.Database, appId: string, id: string, record: unknown) =>
   all<{ id: number; revision: number }>(
     db,
-    "UPDATE records SET body = ?, revision = revision + 1 WHERE id = ? RETURNING id, revision",
+    "UPDATE records SET body = ?, revision = revision + 1 WHERE app_id = ? AND id = ? RETURNING id, revision",
     JSON.stringify(record),
+    appId,
     id
   ).then(rows => rows[0]);
 
