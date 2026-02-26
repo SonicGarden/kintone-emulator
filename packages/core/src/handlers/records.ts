@@ -2,7 +2,7 @@ import sqlParser from 'node-sql-parser';
 import { dbSession } from "../db/client";
 import { findFieldTypes } from "../db/fields";
 import type { FieldTypeRow } from "../db/fields";
-import { findRecords, findRecordsByClause } from "../db/records";
+import { deleteRecords, findRecords, findRecordsByClause } from "../db/records";
 import type { HandlerArgs } from "./types";
 
 type FieldTypes = { [key: string]: FieldTypeRow["type"] };
@@ -142,4 +142,26 @@ export const get = async ({ request, params }: HandlerArgs) => {
   } catch (e) {
     return Response.json({ code: 'error', message: String(e) }, { status: 500 });
   }
+};
+
+// NOTE: kintone APIは `revisions` パラメーターで楽観的ロックをサポートするが、
+// このエミュレーターでは無視する。
+export const del = async ({ request, params }: HandlerArgs) => {
+  const db = dbSession(params.session);
+  const url = new URL(request.url);
+
+  const app = url.searchParams.get('app');
+  const ids: string[] = [];
+  for (const [key, value] of url.searchParams.entries()) {
+    if (key.startsWith('ids')) {
+      ids.push(value);
+    }
+  }
+
+  if (!app || ids.length === 0) {
+    return Response.json({ message: "app and ids are required." }, { status: 400 });
+  }
+
+  await deleteRecords(db, app, ids);
+  return Response.json({});
 };

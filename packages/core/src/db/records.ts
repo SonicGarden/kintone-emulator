@@ -38,6 +38,20 @@ export const updateRecord = (db: sqlite3.Database, id: string, record: unknown) 
     id
   ).then(rows => rows[0]);
 
+export const deleteRecords = (
+  db: sqlite3.Database,
+  appId: string | null,
+  ids: (string | number)[]
+) => {
+  const placeholders = ids.map(() => '?').join(', ');
+  return all<{ id: number }>(
+    db,
+    `DELETE FROM records WHERE app_id = ? AND id IN (${placeholders}) RETURNING id`,
+    appId,
+    ...ids
+  );
+};
+
 export const findRecordByKey = (
   db: sqlite3.Database,
   appId: string | number,
