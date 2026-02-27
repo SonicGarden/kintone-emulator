@@ -17,31 +17,31 @@ export const post = async ({ request, params }: HandlerArgs) => {
     const body = await request.json();
     const db = dbSession(params.session);
 
-    const inserted = insertApp(
-      db,
-      body.name,
-      body.layout ? JSON.stringify(body.layout) : '[]',
-      body.status ? JSON.stringify(body.status) : undefined,
-      toPositiveInt(body.id)
-    );
-    if (!inserted) {
-      return Response.json({ message: 'Failed to create app.' }, { status: 500 });
-    }
+    const inserted = db.transaction(() => {
+      const app = insertApp(
+        db,
+        body.name,
+        body.layout ? JSON.stringify(body.layout) : '[]',
+        body.status ? JSON.stringify(body.status) : undefined,
+        toPositiveInt(body.id)
+      );
+      if (!app) throw new Error('Failed to create app.');
 
-    if (body.properties) {
-      insertFields(db, inserted.id, body.properties as FieldProperties);
-    }
+      if (body.properties) {
+        insertFields(db, app.id, body.properties as FieldProperties);
+      }
 
-    if (Array.isArray(body.records)) {
-      for (const record of body.records) {
-        const { $id, ...recordBody } = record;
-        const recordId = toPositiveInt($id?.value);
-        const insertedRecord = insertRecord(db, inserted.id.toString(), recordBody, recordId);
-        if (!insertedRecord) {
-          return Response.json({ message: 'Failed to create record.' }, { status: 500 });
+      if (Array.isArray(body.records)) {
+        for (const record of body.records) {
+          const { $id, ...recordBody } = record;
+          const recordId = toPositiveInt($id?.value);
+          const insertedRecord = insertRecord(db, app.id.toString(), recordBody, recordId);
+          if (!insertedRecord) throw new Error('Failed to create record.');
         }
       }
-    }
+
+      return app;
+    })();
 
     return Response.json({
       app: inserted.id.toString(),
@@ -50,6 +50,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   } catch (e) {
     if (e instanceof Error && e.message.includes('UNIQUE constraint failed')) {
       return Response.json({ message: 'ID already exists.' }, { status: 400 });
+    }
+    if (e instanceof Error && (e.message === 'Failed to create app.' || e.message === 'Failed to create record.')) {
+      return Response.json({ message: e.message }, { status: 500 });
     }
     throw e;
   }

@@ -20,14 +20,18 @@ export const insertFields = (
   appId: number | string,
   properties: FieldProperties
 ) => {
-  for (const key in properties) {
-    const body = { ...properties[key], code: key };
-    run(db, 'INSERT INTO fields (app_id, code, body) VALUES (?, ?, ?)', appId, key, JSON.stringify(body));
-  }
+  db.transaction(() => {
+    for (const key in properties) {
+      const body = { ...properties[key], code: key };
+      run(db, 'INSERT INTO fields (app_id, code, body) VALUES (?, ?, ?)', appId, key, JSON.stringify(body));
+    }
+  })();
 };
 
 export const deleteFields = (db: Database.Database, appId: string | number, codes: string[]) => {
-  for (const code of codes) {
-    run(db, 'DELETE FROM fields WHERE app_id = ? AND code = ?', appId, code);
-  }
+  db.transaction(() => {
+    for (const code of codes) {
+      run(db, 'DELETE FROM fields WHERE app_id = ? AND code = ?', appId, code);
+    }
+  })();
 };
