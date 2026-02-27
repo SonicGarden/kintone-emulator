@@ -5,7 +5,7 @@ import { findApp } from "../db/apps";
 import { dbSession } from "../db/client";
 import type { HandlerArgs } from "./types";
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
   const appParam = url.searchParams.get('app');
   if (!appParam) {
@@ -17,7 +17,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: 'app must be a positive integer.' }, { status: 400 });
   }
 
-  const row = await findApp(dbSession(params.session), appId);
+  const row = findApp(dbSession(params.session), appId);
   if (!row) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }

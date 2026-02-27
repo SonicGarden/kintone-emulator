@@ -5,7 +5,7 @@ import type { HandlerArgs } from "./types";
 
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
-  await insertFields(dbSession(params.session), body.app, body.properties as FieldProperties);
+  insertFields(dbSession(params.session), body.app, body.properties as FieldProperties);
   return Response.json({ revision: "1" });
 };
 
@@ -24,6 +24,6 @@ export const del = async ({ request, params }: HandlerArgs) => {
     }
   }
 
-  await deleteFields(db, body.app, body.fields);
+  deleteFields(db, body.app, body.fields);
   return Response.json({ revision: "1" });
 };

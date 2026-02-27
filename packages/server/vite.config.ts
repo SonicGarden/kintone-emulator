@@ -22,7 +22,7 @@ export default defineConfig({
     tsconfigPaths(),
   ],
   ssr: {
-    external: ["sqlite3"],
+    external: ["better-sqlite3"],
   },
   server: {
     port: 12345,
