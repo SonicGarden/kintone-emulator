@@ -83,7 +83,7 @@ const replaceUniCodeField = (query: string) => {
   return query.replace(includedJp, (match) => `\`${match}\``);
 };
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   try {
     const db = dbSession(params.session);
     const url = new URL(request.url);
@@ -97,14 +97,14 @@ export const get = async ({ request, params }: HandlerArgs) => {
       }
     }
 
-    const fieldTypeRows = await findFieldTypes(db, app!);
+    const fieldTypeRows = findFieldTypes(db, app!);
     const fieldTypes: FieldTypes = {};
     for (const row of fieldTypeRows) {
       fieldTypes[row.code] = row.type;
     }
 
     if (query === null) {
-      const recordResult = await findRecords(db, app);
+      const recordResult = findRecords(db, app);
       return Response.json({
         totalCount: recordResult.length.toString(),
         records: generateRecords({ recordResult, fieldTypes, fields }),
@@ -128,7 +128,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
     const clause = newQuery.replaceAll('"', '').replace(/SELECT 1 FROM records (WHERE)?/g, '');
 
     try {
-      const recordResult = await findRecordsByClause(db, app, clause, hasWhereClause(query));
+      const recordResult = findRecordsByClause(db, app, clause, hasWhereClause(query));
       return Response.json({
         totalCount: recordResult.length.toString(),
         records: generateRecords({ recordResult, fieldTypes, fields }),
@@ -146,7 +146,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
 
 // NOTE: kintone APIは `revisions` パラメーターで楽観的ロックをサポートするが、
 // このエミュレーターでは無視する。
-export const del = async ({ request, params }: HandlerArgs) => {
+export const del = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
 
@@ -162,6 +162,6 @@ export const del = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: "app and ids are required." }, { status: 400 });
   }
 
-  await deleteRecords(db, app, ids);
+  deleteRecords(db, app, ids);
   return Response.json({});
 };

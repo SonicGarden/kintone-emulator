@@ -17,7 +17,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
     const body = await request.json();
     const db = dbSession(params.session);
 
-    const inserted = await insertApp(
+    const inserted = insertApp(
       db,
       body.name,
       body.layout ? JSON.stringify(body.layout) : '[]',
@@ -29,14 +29,14 @@ export const post = async ({ request, params }: HandlerArgs) => {
     }
 
     if (body.properties) {
-      await insertFields(db, inserted.id, body.properties as FieldProperties);
+      insertFields(db, inserted.id, body.properties as FieldProperties);
     }
 
     if (Array.isArray(body.records)) {
       for (const record of body.records) {
         const { $id, ...recordBody } = record;
         const recordId = toPositiveInt($id?.value);
-        const insertedRecord = await insertRecord(db, inserted.id.toString(), recordBody, recordId);
+        const insertedRecord = insertRecord(db, inserted.id.toString(), recordBody, recordId);
         if (!insertedRecord) {
           return Response.json({ message: 'Failed to create record.' }, { status: 500 });
         }
