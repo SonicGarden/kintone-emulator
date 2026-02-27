@@ -1,9 +1,11 @@
 node_modules
 /.cache
+/tmp
 .env
 
-# remix build output
-/build
+# build output
+/packages/server/build
+/packages/core/dist/
 
 # Local agent memory
 # https://code.claude.com/docs/en/sub-agents#enable-persistent-memory

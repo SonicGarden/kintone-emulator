@@ -1,0 +1,42 @@
+{
+  "name": "@kintone-emulator/server",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "build": "pnpm typecheck && remix vite:build",
+    "clean": "rm -rf build ./node_modules/.cache/eslint",
+    "dev": "remix vite:dev",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "start": "PORT=12345 HOST=0.0.0.0 remix-serve ./build/server/index.js",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kintone-emulator/core": "workspace:*",
+    "@remix-run/node": "^2.15.2",
+    "sqlite3": "^5.1.7",
+    "@remix-run/react": "^2.15.2",
+    "@remix-run/serve": "^2.15.2",
+    "isbot": "^4.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remix-utils": "^8.5.0"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "^2.15.2",
+    "@types/react": "^18.2.20",
+    "@types/react-dom": "^18.2.7",
+    "autoprefixer": "^10.4.19",
+    "eslint-plugin-jsx-a11y": "^6.7.1",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
