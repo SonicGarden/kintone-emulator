@@ -1,9 +1,9 @@
 {
-  "name": "@kintone-emulator/cli",
+  "name": "@sonicgarden/kintone-emulator-cli",
   "version": "0.0.1",
   "type": "module",
   "bin": {
-    "kintone-emulator": "./dist/cli.js"
+    "sg-kintone": "./dist/cli.js"
   },
   "files": ["dist"],
   "scripts": {

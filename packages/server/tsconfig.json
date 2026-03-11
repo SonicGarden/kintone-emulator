@@ -18,8 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
-      "@kintone-emulator/core": ["../core/src/index.ts"],
-      "@kintone-emulator/core/*": ["../core/src/*"]
+      "@sonicgarden/kintone-emulator": ["../core/src/index.ts"],
+      "@sonicgarden/kintone-emulator/*": ["../core/src/*"]
     },
     "noEmit": true
   }
