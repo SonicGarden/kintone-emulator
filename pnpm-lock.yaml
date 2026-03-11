@@ -76,9 +76,6 @@ importers:
 
   packages/server:
     dependencies:
-      '@kintone-emulator/core':
-        specifier: workspace:*
-        version: link:../core
       '@remix-run/node':
         specifier: ^2.15.2
         version: 2.15.2(typescript@5.7.2)
@@ -88,6 +85,9 @@ importers:
       '@remix-run/serve':
         specifier: ^2.15.2
         version: 2.15.2(typescript@5.7.2)
+      '@sonicgarden/kintone-emulator':
+        specifier: workspace:*
+        version: link:../core
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
