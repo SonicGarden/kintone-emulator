@@ -1,6 +1,7 @@
 /** @type {import('eslint').Linter.Config} */
 module.exports = {
   root: true,
+  ignorePatterns: ["**/dist/**"],
   parserOptions: {
     ecmaVersion: "latest",
     sourceType: "module",
@@ -16,6 +17,13 @@ module.exports = {
       plugins: ["@typescript-eslint"],
       parser: "@typescript-eslint/parser",
       extends: ["plugin:@typescript-eslint/recommended"],
+      rules: {
+        "@typescript-eslint/no-unused-vars": ["error", {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        }],
+      },
     },
     {
       files: ["**/*.{ts,tsx}"],

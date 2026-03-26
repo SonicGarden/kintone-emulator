@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.30.2",
   "scripts": {
-    "build": "pnpm --filter @kintone-emulator/core build && pnpm --filter @kintone-emulator/server build",
+    "build": "pnpm --filter @kintone-emulator/core build && pnpm --filter @kintone-emulator/server build && pnpm --filter @kintone-emulator/cli build",
     "clean": "pnpm -r clean",
     "dev": "pnpm --filter @kintone-emulator/server dev",
     "lint": "pnpm -r lint",
@@ -13,7 +13,8 @@
     "test:e2e": "pnpm --filter @kintone-emulator/server test:e2e",
     "test:watch": "pnpm --filter @kintone-emulator/core test:watch",
     "typecheck": "pnpm -r typecheck",
-    "pack": "pnpm --filter @kintone-emulator/core pack --pack-destination ./tmp"
+    "pack": "pnpm --filter @kintone-emulator/core pack --pack-destination ./tmp",
+    "cli": "node packages/cli/dist/cli.js"
   },
   "devDependencies": {
     "@kintone/rest-api-client": "^5.6.0",
