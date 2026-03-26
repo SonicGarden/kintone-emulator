@@ -2,6 +2,7 @@ import * as http from "node:http";
 import { Readable } from "node:stream";
 import * as appRoute from "./handlers/app";
 import * as appsRoute from "./handlers/apps";
+import { authenticate } from "./handlers/auth";
 import * as comment from "./handlers/comment";
 import * as fields from "./handlers/fields";
 import * as file from "./handlers/file";
@@ -12,6 +13,7 @@ import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
+import * as setupAuth from "./handlers/setup-auth";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
 
@@ -23,6 +25,7 @@ type RouteEntry = {
   POST?: RouteHandler;
   PUT?: RouteHandler;
   DELETE?: RouteHandler;
+  requiresAuth?: boolean;
 };
 
 const routes: RouteEntry[] = [
@@ -39,54 +42,69 @@ const routes: RouteEntry[] = [
     GET: record.get,
     POST: record.post,
     PUT: record.put,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
     GET: records.get,
     DELETE: records.del,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
     GET: appRoute.get,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
     GET: appsRoute.get,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
     GET: status.get,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,
     GET: fields.get,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/layout\.json$/,
     GET: layout.get,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/preview\/app\/form\/fields\.json$/,
     POST: previewFields.post,
     DELETE: previewFields.del,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/file\.json$/,
     GET: file.get,
     POST: file.post,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?setup\/app\.json$/,
     POST: setupApp.post,
   },
   {
+    pattern: /^\/(?:([^/]+)\/)?setup\/auth\.json$/,
+    POST: setupAuth.post,
+  },
+  {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
     POST: comment.post,
     DELETE: comment.del,
+    requiresAuth: true,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comments\.json$/,
     GET: comment.get,
+    requiresAuth: true,
   },
 ];
 
@@ -156,6 +174,15 @@ async function handler(
     try {
       const url = `http://localhost${req.url}`;
       const webReq = await toWebRequest(req, url);
+
+      if (route.requiresAuth) {
+        const authResult = authenticate(webReq, session);
+        if (authResult) {
+          await sendWebResponse(authResult, res);
+          return;
+        }
+      }
+
       const webRes = await routeHandler({
         request: webReq,
         params: { session },
