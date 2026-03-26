@@ -1,5 +1,5 @@
-import { get } from "@kintone-emulator/core/handlers/layout";
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { get } from "@sonicgarden/kintone-emulator/handlers/layout";
 
 export const loader = ({ request, params }: LoaderFunctionArgs) =>
   get({ request, params });

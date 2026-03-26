@@ -1,5 +1,5 @@
 {
-  "name": "@kintone-emulator/core",
+  "name": "@sonicgarden/kintone-emulator",
   "version": "0.0.1",
   "type": "module",
   "exports": {
