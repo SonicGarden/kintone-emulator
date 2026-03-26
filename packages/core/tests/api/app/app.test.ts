@@ -59,6 +59,55 @@ describe("アプリ作成API", () => {
     expect(response.status).toBe(400);
   });
 
+  test("レコード付きでアプリを作成するとrecordIdsが返る", async () => {
+    const response = await fetch(`${BASE_URL}/setup/app.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "レコード付きアプリ",
+        properties: {
+          title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
+        },
+        records: [
+          { title: { value: "レコード1" } },
+          { title: { value: "レコード2" } },
+          { title: { value: "レコード3" } },
+        ],
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.recordIds).toEqual(["1", "2", "3"]);
+  });
+
+  test("レコードなしでアプリを作成するとrecordIdsは空配列", async () => {
+    const response = await fetch(`${BASE_URL}/setup/app.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "レコードなしアプリ" }),
+    });
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.recordIds).toEqual([]);
+  });
+
+  test("$id指定のレコード付きでアプリを作成するとそのIDがrecordIdsに含まれる", async () => {
+    const response = await fetch(`${BASE_URL}/setup/app.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "ID指定レコードアプリ",
+        records: [
+          { $id: { value: "10" } },
+          { $id: { value: "20" } },
+        ],
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.recordIds).toEqual(["10", "20"]);
+  });
+
   test("properties 付きでアプリを作成するとフィールドが登録される", async () => {
     const client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,

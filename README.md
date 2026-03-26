@@ -54,7 +54,7 @@ packages/
 |---|---|---|
 | POST | `/[session]/initialize` | テーブルの初期化（テスト前に実行） |
 | POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
-| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能） |
+| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能）。レスポンスに `app`, `revision`, `recordIds` を返す |
 | POST | `/[session]/setup/auth.json` | 認証ユーザーの登録（`username`, `password`）。1人以上登録すると認証が有効になる |
 
 ## セットアップ
