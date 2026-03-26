@@ -35,6 +35,30 @@ describe("アプリ作成API", () => {
     expect(id2).toBeGreaterThan(id1);
   });
 
+  test("ID を指定してアプリを作成するとそのIDが使われる", async () => {
+    const appId = await createApp(BASE_URL, { id: 42, name: "ID指定アプリ" });
+    expect(appId).toBe(42);
+
+    const client = new KintoneRestAPIClient({
+      baseUrl: BASE_URL,
+      auth: { apiToken: "test" },
+    });
+    const result = await client.app.getApp({ id: 42 });
+    expect(result.appId).toBe("42");
+    expect(result.name).toBe("ID指定アプリ");
+  });
+
+  test("重複するIDを指定するとエラーが返る", async () => {
+    await createApp(BASE_URL, { id: 42, name: "最初のアプリ" });
+
+    const response = await fetch(`${BASE_URL}/setup/app.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: 42, name: "重複アプリ" }),
+    });
+    expect(response.status).toBe(400);
+  });
+
   test("properties 付きでアプリを作成するとフィールドが登録される", async () => {
     const client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,

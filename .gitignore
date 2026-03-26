@@ -5,6 +5,7 @@ node_modules
 
 # build output
 /packages/server/build
+/packages/cli/dist/
 /packages/core/dist/
 
 # Local agent memory

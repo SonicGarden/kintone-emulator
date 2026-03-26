@@ -1,5 +1,5 @@
 {
-  "name": "@kintone-emulator/server",
+  "name": "@sonicgarden/kintone-emulator-server",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kintone-emulator/core": "workspace:*",
+    "@sonicgarden/kintone-emulator": "workspace:*",
     "@remix-run/node": "^2.15.2",
-    "sqlite3": "^5.1.7",
+    "better-sqlite3": "^12.6.2",
     "@remix-run/react": "^2.15.2",
     "@remix-run/serve": "^2.15.2",
     "isbot": "^4.1.0",

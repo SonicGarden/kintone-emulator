@@ -12,9 +12,10 @@ import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
+import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
 
-type RouteHandler = (args: HandlerArgs) => Promise<Response>;
+type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
 
 type RouteEntry = {
   pattern: RegExp;
@@ -42,6 +43,7 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
     GET: records.get,
+    DELETE: records.del,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
@@ -50,6 +52,10 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
     GET: appsRoute.get,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
+    GET: status.get,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,
@@ -77,6 +83,10 @@ const routes: RouteEntry[] = [
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
     POST: comment.post,
     DELETE: comment.del,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comments\.json$/,
+    GET: comment.get,
   },
 ];
 

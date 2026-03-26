@@ -1,14 +1,13 @@
-import type sqlite3 from "sqlite3";
+import type Database from "better-sqlite3";
 import { all } from "./client";
 
-export type FileRow = { data: ArrayBuffer; content_type: string; filename: string };
+export type FileRow = { data: Buffer; content_type: string; filename: string };
 
-export const findFile = (db: sqlite3.Database, fileKey: string | null) =>
-  all<FileRow>(db, `SELECT data, content_type, filename FROM files WHERE id = ?`, fileKey)
-    .then(rows => rows[0]);
+export const findFile = (db: Database.Database, fileKey: string | null) =>
+  all<FileRow>(db, `SELECT data, content_type, filename FROM files WHERE id = ?`, fileKey)[0];
 
 export const insertFile = (
-  db: sqlite3.Database,
+  db: Database.Database,
   filename: string,
   data: Buffer,
   contentType: string
@@ -19,4 +18,4 @@ export const insertFile = (
     filename,
     data,
     contentType
-  ).then(rows => rows[0]);
+  )[0];

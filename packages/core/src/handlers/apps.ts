@@ -19,7 +19,7 @@ const toAppResponse = (row: AppRow) => ({
   modifier: { code: "", name: "" },
 });
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
 
   const ids: number[] = [];
@@ -29,7 +29,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
     }
   }
 
-  const result = await findApps(dbSession(params.session), {
+  const result = findApps(dbSession(params.session), {
     ids,
     name: url.searchParams.get('name') ?? undefined,
     limit: Math.min(Number(url.searchParams.get('limit') ?? '100'), 100),

@@ -210,4 +210,63 @@ describe("アプリのレコード一覧のAPI", () => {
       expect(records.totalCount).toEqual("0");
     });
   });
+
+  describe("レコード削除", () => {
+    test("レコードを削除できる", async () => {
+      const { id: id1 } = await client!.record.addRecord({
+        app: 1,
+        record: { test: { value: "test1" } },
+      });
+      const { id: id2 } = await client!.record.addRecord({
+        app: 1,
+        record: { test: { value: "test2" } },
+      });
+
+      await client!.record.deleteRecords({
+        app: 1,
+        ids: [Number(id1), Number(id2)],
+      });
+
+      const records = await client!.record.getRecords({ app: 1 });
+      expect(records.totalCount).toEqual("0");
+    });
+
+    test("一部のレコードだけ削除できる", async () => {
+      const { id: id1 } = await client!.record.addRecord({
+        app: 1,
+        record: { test: { value: "test1" } },
+      });
+      await client!.record.addRecord({
+        app: 1,
+        record: { test: { value: "test2" } },
+      });
+
+      await client!.record.deleteRecords({
+        app: 1,
+        ids: [Number(id1)],
+      });
+
+      const records = await client!.record.getRecords({ app: 1 });
+      expect(records.totalCount).toEqual("1");
+      expect(records.records[0]!.test!.value).toEqual("test2");
+    });
+
+    // NOTE: kintone 実仕様では存在しないIDに対し GAIA_RE01 エラーを返すが、このエミュレーターでは無視する
+    test("存在しないレコードIDを指定してもエラーにならない", async () => {
+      await client!.record.addRecord({
+        app: 1,
+        record: { test: { value: "test1" } },
+      });
+
+      await expect(
+        client!.record.deleteRecords({
+          app: 1,
+          ids: [9999],
+        })
+      ).resolves.not.toThrow();
+
+      const records = await client!.record.getRecords({ app: 1 });
+      expect(records.totalCount).toEqual("1");
+    });
+  });
 });
