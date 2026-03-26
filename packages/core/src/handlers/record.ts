@@ -8,18 +8,18 @@ type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
 }
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
 
-  const row = await findRecord(db, app, url.searchParams.get('id'));
+  const row = findRecord(db, app, url.searchParams.get('id'));
   if (!row) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }
 
   const body: Record = JSON.parse(row.body);
-  const fieldTypes = await findFieldTypes(db, app!);
+  const fieldTypes = findFieldTypes(db, app!);
   for (const field of fieldTypes) {
     if (body[field.code]) {
       body[field.code]!.type = field.type;
@@ -33,7 +33,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const inserted = await insertRecord(db, body.app, body.record);
+  const inserted = insertRecord(db, body.app, body.record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
@@ -51,14 +51,14 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  let target: Awaited<ReturnType<typeof findRecord>>;
+  let target: ReturnType<typeof findRecord>;
   if (body.updateKey) {
     if (!FIELD_CODE_PATTERN.test(body.updateKey.field)) {
       return Response.json({ message: 'Invalid field code.' }, { status: 400 });
     }
-    target = await findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
+    target = findRecordByKey(db, body.app, body.updateKey.field, body.updateKey.value);
   } else {
-    target = await findRecord(db, body.app, body.id);
+    target = findRecord(db, body.app, body.id);
   }
 
   if (!target) {
@@ -66,7 +66,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   }
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
-  const updated = await updateRecord(db, body.app, String(target.id), mergedRecord);
+  const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });
   }

@@ -19,14 +19,14 @@ const toAppResponse = (row: AppRow) => ({
   modifier: { code: "", name: "" },
 });
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
   const idParam = url.searchParams.get('id');
   if (!idParam) {
     return Response.json({ message: 'id is required.' }, { status: 400 });
   }
 
-  const row = await findApp(dbSession(params.session), Number(idParam));
+  const row = findApp(dbSession(params.session), Number(idParam));
   if (!row) {
     return Response.json({ message: 'App not found.' }, { status: 404 });
   }

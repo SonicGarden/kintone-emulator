@@ -15,7 +15,7 @@ import * as setupApp from "./handlers/setup-app";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
 
-type RouteHandler = (args: HandlerArgs) => Promise<Response>;
+type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
 
 type RouteEntry = {
   pattern: RegExp;

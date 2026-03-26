@@ -2,7 +2,7 @@ import { dbSession } from "../db/client";
 import { countComments, deleteComment, findComments, findRecordExists, insertComment } from "../db/comments";
 import type { HandlerArgs } from "./types";
 
-export const get = async ({ request, params }: HandlerArgs) => {
+export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
 
@@ -13,7 +13,7 @@ export const get = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: "app and record are required." }, { status: 400 });
   }
 
-  const recordRow = await findRecordExists(db, app, record);
+  const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
@@ -26,8 +26,8 @@ export const get = async ({ request, params }: HandlerArgs) => {
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0") || 0);
   const limit = Math.max(1, Number(url.searchParams.get("limit") ?? "10") || 10);
 
-  const totalCount = await countComments(db, app, record);
-  const rows = await findComments(db, app, record, order, offset, limit);
+  const totalCount = countComments(db, app, record);
+  const rows = findComments(db, app, record, order, offset, limit);
 
   const comments = rows.map((row) => ({
     id: row.id.toString(),
@@ -59,7 +59,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body: CommentBody = await request.json();
   const db = dbSession(params.session);
 
-  const record = await findRecordExists(db, body.app, body.record);
+  const record = findRecordExists(db, body.app, body.record);
   if (!record) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
@@ -68,7 +68,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
     return Response.json({ message: "Invalid comment" }, { status: 400 });
   }
 
-  const inserted = await insertComment(
+  const inserted = insertComment(
     db,
     body.app,
     body.record,
@@ -81,7 +81,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   return Response.json({ id: inserted.id.toString() });
 };
 
-export const del = async ({ request, params }: HandlerArgs) => {
+export const del = ({ request, params }: HandlerArgs) => {
   const url = new URL(request.url);
   const app = url.searchParams.get("app");
   const record = url.searchParams.get("record");
@@ -93,12 +93,12 @@ export const del = async ({ request, params }: HandlerArgs) => {
 
   const db = dbSession(params.session);
 
-  const recordRow = await findRecordExists(db, app, record);
+  const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {
     return Response.json({ message: "Record not found" }, { status: 404 });
   }
 
-  const deleted = await deleteComment(db, app, record, commentId);
+  const deleted = deleteComment(db, app, record, commentId);
   if (!deleted) {
     return Response.json({ message: "Comment not found." }, { status: 404 });
   }

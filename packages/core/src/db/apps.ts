@@ -1,4 +1,4 @@
-import type sqlite3 from "sqlite3";
+import type Database from "better-sqlite3";
 import { all } from "./client";
 
 export type AppRow = {
@@ -18,11 +18,10 @@ type FindAppsOptions = {
   offset: number;
 };
 
-export const findApp = (db: sqlite3.Database, id: number) =>
-  all<AppRow>(db, `SELECT id, name, revision, layout, status, created_at, updated_at FROM apps WHERE id = ?`, id)
-    .then(rows => rows[0]);
+export const findApp = (db: Database.Database, id: number) =>
+  all<AppRow>(db, `SELECT id, name, revision, layout, status, created_at, updated_at FROM apps WHERE id = ?`, id)[0];
 
-export const findApps = (db: sqlite3.Database, options: FindAppsOptions) => {
+export const findApps = (db: Database.Database, options: FindAppsOptions) => {
   const { ids, name, limit, offset } = options;
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -49,11 +48,11 @@ export const findApps = (db: sqlite3.Database, options: FindAppsOptions) => {
 
 const DEFAULT_STATUS = '{"enable":false,"states":null,"actions":null,"revision":"3"}';
 
-export const insertApp = (db: sqlite3.Database, name: string, layout: string, status: string = DEFAULT_STATUS, id?: number) =>
+export const insertApp = (db: Database.Database, name: string, layout: string, status: string = DEFAULT_STATUS, id?: number) =>
   all<{ id: number; revision: number }>(
     db,
     id != null
       ? "INSERT INTO apps (id, name, layout, status) VALUES (?, ?, ?, ?) RETURNING id, revision"
       : "INSERT INTO apps (name, layout, status) VALUES (?, ?, ?) RETURNING id, revision",
     ...(id != null ? [id, name, layout, status] : [name, layout, status])
-  ).then(rows => rows[0]);
+  )[0];

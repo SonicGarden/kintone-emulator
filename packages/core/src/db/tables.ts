@@ -1,6 +1,5 @@
+import type Database from "better-sqlite3";
 import dedent from "dedent";
-import type sqlite3 from "sqlite3";
-import { serialize } from "./client";
 
 const CREATE_TABLE_FIELDS = dedent`
   CREATE TABLE IF NOT EXISTS fields (
@@ -63,22 +62,18 @@ const CREATE_TABLE_APPS = dedent`
   )
 `;
 
-export const createTables = async (db: sqlite3.Database) => {
-  await serialize(db, () => {
-    db.run(CREATE_TABLE_FIELDS);
-    db.run(CREATE_TABLE_RECORDS);
-    db.run(CREATE_TABLE_FILES);
-    db.run(CREATE_TABLE_APPS);
-    db.run(CREATE_TABLE_COMMENTS);
-  });
+export const createTables = (db: Database.Database) => {
+  db.exec(CREATE_TABLE_FIELDS);
+  db.exec(CREATE_TABLE_RECORDS);
+  db.exec(CREATE_TABLE_FILES);
+  db.exec(CREATE_TABLE_APPS);
+  db.exec(CREATE_TABLE_COMMENTS);
 };
 
-export const dropTables = async (db: sqlite3.Database) => {
-  await serialize(db, () => {
-    db.run("DROP TABLE IF EXISTS fields");
-    db.run("DROP TABLE IF EXISTS records");
-    db.run("DROP TABLE IF EXISTS files");
-    db.run("DROP TABLE IF EXISTS apps");
-    db.run("DROP TABLE IF EXISTS comments");
-  });
+export const dropTables = (db: Database.Database) => {
+  db.exec("DROP TABLE IF EXISTS fields");
+  db.exec("DROP TABLE IF EXISTS records");
+  db.exec("DROP TABLE IF EXISTS files");
+  db.exec("DROP TABLE IF EXISTS apps");
+  db.exec("DROP TABLE IF EXISTS comments");
 };
