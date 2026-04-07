@@ -31,21 +31,24 @@ export const post = async ({ request, params }: HandlerArgs) => {
         insertFields(db, app.id, body.properties as FieldProperties);
       }
 
+      const recordIds: string[] = [];
       if (Array.isArray(body.records)) {
         for (const record of body.records) {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
           const insertedRecord = insertRecord(db, app.id.toString(), recordBody, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
+          recordIds.push(insertedRecord.id.toString());
         }
       }
 
-      return app;
+      return { app, recordIds };
     })();
 
     return Response.json({
-      app: inserted.id.toString(),
-      revision: inserted.revision.toString(),
+      app: inserted.app.id.toString(),
+      revision: inserted.app.revision.toString(),
+      recordIds: inserted.recordIds,
     });
   } catch (e) {
     if (e instanceof Error && e.message.includes('UNIQUE constraint failed')) {

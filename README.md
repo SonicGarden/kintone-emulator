@@ -40,13 +40,22 @@ packages/
 | GET | `/k/v1/file.json` | ファイルダウンロード |
 | POST | `/k/v1/file.json` | ファイルアップロード |
 
+### 認証
+
+デフォルトでは認証なしで全 API にアクセスできます。テストサポート API でユーザーを登録すると、kintone 互換のパスワード認証（`X-Cybozu-Authorization` ヘッダー）が有効になります。
+
+- 認証ヘッダーなし → `401` / `CB_AU01`
+- 認証失敗 → `401` / `CB_WA01`
+- エラーメッセージは `Accept-Language` ヘッダーで日本語・英語が切り替わります
+
 ### テストサポート API
 
 | メソッド | エンドポイント | 内容 |
 |---|---|---|
 | POST | `/[session]/initialize` | テーブルの初期化（テスト前に実行） |
 | POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
-| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能） |
+| POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能）。レスポンスに `app`, `revision`, `recordIds` を返す |
+| POST | `/[session]/setup/auth.json` | 認証ユーザーの登録（`username`, `password`）。1人以上登録すると認証が有効になる |
 
 ## セットアップ
 
@@ -109,10 +118,20 @@ const setupRes = await fetch(`${BASE_URL}/setup/app.json`, {
 });
 const { app } = await setupRes.json();
 
+// 認証を有効にする場合（省略可）
+await fetch(`${BASE_URL}/setup/auth.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "admin", password: "secret" }),
+});
+
 // @kintone/rest-api-client をそのまま使用
 const client = new KintoneRestAPIClient({
   baseUrl: BASE_URL,
-  auth: { apiToken: "dummy" },
+  // 認証を有効にした場合はパスワード認証を使用
+  auth: { username: "admin", password: "secret" },
+  // 認証なしの場合はダミーのAPIトークンでOK
+  // auth: { apiToken: "dummy" },
 });
 
 await client.record.addRecord({ app, record: { title: { value: "test" } } });

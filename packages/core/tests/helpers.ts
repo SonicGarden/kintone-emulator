@@ -9,6 +9,21 @@ export const initializeSession = (baseUrl: string) =>
 export const finalizeSession = (baseUrl: string) =>
   fetch(`${baseUrl}/finalize`, { method: "POST" });
 
+export const setupAuth = async (
+  baseUrl: string,
+  username: string,
+  password: string
+) => {
+  const response = await fetch(`${baseUrl}/setup/auth.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) {
+    throw new Error(`setupAuth failed: ${response.status} ${response.statusText}`);
+  }
+};
+
 export const createApp = async (
   baseUrl: string,
   params: { id?: number; name: string; properties?: Record<string, unknown>; layout?: unknown[]; status?: unknown; records?: unknown[] }

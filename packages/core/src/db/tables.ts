@@ -62,12 +62,22 @@ const CREATE_TABLE_APPS = dedent`
   )
 `;
 
+const CREATE_TABLE_USERS = dedent`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 export const createTables = (db: Database.Database) => {
   db.exec(CREATE_TABLE_FIELDS);
   db.exec(CREATE_TABLE_RECORDS);
   db.exec(CREATE_TABLE_FILES);
   db.exec(CREATE_TABLE_APPS);
   db.exec(CREATE_TABLE_COMMENTS);
+  db.exec(CREATE_TABLE_USERS);
 };
 
 export const dropTables = (db: Database.Database) => {
@@ -76,4 +86,5 @@ export const dropTables = (db: Database.Database) => {
   db.exec("DROP TABLE IF EXISTS files");
   db.exec("DROP TABLE IF EXISTS apps");
   db.exec("DROP TABLE IF EXISTS comments");
+  db.exec("DROP TABLE IF EXISTS users");
 };
