@@ -63,9 +63,6 @@ importers:
       dedent:
         specifier: ^1.5.3
         version: 1.5.3
-      node-sql-parser:
-        specifier: ^5.3.5
-        version: 5.3.5
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -1327,9 +1324,6 @@ packages:
   '@types/node@22.10.2':
     resolution: {integrity: sha512-Xxr6BBRCAOQixvonOye19wnzyDiUtTeqldOOmj3CkeblonbccA12PFwlufvRdrpjXxqnmUaeiU5EOA+7s5diUQ==}
 
-  '@types/pegjs@0.10.6':
-    resolution: {integrity: sha512-eLYXDbZWXh2uxf+w8sXS8d6KSoXTswfps6fvCUuVAGN8eRpfe7h9eSRydxiSJvo9Bf+GzifsDOr9TMQlmJdmkw==}
-
   '@types/prop-types@15.7.14':
     resolution: {integrity: sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==}
 
@@ -1609,10 +1603,6 @@ packages:
   better-sqlite3@12.6.2:
     resolution: {integrity: sha512-8VYKM3MjCa9WcaSAI3hzwhmyHVlH8tiGFwf0RlTsZPWJ1I5MkzjiudCo4KC4DxOaL/53A5B1sI/IbldNFDbsKA==}
     engines: {node: 20.x || 22.x || 23.x || 24.x || 25.x}
-
-  big-integer@1.6.52:
-    resolution: {integrity: sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg==}
-    engines: {node: '>=0.6'}
 
   binary-extensions@2.3.0:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
@@ -3146,10 +3136,6 @@ packages:
 
   node-releases@2.0.19:
     resolution: {integrity: sha512-xxOWJsBKtzAq7DY0J+DTzuz58K8e7sJbdgwkbMWQe8UYB6ekmsQ45q0M/tJDsGaZmbC+l7n57UV8Hl5tHxO9uw==}
-
-  node-sql-parser@5.3.5:
-    resolution: {integrity: sha512-DOR2PAe3gY5/fXmSvpTOpyv8+HkQ5jA9KShAEy7fVLaV8kVbeg8aa7qo0MdfqCDskwqjcakp0lS/Rnmg+iY/XQ==}
-    engines: {node: '>=8'}
 
   normalize-package-data@5.0.0:
     resolution: {integrity: sha512-h9iPVIfrVZ9wVYQnxFgtw1ugSvGEMOlyPWWtm8BMJhnwyEL/FLbYbTY3V3PpjI/BUK67n9PEWDu6eHzu1fB15Q==}
@@ -5380,8 +5366,6 @@ snapshots:
       undici-types: 6.20.0
     optional: true
 
-  '@types/pegjs@0.10.6': {}
-
   '@types/prop-types@15.7.14': {}
 
   '@types/react-dom@18.3.5(@types/react@18.3.18)':
@@ -5750,8 +5734,6 @@ snapshots:
     dependencies:
       bindings: 1.5.0
       prebuild-install: 7.1.2
-
-  big-integer@1.6.52: {}
 
   binary-extensions@2.3.0: {}
 
@@ -7673,11 +7655,6 @@ snapshots:
       semver: 7.6.3
 
   node-releases@2.0.19: {}
-
-  node-sql-parser@5.3.5:
-    dependencies:
-      '@types/pegjs': 0.10.6
-      big-integer: 1.6.52
 
   normalize-package-data@5.0.0:
     dependencies:

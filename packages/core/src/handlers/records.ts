@@ -1,67 +1,15 @@
-import sqlParser from 'node-sql-parser';
-import { dbSession } from "../db/client";
-import { findFields, findFieldTypes } from "../db/fields";
-import type { FieldRow, FieldTypeRow } from "../db/fields";
-import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByClause, insertRecord, updateRecord } from "../db/records";
+import { all, dbSession } from "../db/client";
+import { findFields } from "../db/fields";
+import type { FieldRow } from "../db/fields";
+import { deleteRecords, findRecord, findRecordByKey, findRecords, insertRecord, updateRecord } from "../db/records";
 import type { RecordRow } from "../db/records";
+import { ParseError, TokenizeError, compile, parseQuery } from "../query";
+import type { FieldTypeMap } from "../query";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
-
-type FieldTypes = { [key: string]: FieldTypeRow["type"] };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
-  const { expression, fieldTypes } = param;
-  switch (expression.type) {
-    case 'binary_expr':
-      replaceField({ expression: expression.left, fieldTypes });
-      replaceField({ expression: expression.right, fieldTypes });
-      break;
-    case 'column_ref':
-      switch (fieldTypes[expression.column]) {
-        case 'RECORD_NUMBER':
-          // RECORD_NUMBER フィールドは records.id カラムに対応。body には保存されていない
-          expression.column = 'id';
-          break;
-        case 'CREATED_TIME':
-          expression.column = `datetime(created_at, '+9 hours')`;
-          break;
-        case 'UPDATED_TIME':
-          expression.column = `datetime(updated_at, '+9 hours')`;
-          break;
-        case 'DATETIME':
-          expression.column = `datetime(body->>'$.${expression.column}.value', '+9 hours')`;
-          break;
-        case 'DATE':
-          expression.column = `date(body->>'$.${expression.column}.value', '+9 hours')`;
-          break;
-        default:
-          expression.column = `body->>'$.${expression.column}.value'`;
-          break;
-      }
-      break;
-    case 'var':
-      if (expression.name === 'id' && expression.prefix === '$') {
-        delete expression.prefix;
-        delete expression.name;
-        delete expression.members;
-        expression.type = 'column_ref';
-        expression.column = 'id';
-        expression.table = null;
-      }
-      break;
-    case 'function':
-      switch (expression.name.name[0].value) {
-        case 'NOW':
-          expression.name.name[0].value = 'datetime';
-          expression.args.value = [{ type: 'single_quote_string', value: 'now' }, { type: 'single_quote_string', value: '+9 hours' }];
-          break;
-      }
-  }
-};
 
 const generateRecords = ({ recordResult, fieldRows, fields }: {
   recordResult: RecordRow[],
@@ -88,11 +36,6 @@ const generateRecords = ({ recordResult, fieldRows, fields }: {
   });
 };
 
-const hasWhereClause = (query: string) =>
-  !query.trim().toLowerCase().startsWith('order')
-  && !query.trim().toLowerCase().startsWith('limit')
-  && !query.trim().toLowerCase().startsWith('offset');
-
 // フィールドコードとして許容する非 ASCII 文字の Unicode 範囲:
 //   \u3005-\u3006 : 繰り返し記号「々」「〆」
 //   \u3040-\u30ff : ひらがな + カタカナ のブロック
@@ -100,19 +43,8 @@ const hasWhereClause = (query: string) =>
 //   \uff00-\uffef : 全角英数字・記号・半角カナ等
 export const NON_ASCII_FIELD_CODE_CHARS = "\\u3005-\\u3006\\u3040-\\u30ff\\u4e00-\\u9fff\\uff00-\\uffef";
 
-// フィールドコード全体の許容文字集合（SQL injection ガードにも使う）
+// フィールドコード全体の許容文字集合（updateKey.field の SQL injection ガード用）
 export const FIELD_CODE_PATTERN = new RegExp(`^[\\w${NON_ASCII_FIELD_CODE_CHARS}]+$`);
-
-// 日本語や全角英数字を含む識別子はバッククォートで囲んで node-sql-parser に渡す。
-// ASCII の `\w` と非 ASCII 文字が混在した識別子（例: `文字列__1行_`）も 1 つの識別子としてまとめて括る。
-// クォート内の文字列リテラルはマッチ対象外（lookbehind / lookahead で除外）。
-const replaceUniCodeField = (query: string) => {
-  // lookbehind で「クォート / 非 ASCII 文字の直後」を除外しないと、
-  // "参照元９５" のような文字列リテラル内で部分マッチしてしまう
-  const identifier = new RegExp(`(?<!['"${NON_ASCII_FIELD_CODE_CHARS}])[\\w${NON_ASCII_FIELD_CODE_CHARS}]+(?!['"])`, "g");
-  const hasNonAscii = new RegExp(`[${NON_ASCII_FIELD_CODE_CHARS}]`);
-  return query.replace(identifier, (match) => (hasNonAscii.test(match) ? `\`${match}\`` : match));
-};
 
 export const get = ({ request, params }: HandlerArgs) => {
   try {
@@ -120,7 +52,6 @@ export const get = ({ request, params }: HandlerArgs) => {
     const url = new URL(request.url);
     const app = url.searchParams.get('app');
     const rawQuery = url.searchParams.get('query');
-    const query = rawQuery ? replaceUniCodeField(rawQuery).replaceAll('"', "'") : null;
     const fields: string[] = [];
     for (const [key, value] of url.searchParams.entries()) {
       if (key.startsWith('fields')) {
@@ -128,14 +59,13 @@ export const get = ({ request, params }: HandlerArgs) => {
       }
     }
 
-    const fieldTypeRows = findFieldTypes(db, app!);
-    const fieldTypes: FieldTypes = {};
-    for (const row of fieldTypeRows) {
-      fieldTypes[row.code] = row.type;
-    }
     const fieldRows = findFields(db, app!);
+    const fieldTypes: FieldTypeMap = {};
+    for (const row of fieldRows) {
+      fieldTypes[row.code] = (JSON.parse(row.body) as { type: string }).type;
+    }
 
-    if (query === null) {
+    if (rawQuery == null) {
       const recordResult = findRecords(db, app);
       return Response.json({
         totalCount: recordResult.length.toString(),
@@ -143,33 +73,33 @@ export const get = ({ request, params }: HandlerArgs) => {
       });
     }
 
-    const parser = new sqlParser.Parser();
-    const prefixSql = `select 1 from records ${hasWhereClause(query) ? 'where ' : ''}`;
-    const ast = parser.astify(prefixSql + query);
-
-    if ('where' in ast && ast.where !== null) {
-      replaceField({ expression: ast.where, fieldTypes });
-    }
-    if ('orderby' in ast && ast.orderby !== null) {
-      for (const order of ast.orderby) {
-        replaceField({ expression: order.expr, fieldTypes });
-      }
-    }
-
-    const newQuery = parser.sqlify(ast, { database: 'sqlite' });
-    const clause = newQuery.replaceAll('"', '').replace(/SELECT 1 FROM records (WHERE)?/g, '');
-
     try {
-      const recordResult = findRecordsByClause(db, app, clause, hasWhereClause(query));
+      const ast = parseQuery(rawQuery);
+      const compiled = compile(ast, { fieldTypes });
+      const whereClause = compiled.where ? `AND ${compiled.where}` : "";
+      const orderClause = compiled.orderBy ? `ORDER BY ${compiled.orderBy}` : "";
+      const limitClause = compiled.limit != null ? `LIMIT ${compiled.limit}` : "";
+      const offsetClause = compiled.offset != null ? `OFFSET ${compiled.offset}` : "";
+      const sql = [
+        "SELECT id, revision, body, created_at, updated_at FROM records WHERE app_id = ?",
+        whereClause,
+        orderClause,
+        limitClause,
+        offsetClause,
+      ].filter(Boolean).join(" ");
+      const recordResult = all<RecordRow>(db, sql, app, ...compiled.params);
       return Response.json({
         totalCount: recordResult.length.toString(),
         records: generateRecords({ recordResult, fieldRows, fields }),
       });
     } catch (e) {
-      return Response.json(
-        { id: '1505999166-897850006', code: 'CB_VA01', message: 'query: クエリ記法が間違っています。' },
-        { status: 400 }
-      );
+      if (e instanceof ParseError || e instanceof TokenizeError) {
+        return Response.json(
+          { id: 'emulator-query-parse-error', code: 'CB_VA01', message: 'query: クエリ記法が間違っています。' },
+          { status: 400 }
+        );
+      }
+      return Response.json({ code: 'error', message: String(e) }, { status: 500 });
     }
   } catch (e) {
     return Response.json({ code: 'error', message: String(e) }, { status: 500 });
