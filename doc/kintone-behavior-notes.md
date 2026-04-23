@@ -286,6 +286,62 @@ POST /k/v1/record.json  body={app:<APP_ID>, record:{}}  (en)
 }
 ```
 
+### 後から `required: true` に変更した場合の挙動
+
+アプリ運用中に、既存フィールドの `required` を後から `true` にしてデプロイしたケース（app=<APP_ID> で検証）:
+
+| 操作 | 結果 |
+|---|---|
+| `PUT /preview/app/form/fields.json` → `preview/app/deploy.json` | **デプロイ成功**。既存レコードが当該フィールドを空のまま持っていてもエラーにならない |
+| 既存レコードの **GET** | そのまま返る（該当フィールドは `""` のまま） |
+| **新規 POST** で当該フィールド省略 | 400 `必須です。` |
+| 既存レコードの **PUT**（別フィールドだけ更新し、当該 required は送らない） | **400 `必須です。`** ← マージ後のレコードで required が空だと弾かれる |
+| 既存レコードの **PUT** で当該フィールドに値を入れる | 200（以降は通常通り更新可能） |
+
+つまり:
+- **デプロイはブロックされない**（フィールド変更で過去データは書き換わらない）
+- 既存レコードは空のまま**温存**される
+- そのレコードを**更新しようとした時点で** required フィールドを埋めることが強制される
+- 更新しなければ永遠に空のまま保持され続ける
+
+#### 生レスポンス（既存レコードを別フィールドだけ PUT）
+
+```
+# app=<APP_ID>, id=4 は later_req="" のまま既存
+# later_req を required:true に変更してデプロイ後に:
+PUT /k/v1/record.json  body={app:<APP_ID>, id:4, record:{t:{value:"updated_t_only"}}}
+-> 400
+{
+  "code":"CB_VA01",
+  "id":"SFVSK0WX39b7gXQL8x6f",
+  "message":"入力内容が正しくありません。",
+  "errors":{
+    "record.later_req.value":{"messages":["必須です。"]}
+  }
+}
+```
+
+### エミュレーターでの再現
+
+- エミュレーターは `PUT /preview/app/form/fields.json`（フィールド定義更新）を未実装なので、後から `required` を付ける操作自体が直接は呼べない
+- ただし **`setup/app.json` の records 一括投入は validate を通さない**（`applyDefaults` と `normalizeNumbers` のみ適用）ため、「required フィールドが空の既存レコード」を直接セットアップ可能
+- そのレコードに対して以後 POST/PUT すると、実機どおり required バリデーションが走る
+
+```ts
+// 既存レコードが required を欠いたまま残る状況を再現
+await createApp(BASE_URL, {
+  name: "テスト",
+  properties: {
+    req: { type: "SINGLE_LINE_TEXT", code: "req", label: "req", required: true },
+  },
+  records: [
+    { req: { value: "" } },      // setup 経由なので required 検証は走らない
+    { req: { value: "filled" } },
+  ],
+});
+// 以降、1 件目を PUT すると `record.req.value: ["必須です。"]` で 400
+```
+
 ---
 
 ## 3. unique
