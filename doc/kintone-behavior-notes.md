@@ -557,7 +557,62 @@ GET /k/v1/record.json?app=<APP_ID>&id=92
 
 ---
 
-## 8. その他観察
+## 8. 一括 API（`records.json` POST / PUT）
+
+### POST（addRecords）
+
+- 正常: `{"ids":["1","2","3"],"revisions":["1","1","1"]}` / 200
+- 空配列: `{"ids":[],"revisions":[]}` / 200
+- 上限: 101 件以上は `errors.records = [<上限メッセージ>]` / `CB_VA01` / 400
+- validation 失敗時のキー: `records[<i>].<code>.<suffix>`（単体版 `record.<code>.<suffix>` に index プレフィックス）
+- トランザクション: 1件でも失敗したら**全件ロールバック**
+
+```
+POST /k/v1/records.json  body={app:<APP_ID>, records:[{num:{value:"5"}}]}  (title 欠落)
+-> 400
+{
+  "code":"CB_VA01",
+  "id":"ZiRCEubp03HnYGzSNbZy",
+  "message":"入力内容が正しくありません。",
+  "errors": {
+    "records[0].title.value": {"messages":["必須です。"]}
+  }
+}
+
+POST ... 101 records (ja)
+-> 400
+"errors":{ "records":{"messages":["一度に100件までのレコードを追加できます。"]} }
+
+POST ... 101 records (en)
+-> 400
+"errors":{ "records":{"messages":["A maximum of 100 records can be added at one time."]} }
+```
+
+### PUT（updateRecords）
+
+- 正常: `{"records":[{"id":"1","revision":"2"}, ...]}` / 200
+- 空配列: `{"records":[]}` / 200
+- 上限: 101 件以上で `errors.records = [<更新用メッセージ>]`
+  - ja: `"一度に100件までのレコードを更新できます。"`
+  - en: `"A maximum of 100 records can be updated at one time."`
+- 存在しない id: 404 `GAIA_RE01`（index は付かない）
+- validation 失敗時のキー: `records[<i>].<code>.<suffix>`
+- `updateKey: {field, value}` でも指定可
+- トランザクション: 1件でも失敗したら全件ロールバック
+
+```
+PUT /k/v1/records.json  body={app:<APP_ID>, records:[{id:1,record:{...ok...}}, {id:99999,...}]}
+-> 404
+{"code":"GAIA_RE01","id":"e4NVJfMQg1lDbh5pQ4R4","message":"指定したレコード（id: 99999）が見つかりません。"}
+
+PUT ... validation NG at index 1
+-> 400
+"errors":{ "records[1].title.value": {"messages":["21文字より短くなければなりません。"]} }
+```
+
+---
+
+## 9. その他観察
 
 ### preview/deploy のライフサイクル
 
