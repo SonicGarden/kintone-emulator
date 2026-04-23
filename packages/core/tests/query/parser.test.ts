@@ -164,6 +164,33 @@ describe("parseQuery: エスケープ", () => {
       values: [{ type: "string", value: "sample\\2\\" }],
     });
   });
+
+  test("\\t はタブ文字に展開", () => {
+    const q = parseQuery('c = "a\\tb"');
+    expect(q.where).toMatchObject({ type: "cmp", value: { type: "string", value: "a\tb" } });
+  });
+
+  test("\\n は LF に展開", () => {
+    const q = parseQuery('c = "line1\\nline2"');
+    expect(q.where).toMatchObject({ type: "cmp", value: { type: "string", value: "line1\nline2" } });
+  });
+
+  test("文字列リテラル内の生タブはエラー", () => {
+    expect(() => parseQuery('c = "a\tb"')).toThrow(/control character/);
+  });
+
+  test("文字列リテラル内の生 LF はエラー", () => {
+    expect(() => parseQuery('c = "a\nb"')).toThrow(/control character/);
+  });
+
+  test("トークン間の生タブ / 生 LF は許容", () => {
+    // フィールド名と演算子の間に生タブ
+    const q1 = parseQuery('c\t=\t"x"');
+    expect(q1.where).toMatchObject({ type: "cmp" });
+    // 生 LF
+    const q2 = parseQuery('c\n=\n"x"');
+    expect(q2.where).toMatchObject({ type: "cmp" });
+  });
 });
 
 describe("parseQuery: エラー", () => {

@@ -68,8 +68,9 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
     });
     expect(records.totalCount).toEqual("2");
-    expect(records.records[0]!["$id"]!.value).toEqual("1");
-    expect(records.records[0]!.test!.value).toEqual("test");
+    // 実 kintone はデフォルトで $id desc なので id=2 が先頭
+    expect(records.records[0]!["$id"]!.value).toEqual("2");
+    expect(records.records[0]!.test!.value).toEqual("test2");
     expect(records.records[0]!.test!.type).toEqual("SINGLE_LINE_TEXT");
   });
 
@@ -556,5 +557,56 @@ describe("システムフィールドコードでの検索クエリ", () => {
     });
     expect(records).toHaveLength(1);
     expect((records[0] as Record<string, { value: unknown }>).文字列__1行_!.value).toBe("テスト値");
+  });
+});
+
+describe("クエリのエラーレスポンス / 上限チェック", () => {
+  const SESSION = "records-query-errors";
+  let URL_BASE: string;
+
+  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(URL_BASE);
+    await createApp(URL_BASE, {
+      name: "query errors",
+      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "t" } },
+    });
+  });
+  afterEach(async () => { await finalizeSession(URL_BASE); });
+
+  const fetchRecords = (query: string) =>
+    fetch(`${URL_BASE}/k/v1/records.json?app=1&${new URLSearchParams({ query }).toString()}`);
+
+  test("構文エラーは CB_VA01 + errors.query.messages", async () => {
+    const r = await fetchRecords("title ===");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({
+      query: { messages: ["クエリ記法が間違っています。"] },
+    });
+  });
+
+  test("文字列リテラル内の生タブで CB_VA01", async () => {
+    const r = await fetchRecords('title = "a\tb"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("CB_VA01");
+  });
+
+  test("limit > 500 で GAIA_QU01", async () => {
+    const r = await fetchRecords("limit 1000");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_QU01");
+    expect(json.message).toContain("500");
+  });
+
+  test("offset > 10000 で GAIA_QU02", async () => {
+    const r = await fetchRecords("offset 99999");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_QU02");
+    expect(json.message).toContain("10,000");
   });
 });

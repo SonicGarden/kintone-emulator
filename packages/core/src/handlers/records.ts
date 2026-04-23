@@ -1,7 +1,7 @@
 import { all, dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import type { FieldRow } from "../db/fields";
-import { deleteRecords, findRecord, findRecordByKey, findRecords, insertRecord, updateRecord } from "../db/records";
+import { deleteRecords, findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { RecordRow } from "../db/records";
 import { ParseError, TokenizeError, compile, parseQuery } from "../query";
 import type { FieldTypeMap } from "../query";
@@ -65,16 +65,39 @@ export const get = ({ request, params }: HandlerArgs) => {
       fieldTypes[row.code] = (JSON.parse(row.body) as { type: string }).type;
     }
 
-    if (rawQuery == null) {
-      const recordResult = findRecords(db, app);
-      return Response.json({
-        totalCount: recordResult.length.toString(),
-        records: generateRecords({ recordResult, fieldRows, fields }),
-      });
-    }
-
+    const locale = detectLocale(request.headers.get("accept-language"));
     try {
-      const ast = parseQuery(rawQuery);
+      // 実 kintone は query 省略 / 空でも $id desc がデフォルト順序。
+      // compile 側のデフォルト ORDER BY (id DESC) に乗せるため、空クエリを parse する。
+      const ast = parseQuery(rawQuery ?? "");
+      // limit / offset の上限チェック（実機: limit=500 / offset=10000）
+      if (ast.limit != null && ast.limit > 500) {
+        return Response.json(
+          {
+            code: "GAIA_QU01",
+            id: "emulator-query-limit",
+            message: locale === "en"
+              ? "limit must be 500 or less."
+              : "limit には 500 以下の値を指定してください。",
+          },
+          { status: 400 },
+        );
+      }
+      if (ast.offset != null && ast.offset > 10000) {
+        return Response.json(
+          {
+            code: "GAIA_QU02",
+            id: "emulator-query-offset",
+            message: locale === "en"
+              ? "offset must be 10,000 or less."
+              : "offset には 10,000 以下の値を指定してください。",
+          },
+          { status: 400 },
+        );
+      }
+      if ((ast.limit != null && ast.limit < 0) || (ast.offset != null && ast.offset < 0)) {
+        return errorInvalidInput({}, locale);
+      }
       const compiled = compile(ast, { fieldTypes });
       const whereClause = compiled.where ? `AND ${compiled.where}` : "";
       const orderClause = compiled.orderBy ? `ORDER BY ${compiled.orderBy}` : "";
@@ -94,9 +117,10 @@ export const get = ({ request, params }: HandlerArgs) => {
       });
     } catch (e) {
       if (e instanceof ParseError || e instanceof TokenizeError) {
-        return Response.json(
-          { id: 'emulator-query-parse-error', code: 'CB_VA01', message: 'query: クエリ記法が間違っています。' },
-          { status: 400 }
+        // 実機準拠: errors.query.messages に詳細メッセージを入れて CB_VA01 / 400
+        return errorInvalidInput(
+          { query: { messages: [locale === "en" ? "The query is invalid." : "クエリ記法が間違っています。"] } },
+          locale,
         );
       }
       return Response.json({ code: 'error', message: String(e) }, { status: 500 });

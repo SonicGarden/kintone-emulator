@@ -105,6 +105,12 @@ describe("compile: is empty", () => {
 });
 
 describe("compile: order by / limit / offset", () => {
+  test("order by 省略時は $id desc がデフォルト", () => {
+    const c = doCompile("");
+    expect(c.where).toBeNull();
+    expect(c.orderBy).toBe("id DESC");
+  });
+
   test("order by レコード番号 desc", () => {
     const c = doCompile("order by レコード番号 desc");
     expect(c.where).toBeNull();

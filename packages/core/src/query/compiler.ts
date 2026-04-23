@@ -69,9 +69,11 @@ class Compiler {
   compileQuery(q: Query): Compiled {
     const where = q.where ? this.compileExpr(q.where) : null;
     const orderByParts: string[] = q.orderBy.map((o) => this.compileOrderBy(o));
+    // 実 kintone は order by 省略時 $id の降順
+    const orderBy = orderByParts.length > 0 ? orderByParts.join(", ") : "id DESC";
     return {
       where,
-      orderBy: orderByParts.join(", "),
+      orderBy,
       limit: q.limit,
       offset: q.offset,
       params: this.params,

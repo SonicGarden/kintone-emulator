@@ -31,21 +31,38 @@ export function tokenize(input: string): Token[] {
     // 空白
     if (/\s/.test(ch)) { i++; continue; }
 
-    // 文字列リテラル（kintone 仕様は " のみだが、互換性のため ' も許容）
+    // 文字列リテラル（kintone 仕様は " のみだが、互換性のため ' も許容）。
+    // 実 kintone の挙動に合わせて:
+    //   - 生のタブ / 改行 / CR を文字列内に含めるとエラー
+    //   - \t / \n / \r はそれぞれ対応する制御文字に展開
+    //   - \" / \\ / \' はクォートやバックスラッシュに展開
     if (ch === '"' || ch === "'") {
       const quote = ch;
       let value = "";
       i++;
       while (i < len && input[i] !== quote) {
-        if (input[i] === "\\") {
+        const c = input[i]!;
+        if (c === "\t" || c === "\n" || c === "\r") {
+          throw new TokenizeError(
+            "raw control character (tab/newline/CR) not allowed inside string literal; use \\t, \\n, \\r",
+          );
+        }
+        if (c === "\\") {
           i++;
           if (i >= len) throw new TokenizeError("unterminated escape in string literal");
           const esc = input[i]!;
-          // kintone 仕様では \" と \\ のエスケープ。そのまま取り込む
-          value += esc;
+          switch (esc) {
+            case "t":  value += "\t"; break;
+            case "n":  value += "\n"; break;
+            case "r":  value += "\r"; break;
+            case '"':  value += '"';  break;
+            case "'":  value += "'";  break;
+            case "\\": value += "\\"; break;
+            default:   value += esc;  break;
+          }
           i++;
         } else {
-          value += input[i]!;
+          value += c;
           i++;
         }
       }
