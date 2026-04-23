@@ -20,20 +20,22 @@ describe("アプリのレコード一覧のAPI", () => {
     await client.app.addFormFields({
       app: 1,
       properties: {
-        test: {
-          type: "SINGLE_LINE_TEXT",
-          code: "test",
-          label: "Test",
-        },
-        test2: {
-          type: "SINGLE_LINE_TEXT",
-          code: "test2",
-          label: "Test2",
-        },
-        postedAt: {
-          type: "DATETIME",
-          code: "postedAt",
-          label: "Posted At",
+        test: { type: "SINGLE_LINE_TEXT", code: "test", label: "Test" },
+        test2: { type: "SINGLE_LINE_TEXT", code: "test2", label: "Test2" },
+        postedAt: { type: "DATETIME", code: "postedAt", label: "Posted At" },
+        テスト: { type: "SINGLE_LINE_TEXT", code: "テスト", label: "テスト" },
+        理由: { type: "SINGLE_LINE_TEXT", code: "理由", label: "理由" },
+        理由_new: { type: "SINGLE_LINE_TEXT", code: "理由_new", label: "理由_new" },
+        日時: { type: "DATETIME", code: "日時", label: "日時" },
+        ステータス: {
+          type: "DROP_DOWN",
+          code: "ステータス",
+          label: "ステータス",
+          options: {
+            あ: { label: "あ", index: "0" },
+            い: { label: "い", index: "1" },
+            う: { label: "う", index: "2" },
+          },
         },
       },
     });
@@ -608,5 +610,30 @@ describe("クエリのエラーレスポンス / 上限チェック", () => {
     const json = await r.json();
     expect(json.code).toBe("GAIA_QU02");
     expect(json.message).toContain("10,000");
+  });
+
+  test("存在しないフィールドで GAIA_IQ11", async () => {
+    const r = await fetchRecords('xyz = "a"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ11");
+    expect(json.message).toContain("xyz");
+  });
+
+  test("MULTI_LINE_TEXT / RICH_TEXT に = は GAIA_IQ03", async () => {
+    // 追加フィールドなしで app 1 にフォームフィールド追加
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: { memo: { type: "MULTI_LINE_TEXT", code: "memo", label: "memo" } },
+      }),
+    });
+    const r = await fetchRecords('memo = "foo"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ03");
+    expect(json.message).toContain("memo");
+    expect(json.message).toContain("=");
   });
 });

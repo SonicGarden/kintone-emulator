@@ -5,6 +5,41 @@ import type { Condition, Expr, FieldRef, OrderBy, Query, Value } from "./ast";
 import type { ExpandContext } from "./functions";
 import { evalFunction } from "./functions";
 
+// クエリでサポートされる演算子のセット
+export class CompileError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+/** フィールドタイプごとに使用可能な演算子の許可リスト */
+const ALLOWED_OPS: Record<string, Set<string>> = {
+  RECORD_NUMBER:       new Set(["=", "!=", "<", ">", "<=", ">=", "in", "not in"]),
+  __ID__:              new Set(["=", "!=", "<", ">", "<=", ">=", "in", "not in"]),
+  CREATOR:             new Set(["in", "not in"]),
+  CREATED_TIME:        new Set(["=", "!=", "<", ">", "<=", ">="]),
+  MODIFIER:            new Set(["in", "not in"]),
+  UPDATED_TIME:        new Set(["=", "!=", "<", ">", "<=", ">="]),
+  SINGLE_LINE_TEXT:    new Set(["=", "!=", "in", "not in", "like", "not like"]),
+  LINK:                new Set(["=", "!=", "in", "not in", "like", "not like"]),
+  NUMBER:              new Set(["=", "!=", "<", ">", "<=", ">=", "in", "not in"]),
+  CALC:                new Set(["=", "!=", "<", ">", "<=", ">=", "in", "not in"]),
+  MULTI_LINE_TEXT:     new Set(["like", "not like", "is", "is not"]),
+  RICH_TEXT:           new Set(["like", "not like"]),
+  CHECK_BOX:           new Set(["in", "not in"]),
+  RADIO_BUTTON:        new Set(["in", "not in"]),
+  DROP_DOWN:           new Set(["in", "not in"]),
+  MULTI_SELECT:        new Set(["in", "not in"]),
+  FILE:                new Set(["like", "not like", "is", "is not"]),
+  DATE:                new Set(["=", "!=", "<", ">", "<=", ">="]),
+  TIME:                new Set(["=", "!=", "<", ">", "<=", ">="]),
+  DATETIME:            new Set(["=", "!=", "<", ">", "<=", ">="]),
+  USER_SELECT:         new Set(["in", "not in"]),
+  ORGANIZATION_SELECT: new Set(["in", "not in"]),
+  GROUP_SELECT:        new Set(["in", "not in"]),
+  STATUS:              new Set(["=", "!=", "in", "not in"]),
+};
+
 export type FieldTypeMap = Record<string, string>;
 
 export type CompileContext = {
@@ -55,6 +90,41 @@ const wrapped = (r: { expr: string; wrap?: "datetime" | "date" }): string => {
   return r.expr;
 };
 
+const resolveFieldType = (field: FieldRef, fieldTypes: FieldTypeMap): string => {
+  if (field.type === "id") return "__ID__";
+  const type = fieldTypes[field.code];
+  if (!type) {
+    throw new CompileError(
+      `指定されたフィールド（${field.code}）が見つかりません。`,
+      "GAIA_IQ11",
+    );
+  }
+  return type;
+};
+
+/** Condition から「実機の表記で言う演算子名」を取り出す */
+const conditionOp = (c: Condition): string => {
+  switch (c.type) {
+    case "cmp":  return c.op;
+    case "in":   return c.negate ? "not in" : "in";
+    case "like": return c.negate ? "not like" : "like";
+    case "is":   return c.negate ? "is not" : "is";
+  }
+};
+
+/** 演算子とフィールドタイプの組み合わせを検証（実機 GAIA_IQ03 準拠） */
+const assertOperatorAllowed = (field: FieldRef, fieldTypes: FieldTypeMap, op: string): void => {
+  const type = resolveFieldType(field, fieldTypes);
+  const allowed = ALLOWED_OPS[type];
+  if (!allowed || !allowed.has(op)) {
+    const label = field.type === "id" ? "$id" : field.code;
+    throw new CompileError(
+      `${label}フィールドのフィールドタイプには演算子${op}を使用できません。`,
+      "GAIA_IQ03",
+    );
+  }
+};
+
 class Compiler {
   private params: (string | number)[] = [];
 
@@ -99,6 +169,10 @@ class Compiler {
   }
 
   private compileCondition(c: Condition): string {
+    // 演算子とフィールドタイプの整合チェック（実機準拠）
+    const opLabel = conditionOp(c);
+    assertOperatorAllowed(c.field, this.ctx.fieldTypes, opLabel);
+
     const ref = compileFieldRef(c.field, this.ctx.fieldTypes);
     const col = wrapped(ref);
 

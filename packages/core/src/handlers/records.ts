@@ -5,6 +5,7 @@ import { deleteRecords, findRecord, findRecordByKey, insertRecord, updateRecord 
 import type { RecordRow } from "../db/records";
 import { ParseError, TokenizeError, compile, parseQuery } from "../query";
 import type { FieldTypeMap } from "../query";
+import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
@@ -121,6 +122,12 @@ export const get = ({ request, params }: HandlerArgs) => {
         return errorInvalidInput(
           { query: { messages: [locale === "en" ? "The query is invalid." : "クエリ記法が間違っています。"] } },
           locale,
+        );
+      }
+      if (e instanceof CompileError) {
+        return Response.json(
+          { code: e.code, id: "emulator-query-compile-error", message: e.message },
+          { status: 400 },
         );
       }
       return Response.json({ code: 'error', message: String(e) }, { status: 500 });

@@ -5,6 +5,8 @@ import type { FieldTypeMap } from "../../src/query";
 const FIELD_TYPES: FieldTypeMap = {
   deadline: "DATE",
   created: "CREATED_TIME",
+  作成者: "CREATOR",
+  組織: "ORGANIZATION_SELECT",
 };
 
 // Saturday
