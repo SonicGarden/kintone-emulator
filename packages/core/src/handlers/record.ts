@@ -1,8 +1,9 @@
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 import { dbSession } from "../db/client";
-import { findFieldTypes } from "../db/fields";
+import { findFields, findFieldTypes } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
+import { validateRequiredFields, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -33,6 +34,11 @@ export const get = ({ request, params }: HandlerArgs) => {
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
+
+  const fieldRows = findFields(db, body.app);
+  const errors = validateRequiredFields(fieldRows, body.record ?? {});
+  if (errors) return validationErrorResponse(errors);
+
   const inserted = insertRecord(db, body.app, body.record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
@@ -66,6 +72,11 @@ export const put = async ({ request, params }: HandlerArgs) => {
   }
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
+
+  const fieldRows = findFields(db, body.app);
+  const errors = validateRequiredFields(fieldRows, mergedRecord);
+  if (errors) return validationErrorResponse(errors);
+
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
     return Response.json({ message: 'Record not found.' }, { status: 404 });

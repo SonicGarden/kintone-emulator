@@ -1,4 +1,4 @@
-import { KintoneRestAPIClient } from "@kintone/rest-api-client";
+import { KintoneRestAPIClient, KintoneRestAPIError } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 
@@ -259,6 +259,178 @@ describe("アプリのレコードAPI", () => {
           value: "test2",
         },
       },
+    });
+  });
+});
+
+describe("required フィールドのバリデーション", () => {
+  const SESSION = "record-required-validation";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => {
+    BASE_URL = createBaseUrl(SESSION);
+  });
+
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({
+      baseUrl: BASE_URL,
+      auth: { apiToken: "test" },
+    });
+    appId = await createApp(BASE_URL, {
+      name: "必須テストアプリ",
+      properties: {
+        req_text:   { type: "SINGLE_LINE_TEXT", code: "req_text",   label: "必須テキスト", required: true },
+        opt_text:   { type: "SINGLE_LINE_TEXT", code: "opt_text",   label: "任意テキスト", required: false },
+        req_check:  { type: "CHECK_BOX",        code: "req_check",  label: "必須チェック", required: true,
+                      options: { A: { label: "A", index: "0" }, B: { label: "B", index: "1" } } },
+        req_user:   { type: "USER_SELECT",      code: "req_user",   label: "必須ユーザー", required: true },
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await finalizeSession(BASE_URL);
+  });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const putRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  test("required フィールドを省略して POST すると 400 が返る", async () => {
+    const response = await postRecord({ app: appId, record: {} });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.message).toBe("入力内容が正しくありません。");
+    expect(json.errors).toEqual({
+      "record.req_text.value":  { messages: ["必須です。"] },
+      "record.req_check.values": { messages: ["必須です。"] },
+      "record.req_user.values.value": { messages: ["必須です。"] },
+    });
+  });
+
+  test("required の SINGLE_LINE_TEXT に空文字を渡すと 400", async () => {
+    const response = await postRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "" },
+        req_check: { value: ["A"] },
+        req_user:  { value: [{ code: "u1" }] },
+      },
+    });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors).toEqual({
+      "record.req_text.value": { messages: ["必須です。"] },
+    });
+  });
+
+  test("required の CHECK_BOX に空配列を渡すと 400", async () => {
+    const response = await postRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "x" },
+        req_check: { value: [] },
+        req_user:  { value: [{ code: "u1" }] },
+      },
+    });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors).toEqual({
+      "record.req_check.values": { messages: ["必須です。"] },
+    });
+  });
+
+  test("required の USER_SELECT に空配列を渡すと 400", async () => {
+    const response = await postRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "x" },
+        req_check: { value: ["A"] },
+        req_user:  { value: [] },
+      },
+    });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors).toEqual({
+      "record.req_user.values.value": { messages: ["必須です。"] },
+    });
+  });
+
+  test("required をすべて埋めれば成功し、required でない opt_text は省略可", async () => {
+    const result = await client.record.addRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "x" },
+        req_check: { value: ["A"] },
+        req_user:  { value: [{ code: "u1" }] },
+      },
+    });
+    expect(result).toEqual({ id: expect.any(String), revision: "1" });
+  });
+
+  test("@kintone/rest-api-client 経由でも errors にアクセスできる", async () => {
+    expect.assertions(3);
+    try {
+      await client.record.addRecord({ app: appId, record: {} });
+    } catch (e) {
+      expect(e).toBeInstanceOf(KintoneRestAPIError);
+      const err = e as KintoneRestAPIError;
+      expect(err.code).toBe("CB_VA01");
+      expect(err.errors).toMatchObject({
+        "record.req_text.value": { messages: ["必須です。"] },
+      });
+    }
+  });
+
+  test("既存レコードの required を残して別フィールドだけ更新する PUT は成功", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "x" },
+        req_check: { value: ["A"] },
+        req_user:  { value: [{ code: "u1" }] },
+      },
+    });
+    const result = await client.record.updateRecord({
+      app: appId,
+      id,
+      record: { opt_text: { value: "hello" } },
+    });
+    expect(result.revision).toBe("2");
+  });
+
+  test("PUT で required フィールドを空文字に更新すると 400", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId,
+      record: {
+        req_text:  { value: "x" },
+        req_check: { value: ["A"] },
+        req_user:  { value: [{ code: "u1" }] },
+      },
+    });
+    const response = await putRecord({
+      app: appId,
+      id,
+      record: { req_text: { value: "" } },
+    });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors).toEqual({
+      "record.req_text.value": { messages: ["必須です。"] },
     });
   });
 });
