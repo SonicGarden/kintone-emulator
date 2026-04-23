@@ -3,7 +3,7 @@ import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
-import { detectLocale, validateRecord, validationErrorResponse } from "./validate";
+import { applyDefaults, detectLocale, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -37,10 +37,11 @@ export const post = async ({ request, params }: HandlerArgs) => {
 
   const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
-  const errors = validateRecord(fieldRows, body.record ?? {}, { db, appId: body.app, locale });
+  const record = applyDefaults(fieldRows, body.record ?? {});
+  const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
-  const inserted = insertRecord(db, body.app, body.record);
+  const inserted = insertRecord(db, body.app, record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }

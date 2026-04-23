@@ -87,6 +87,8 @@ type FieldDef = {
   maxValue?: string;
   minValue?: string;
   options?: Record<string, { label: string; index: string }>;
+  defaultValue?: string | unknown[];
+  defaultNowValue?: boolean;
 };
 
 type ParsedField = { code: string; def: FieldDef };
@@ -97,6 +99,42 @@ const parseFields = (fieldRows: FieldRow[]): ParsedField[] =>
 export type ValidationErrors = { [key: string]: { messages: string[] } };
 
 type RecordInput = Record<string, { value?: unknown }>;
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+// DATE: ローカル日付 "YYYY-MM-DD"
+const nowDate = (d = new Date()) =>
+  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// DATETIME: UTC "YYYY-MM-DDTHH:MM:SSZ"（秒を 00 に丸める）
+const nowDateTime = (d = new Date()) => {
+  const copy = new Date(d);
+  copy.setUTCSeconds(0, 0);
+  return copy.toISOString().replace(/\.\d{3}Z$/, "Z");
+};
+// TIME: ローカル時刻 "HH:MM"
+const nowTime = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+// 未送信フィールドに defaultValue / defaultNowValue を補完する。
+// 実 kintone の挙動:
+//   - record に key が存在しない場合のみ補完（`{value:""}` / `{value:[]}` は明示的な空として尊重）
+//   - defaultNowValue は DATE/DATETIME/TIME で defaultValue より優先
+export const applyDefaults = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
+  const result: RecordInput = { ...record };
+  for (const row of fieldRows) {
+    if (row.code in result) continue;
+    const def = JSON.parse(row.body) as FieldDef;
+    if (def.defaultNowValue === true) {
+      if (def.type === "DATE")     { result[row.code] = { value: nowDate() }; continue; }
+      if (def.type === "DATETIME") { result[row.code] = { value: nowDateTime() }; continue; }
+      if (def.type === "TIME")     { result[row.code] = { value: nowTime() }; continue; }
+    }
+    if (def.defaultValue != null) {
+      if (typeof def.defaultValue === "string" && def.defaultValue === "") continue;
+      if (Array.isArray(def.defaultValue) && def.defaultValue.length === 0) continue;
+      result[row.code] = { value: def.defaultValue };
+    }
+  }
+  return result;
+};
 
 const addError = (errors: ValidationErrors, key: string, message: string) => {
   if (errors[key]) {
