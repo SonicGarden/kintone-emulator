@@ -4,6 +4,7 @@ import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { applyLookups } from "./lookup";
+import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
@@ -66,9 +67,6 @@ export const post = async ({ request, params }: HandlerArgs) => {
   });
 };
 
-// フィールドコードに使用可能な文字: ASCII英数字・アンダースコア(\w)、ひらがな・カタカナ・漢字(\u3000-\u9fff)、全角英数字・記号(\uff00-\uffef)
-// SQL の JSON path 式にフィールドコードを直接埋め込むため、クォートや = など SQL で意味を持つ文字を弾く
-const FIELD_CODE_PATTERN = /^[\w\u3000-\u9fff\uff00-\uffef]+$/;
 
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
