@@ -1,12 +1,12 @@
 import sqlParser from 'node-sql-parser';
 import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
-import type { FieldTypeRow } from "../db/fields";
+import type { FieldRow, FieldTypeRow } from "../db/fields";
 import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByClause, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
-import { applyDefaults, detectLocale, validateRecord } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeSubtableNumbers, validateRecord } from "./validate";
 
 type FieldTypes = { [key: string]: FieldTypeRow["type"] };
 
@@ -53,16 +53,14 @@ const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
   }
 };
 
-const generateRecords = ({ recordResult, fieldTypes, fields }: {
+const generateRecords = ({ recordResult, fieldRows, fields }: {
   recordResult: { id: number, body: string, revision: number }[],
-  fieldTypes: FieldTypes,
+  fieldRows: FieldRow[],
   fields: string[]
 }) => {
   return recordResult.map((record) => {
     const body = JSON.parse(record.body);
-    for (const key in body) {
-      body[key].type = fieldTypes[key];
-    }
+    attachFieldTypes(body, fieldRows);
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) {
@@ -105,12 +103,13 @@ export const get = ({ request, params }: HandlerArgs) => {
     for (const row of fieldTypeRows) {
       fieldTypes[row.code] = row.type;
     }
+    const fieldRows = findFields(db, app!);
 
     if (query === null) {
       const recordResult = findRecords(db, app);
       return Response.json({
         totalCount: recordResult.length.toString(),
-        records: generateRecords({ recordResult, fieldTypes, fields }),
+        records: generateRecords({ recordResult, fieldRows, fields }),
       });
     }
 
@@ -134,7 +133,7 @@ export const get = ({ request, params }: HandlerArgs) => {
       const recordResult = findRecordsByClause(db, app, clause, hasWhereClause(query));
       return Response.json({
         totalCount: recordResult.length.toString(),
-        records: generateRecords({ recordResult, fieldTypes, fields }),
+        records: generateRecords({ recordResult, fieldRows, fields }),
       });
     } catch (e) {
       return Response.json(
@@ -199,8 +198,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   for (let i = 0; i < records.length; i++) {
     const withDefaults = applyDefaults(fieldRows, records[i]!);
-    prepared.push(withDefaults);
-    const errors = validateRecord(fieldRows, withDefaults, { db, appId: body.app, locale });
+    const normalized = normalizeSubtableNumbers(fieldRows, withDefaults);
+    prepared.push(normalized);
+    const errors = validateRecord(fieldRows, normalized, { db, appId: body.app, locale });
     if (errors) Object.assign(allErrors, prefixErrorKeys(errors, i));
   }
   if (Object.keys(allErrors).length > 0) return errorInvalidInput(allErrors, locale);
@@ -269,7 +269,9 @@ export const put = async ({ request, params }: HandlerArgs) => {
       return errorNotFoundRecord(item.updateKey ? item.updateKey.value : (item.id ?? ""), locale);
     }
 
-    const merged = { ...JSON.parse(target.body), ...item.record };
+    const existingBody = JSON.parse(target.body);
+    const incoming = mergeSubtableRows(fieldRows, existingBody, item.record);
+    const merged = normalizeSubtableNumbers(fieldRows, { ...existingBody, ...incoming });
     const errors = validateRecord(fieldRows, merged, {
       db, appId: body.app, excludeId: target.id, locale,
     });

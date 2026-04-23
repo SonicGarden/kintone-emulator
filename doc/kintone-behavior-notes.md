@@ -612,7 +612,160 @@ PUT ... validation NG at index 1
 
 ---
 
-## 9. その他観察
+## 9. SUBTABLE
+
+### 送信/格納形式
+
+- 入力: `items: { value: [{ value: { <innerCode>: { value: ... } } }, ...] }`
+- 保存/返却: 各行に自動採番された `id: "368"` が付く。行内の各フィールドに `type` も付く
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>, record:{items:{value:[
+  {value:{name:{value:"apple"},qty:{value:"3"}}},
+  {value:{name:{value:"kiwi"},qty:{value:"5"}}}
+]}}}
+-> 200 {"id":"1","revision":"1"}
+
+GET /k/v1/record.json?app=<APP_ID>&id=1
+-> {
+  "record": {
+    "items": {
+      "type": "SUBTABLE",
+      "value": [
+        {
+          "id": "368",
+          "value": {
+            "name": {"type":"SINGLE_LINE_TEXT","value":"apple"},
+            "qty":  {"type":"NUMBER","value":"3"},
+            "kind": {"type":"RADIO_BUTTON","value":"A"},        // defaultValue が補完
+            "note": {"type":"SINGLE_LINE_TEXT","value":"default_note"}  // 同上
+          }
+        },
+        { "id":"369", "value": {...} }
+      ]
+    }
+  }
+}
+```
+
+### バリデーションの errors キー形式
+
+共通パターン: `record.<subCode>.value[<rowIndex>].value.<innerCode>.<suffix>`
+
+| ケース | キー例 |
+|---|---|
+| required 欠落 | `record.items.value[0].value.name.value` |
+| maxLength 超過 | `record.items.value[1].value.name.value` |
+| NUMBER maxValue 超過 | `record.items.value[0].value.qty.value` |
+| RADIO_BUTTON options 違反 | `record.items.value[0].value.kind.value` |
+| CHECK_BOX options 違反 | `record.items.value[0].value.cbx.values[1].value` |
+
+```
+# required 欠落 (ja)
+POST /k/v1/record.json  body={app:<APP_ID>, record:{items:{value:[{value:{qty:{value:"1"}}}]}}}
+-> 400
+{
+  "code":"CB_VA01",
+  "id":"I5KUZxwtyWjRdEAG1ZYT",
+  "message":"入力内容が正しくありません。",
+  "errors":{
+    "record.items.value[0].value.name.value":{"messages":["必須です。"]}
+  }
+}
+
+# CHECK_BOX options 違反
+-> "errors":{
+  "record.items.value[0].value.cbx.values[1].value":{"messages":["\"Z\"は選択肢にありません。"]}
+}
+```
+
+### defaultValue の補完
+
+- 行が送られた場合、その行内の**未送信フィールド**を defaultValue で補完
+- 空配列 `items:{value:[]}` や items 未送信は補完対象にならない
+- 送信された行の明示的な値は上書きしない
+
+### PUT での行追加 / 更新 / 削除（重要）
+
+[公式ドキュメント](https://cybozu.dev/ja/kintone/docs/rest-api/records/update-record/) と実機検証（app=<APP_ID>）で確認した挙動:
+
+| 操作 | ドキュメント | 実機挙動 |
+|---|---|---|
+| SUBTABLE キー自体を送らない | テーブルのデータは保持 | 既存の全行そのまま残る |
+| `items.value = []`（空配列） | 記載なし | **全行削除** |
+| 行 `id` 指定あり、既存行と一致 | 「指定された id の行を更新」 | 既存行の内部 value と送信 value を**マージ**（送らない内部フィールドは保持） |
+| 行 `id` 指定あり、既存に無い id | 記載なし | **新規行扱いで新しい id を採番**（送った id は捨てられる） |
+| 行 `id` 指定なし | 「id を指定せずに行の値を変更すると、id が変わります」 | 新規行扱いで新しい id |
+| リクエストに含まれない既存行 | 「リクエストに指定しない行は、削除されます」 | **削除** |
+
+つまり **PUT の SUBTABLE は「value 配列全体で置き換え。ただし id 一致行は内部マージ」** と覚える。部分更新したければ既存全行を取得→必要な行を残して送る。
+
+### 実機検証結果（抜粋）
+
+```
+# 初期状態: items に id=381,382,383 の 3 行、各行 qty に値あり
+PUT /k/v1/record.json  body={app:<APP_ID>, id:8, record:{items:{value:[
+  {id:"381", value:{qty:{value:"99"}}},
+  {value:{name:{value:"new1"}}},
+  {value:{name:{value:"new2"},qty:{value:"1"}}}
+]}}}
+# GET した結果:
+#   id=381 name=row1 qty=99    ← 既存値 name 保持、qty のみ更新
+#   id=384 name=new1 qty=      ← 新規採番、new1
+#   id=385 name=new2 qty=1     ← 新規採番
+# → 既存 382, 383 は消えた。381 の name はそのまま（送らなかったので保持）
+
+# items キーを送らず top_title だけ更新 → items 3 行そのまま
+
+# items.value = [] → 全行削除
+
+# 存在しない id="9999999" を指定 → 新しい id（386）が振られて新規行として追加
+```
+
+### NUMBER 値の正規化と非数値の扱い（top-level / SUBTABLE の違い）
+
+実機検証（app=<APP_ID>）で判明した挙動:
+
+**保存時、数値として解釈可能な文字列は `Number()` でパースされて正規化された文字列で保存される**（top-level / SUBTABLE 共通）:
+
+| 送信値 | 保存値 |
+|---|---|
+| `"1.5e1"` | `"15"` |
+| `" 42 "` | `"42"`（前後空白は無視） |
+| `"3"` | `"3"` |
+
+**非数値を送ったときの挙動が top-level と SUBTABLE で異なる**:
+
+| 送信値 | top-level NUMBER | SUBTABLE 内 NUMBER |
+|---|---|---|
+| `"abc"` | 400 `record[<code>].value: ["数字でなければなりません。"]` | エラーなし、`""` が保存 |
+| `"12abc"` | 同上 400 | 同上、`""` 保存 |
+| `"1,000"`（カンマ区切り） | 同上 400 | 同上、`""` 保存 |
+| `""` / `null` | 空のまま（required なら必須エラー） | `""` 保存 |
+
+つまり **SUBTABLE 内では非数値は黙って空文字列に置き換えられる**。top-level は `CB_VA01 / 数字でなければなりません。` で弾かれる。
+
+```
+# top-level
+POST ... record={top_num:{value:"abc"}}
+-> 400 errors["record[top_num].value"]={messages:["数字でなければなりません。"]}
+
+# SUBTABLE 内
+POST ... record={items:{value:[{value:{qty:{value:"abc"}}}]}}
+-> 200 (保存成功)
+GET で qty を見ると value: ""
+```
+
+### その他
+
+- SUBTABLE 内 NUMBER の正規化は `validate.ts` の `normalizeSubtableNumbers` で実装済み。POST / PUT / 一括 API 全てで保存前に適用される
+- 対照的に top-level NUMBER は正規化未実装（`"1.5e1"` を送るとそのまま `"1.5e1"` で保存。実機は `"15"` に正規化）。必要なら別タスクで対応
+- SUBTABLE 自身に required / maxLength / defaultValue / unique 等は設定不可
+- SUBTABLE 内フィールドに `unique` は設定不可
+
+---
+
+## 10. その他観察
 
 ### preview/deploy のライフサイクル
 
