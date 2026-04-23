@@ -6,6 +6,26 @@ import { insertRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults } from "./validate";
 
+// 実 kintone ではアプリ作成時に RECORD_NUMBER フィールドが常に存在する。
+// setup/app.json で properties が指定されていても、ユーザーが RECORD_NUMBER を明示していなければ自動補完する。
+// フィールドコードは ja の既定値 "レコード番号"（英語環境では "Record_number"、後からフィールドコード変更も可）。
+const DEFAULT_RECORD_NUMBER_CODE = "レコード番号";
+
+const withDefaultSystemFields = (properties: FieldProperties): FieldProperties => {
+  const hasRecordNumber = Object.values(properties).some(
+    (p) => (p as { type?: string }).type === "RECORD_NUMBER",
+  );
+  if (hasRecordNumber) return properties;
+  return {
+    ...properties,
+    [DEFAULT_RECORD_NUMBER_CODE]: {
+      type: "RECORD_NUMBER",
+      code: DEFAULT_RECORD_NUMBER_CODE,
+      label: DEFAULT_RECORD_NUMBER_CODE,
+    },
+  };
+};
+
 const toPositiveInt = (value: unknown): number | undefined => {
   if (value == null) return undefined;
   const n = Number(value);
@@ -29,7 +49,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
       if (!app) throw new Error('Failed to create app.');
 
       if (body.properties) {
-        insertFields(db, app.id, body.properties as FieldProperties);
+        insertFields(db, app.id, withDefaultSystemFields(body.properties as FieldProperties));
       }
 
       const recordIds: string[] = [];

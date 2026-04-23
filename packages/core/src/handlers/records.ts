@@ -61,7 +61,7 @@ const generateRecords = ({ recordResult, fieldRows, fields }: {
 }) => {
   return recordResult.map((record) => {
     const body = JSON.parse(record.body);
-    attachFieldTypes(body, fieldRows);
+    attachFieldTypes(body, fieldRows, record.id);
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) {
@@ -70,7 +70,7 @@ const generateRecords = ({ recordResult, fieldRows, fields }: {
       }
     }
     body['$revision'] = { value: record.revision.toString(), type: '__REVISION__' };
-    body['$id'] = { value: record.id.toString(), type: 'RECORD_NUMBER' };
+    body['$id'] = { value: record.id.toString(), type: '__ID__' };
     return body;
   });
 };

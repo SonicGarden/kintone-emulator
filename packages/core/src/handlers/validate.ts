@@ -108,7 +108,9 @@ const subtableFieldsToParsed = (fields: Record<string, FieldDef>): ParsedField[]
 
 export type ValidationErrors = { [key: string]: { messages: string[] } };
 
-type RecordInput = Record<string, { value?: unknown }>;
+// レコードのフィールド 1 つ分のセル。入力時は `type` 無し、レスポンス時は `type` が付く。
+type RecordCell = { value?: unknown; type?: string };
+type RecordInput = Record<string, RecordCell>;
 type SubtableRow = { id?: string; value?: RecordInput };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -408,8 +410,14 @@ export const validateRecord = (
 };
 
 // getRecord / getRecords 応答で各フィールドに type を注入するヘルパー。
-// SUBTABLE の場合は行内の各フィールドにも type を注入する。
-export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void => {
+// - SUBTABLE の場合は行内の各フィールドにも type を注入する
+// - recordId が渡された場合、RECORD_NUMBER フィールド（レコード番号等のフィールドコード）を
+//   `{type: "RECORD_NUMBER", value: <recordId>}` として補完する（body には保存されていないため）
+export const attachFieldTypes = (
+  body: RecordInput,
+  fieldRows: FieldRow[],
+  recordId?: number | string,
+): void => {
   const topTypes: Record<string, string> = {};
   const subTypes: Record<string, Record<string, string>> = {};
   for (const row of fieldRows) {
@@ -421,11 +429,14 @@ export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void
         subTypes[row.code]![c] = f.type;
       }
     }
+    if (def.type === "RECORD_NUMBER" && recordId != null && !(row.code in body)) {
+      body[row.code] = { type: "RECORD_NUMBER", value: String(recordId) };
+    }
   }
   for (const code of Object.keys(body)) {
     const t = topTypes[code];
     if (!t) continue;
-    (body[code] as { type?: string }).type = t;
+    body[code]!.type = t;
     if (t === "SUBTABLE") {
       const rows = body[code]?.value;
       if (!Array.isArray(rows)) continue;
@@ -433,7 +444,7 @@ export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void
         if (!r.value) continue;
         for (const c of Object.keys(r.value)) {
           const st = subTypes[code]?.[c];
-          if (st) (r.value[c] as { type?: string }).type = st;
+          if (st) r.value[c]!.type = st;
         }
       }
     }

@@ -145,6 +145,60 @@ describe("アプリ作成API", () => {
     expect(formResult.properties).toEqual({});
   });
 
+  test("properties 指定時は RECORD_NUMBER（レコード番号）が自動補完される", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "自動補完アプリ",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+    });
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties["レコード番号"]).toMatchObject({
+      type: "RECORD_NUMBER",
+      code: "レコード番号",
+    });
+  });
+
+  test("ユーザーが RECORD_NUMBER を明示していれば自動補完しない", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "明示 RECORD_NUMBER アプリ",
+      properties: {
+        my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
+        foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
+      },
+    });
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties).toHaveProperty("my_no");
+    expect(properties).not.toHaveProperty("レコード番号");
+  });
+
+  test("レコード取得時、RECORD_NUMBER フィールドコードでも値が返り、$id の type は __ID__", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "RECORD_NUMBER 返却テスト",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+      records: [{ foo: { value: "x" } }],
+    });
+    const { record } = await client.record.getRecord({ app: appId, id: 1 });
+    expect(record.$id).toEqual({ value: "1", type: "__ID__" });
+    expect(record["レコード番号"]).toEqual({ value: "1", type: "RECORD_NUMBER" });
+  });
+
+  test("カスタムフィールドコードの RECORD_NUMBER でも値が返る", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "カスタム RECORD_NUMBER",
+      properties: {
+        my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
+        foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
+      },
+      records: [{ foo: { value: "x" } }],
+    });
+    const { record } = await client.record.getRecord({ app: appId, id: 1 });
+    expect(record.my_no).toEqual({ value: "1", type: "RECORD_NUMBER" });
+    expect(record.$id).toEqual({ value: "1", type: "__ID__" });
+  });
+
   test("複数フィールドを一度に登録できる", async () => {
     const client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,

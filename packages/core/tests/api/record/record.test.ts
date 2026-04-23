@@ -54,7 +54,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "1",
@@ -83,7 +83,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "2",
@@ -168,11 +168,11 @@ describe("アプリのレコードAPI", () => {
     });
 
     const record100 = await client!.record.getRecord({ app: appId, id: 100 });
-    expect(record100.record.$id).toEqual({ value: "100", type: "RECORD_NUMBER" });
+    expect(record100.record.$id).toEqual({ value: "100", type: "__ID__" });
     expect(record100.record.title).toEqual({ value: "レコード100", type: "SINGLE_LINE_TEXT" });
 
     const record200 = await client!.record.getRecord({ app: appId, id: 200 });
-    expect(record200.record.$id).toEqual({ value: "200", type: "RECORD_NUMBER" });
+    expect(record200.record.$id).toEqual({ value: "200", type: "__ID__" });
     expect(record200.record.title).toEqual({ value: "レコード200", type: "SINGLE_LINE_TEXT" });
   });
 
@@ -266,7 +266,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "2",
@@ -1580,5 +1580,90 @@ describe("ルックアップ（LOOKUP）", () => {
     // ルックアップ側は変わらない
     const { record } = await client.record.getRecord({ app: lookupAppId, id });
     expect(record.prod_name).toMatchObject({ value: "りんご" });
+  });
+});
+
+describe("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
+  const SESSION = "record-lookup-recno";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let masterAppId: number;
+  let lookupAppId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+
+    masterAppId = await createApp(BASE_URL, {
+      name: "商品マスター",
+      properties: {
+        name: { type: "SINGLE_LINE_TEXT", code: "name", label: "名前" },
+      },
+      records: [
+        { name: { value: "一番目" } },
+        { name: { value: "二番目" } },
+        { name: { value: "三番目" } },
+      ],
+    });
+
+    lookupAppId = await createApp(BASE_URL, {
+      name: "参照",
+      properties: {
+        by_no: {
+          type: "NUMBER", code: "by_no", label: "by_no",
+          lookup: {
+            relatedApp: { app: String(masterAppId) },
+            relatedKeyField: "レコード番号",
+            fieldMappings: [
+              { field: "copied_no", relatedField: "レコード番号" },
+              { field: "copied_name", relatedField: "name" },
+            ],
+            lookupPickerFields: ["レコード番号"],
+            filterCond: "",
+            sort: "",
+          },
+        },
+        copied_no:   { type: "NUMBER", code: "copied_no", label: "copied_no" },
+        copied_name: { type: "SINGLE_LINE_TEXT", code: "copied_name", label: "copied_name" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("レコード番号で参照先レコードを特定しコピーする", async () => {
+    // 2 番目のマスターレコード（name=二番目）をレコード番号で参照
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { by_no: { value: "2" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.copied_no).toMatchObject({ value: "2" });
+    expect(record.copied_name).toMatchObject({ value: "二番目" });
+  });
+
+  test("存在しないレコード番号で GAIA_LO04", async () => {
+    const r = await postRecord({
+      app: lookupAppId, record: { by_no: { value: "9999" } },
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+  });
+
+  test("レコード番号キーを空で送るとコピー先もクリア", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { by_no: { value: "1" } },
+    });
+    await client.record.updateRecord({
+      app: lookupAppId, id, record: { by_no: { value: "" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.copied_no).toMatchObject({ value: "" });
+    expect(record.copied_name).toMatchObject({ value: "" });
   });
 });
