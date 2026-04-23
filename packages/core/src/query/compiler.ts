@@ -42,8 +42,13 @@ const ALLOWED_OPS: Record<string, Set<string>> = {
 
 export type FieldTypeMap = Record<string, string>;
 
+/** SUBTABLE 内フィールドの情報。キーは内側のフィールドコード */
+export type SubtableFieldMap = Record<string, { subtableCode: string; type: string }>;
+
 export type CompileContext = {
   fieldTypes: FieldTypeMap;
+  /** SUBTABLE 内フィールドの型マップ（内側フィールドコード → { subtableCode, type }） */
+  subtableFields?: SubtableFieldMap;
   expandCtx?: ExpandContext;
 };
 
@@ -64,23 +69,36 @@ export type Compiled = {
  * フィールド参照を SQL の列式に変換する。
  * 比較対象の値の型（日付系かどうか）に応じて datetime() でラップするかを決める。
  */
-const compileFieldRef = (field: FieldRef, fieldTypes: FieldTypeMap): { expr: string; wrap?: "datetime" | "date" } => {
+type FieldExpr = { expr: string; wrap?: "datetime" | "date" };
+
+/** NUMBER / CALC は TEXT で保存されているので REAL にキャストしないと SQLite が文字列比較で誤る */
+const numericCast = (expr: string, type: string): string => {
+  if (type === "NUMBER" || type === "CALC") return `CAST(${expr} AS REAL)`;
+  return expr;
+};
+
+/** トップレベルフィールドの SQL 列式を生成 */
+const topLevelFieldExpr = (field: FieldRef, fieldTypes: FieldTypeMap): FieldExpr => {
   if (field.type === "id") return { expr: "id" };
   const code = field.code;
   const type = fieldTypes[code];
   switch (type) {
-    case "RECORD_NUMBER":
-      return { expr: "id" };
-    case "CREATED_TIME":
-      return { expr: "created_at", wrap: "datetime" };
-    case "UPDATED_TIME":
-      return { expr: "updated_at", wrap: "datetime" };
-    case "DATETIME":
-      return { expr: `body->>'$.${code}.value'`, wrap: "datetime" };
-    case "DATE":
-      return { expr: `body->>'$.${code}.value'`, wrap: "date" };
-    default:
-      return { expr: `body->>'$.${code}.value'` };
+    case "RECORD_NUMBER": return { expr: "id" };
+    case "CREATED_TIME":  return { expr: "created_at", wrap: "datetime" };
+    case "UPDATED_TIME":  return { expr: "updated_at", wrap: "datetime" };
+    case "DATETIME":      return { expr: `body->>'$.${code}.value'`, wrap: "datetime" };
+    case "DATE":          return { expr: `body->>'$.${code}.value'`, wrap: "date" };
+    default:              return { expr: numericCast(`body->>'$.${code}.value'`, type ?? "") };
+  }
+};
+
+/** SUBTABLE 内フィールドへの参照を EXISTS サブクエリで扱うときの、内側の列式 */
+const subtableInnerExpr = (innerCode: string, type: string): FieldExpr => {
+  const base = `sub.value->>'$.value.${innerCode}.value'`;
+  switch (type) {
+    case "DATETIME": return { expr: base, wrap: "datetime" };
+    case "DATE":     return { expr: base, wrap: "date" };
+    default:         return { expr: numericCast(base, type) };
   }
 };
 
@@ -90,16 +108,25 @@ const wrapped = (r: { expr: string; wrap?: "datetime" | "date" }): string => {
   return r.expr;
 };
 
-const resolveFieldType = (field: FieldRef, fieldTypes: FieldTypeMap): string => {
-  if (field.type === "id") return "__ID__";
-  const type = fieldTypes[field.code];
-  if (!type) {
-    throw new CompileError(
-      `指定されたフィールド（${field.code}）が見つかりません。`,
-      "GAIA_IQ11",
-    );
-  }
-  return type;
+type ResolvedField =
+  | { location: "top"; type: string }
+  | { location: "subtable"; subtableCode: string; type: string };
+
+const resolveField = (field: FieldRef, ctx: CompileContext): ResolvedField => {
+  if (field.type === "id") return { location: "top", type: "__ID__" };
+  const top = ctx.fieldTypes[field.code];
+  if (top) return { location: "top", type: top };
+  const sub = ctx.subtableFields?.[field.code];
+  if (sub) return { location: "subtable", subtableCode: sub.subtableCode, type: sub.type };
+  throw new CompileError(
+    `指定されたフィールド（${field.code}）が見つかりません。`,
+    "GAIA_IQ11",
+  );
+};
+
+/** 「否定」型の条件か（not in / not like / is not empty） */
+const isNegativeCondition = (c: Condition): boolean => {
+  return (c.type === "in" || c.type === "like" || c.type === "is") && c.negate;
 };
 
 /** Condition から「実機の表記で言う演算子名」を取り出す */
@@ -112,12 +139,18 @@ const conditionOp = (c: Condition): string => {
   }
 };
 
-/** 演算子とフィールドタイプの組み合わせを検証（実機 GAIA_IQ03 準拠） */
-const assertOperatorAllowed = (field: FieldRef, fieldTypes: FieldTypeMap, op: string): void => {
-  const type = resolveFieldType(field, fieldTypes);
-  const allowed = ALLOWED_OPS[type];
+/** 演算子とフィールドタイプの組み合わせを検証（実機 GAIA_IQ03 / GAIA_IQ07 準拠） */
+const assertOperatorAllowed = (field: FieldRef, resolved: ResolvedField, op: string): void => {
+  const label = field.type === "id" ? "$id" : field.code;
+  // SUBTABLE 内フィールドに = / != は不可（GAIA_IQ07）
+  if (resolved.location === "subtable" && (op === "=" || op === "!=")) {
+    throw new CompileError(
+      `テーブルに設定している場合、${label}フィールドのフィールドタイプには、演算子${op}を使用できません。`,
+      "GAIA_IQ07",
+    );
+  }
+  const allowed = ALLOWED_OPS[resolved.type];
   if (!allowed || !allowed.has(op)) {
-    const label = field.type === "id" ? "$id" : field.code;
     throw new CompileError(
       `${label}フィールドのフィールドタイプには演算子${op}を使用できません。`,
       "GAIA_IQ03",
@@ -151,7 +184,14 @@ class Compiler {
   }
 
   private compileOrderBy(o: OrderBy): string {
-    const ref = compileFieldRef(o.field, this.ctx.fieldTypes);
+    const resolved = resolveField(o.field, this.ctx);
+    if (resolved.location === "subtable") {
+      throw new CompileError(
+        `テーブル内のフィールド（${(o.field as { code: string }).code}）を order by に指定することはできません。`,
+        "GAIA_IQ03",
+      );
+    }
+    const ref = topLevelFieldExpr(o.field, this.ctx.fieldTypes);
     return `${wrapped(ref)} ${o.direction.toUpperCase()}`;
   }
 
@@ -170,18 +210,26 @@ class Compiler {
 
   private compileCondition(c: Condition): string {
     // 演算子とフィールドタイプの整合チェック（実機準拠）
+    const resolved = resolveField(c.field, this.ctx);
     const opLabel = conditionOp(c);
-    assertOperatorAllowed(c.field, this.ctx.fieldTypes, opLabel);
+    assertOperatorAllowed(c.field, resolved, opLabel);
 
-    const ref = compileFieldRef(c.field, this.ctx.fieldTypes);
+    if (resolved.location === "subtable") {
+      return this.compileSubtableCondition(c, resolved);
+    }
+
+    const ref = topLevelFieldExpr(c.field, this.ctx.fieldTypes);
+    return this.buildSimpleCondition(c, ref);
+  }
+
+  /** top-level フィールドに対する条件を SQL 式として生成 */
+  private buildSimpleCondition(c: Condition, ref: FieldExpr): string {
     const col = wrapped(ref);
-
     switch (c.type) {
       case "cmp": {
         const { op, value } = c;
         const resolved = this.resolveValue(value, ref.wrap);
         if (resolved.kind === "range") {
-          // = / != に対して範囲を展開する。他の比較演算子は範囲の端を使う。
           if (op === "=") {
             const startPh = this.placeholder(resolved.start);
             const endPh = this.placeholder(resolved.end);
@@ -192,7 +240,6 @@ class Compiler {
             const endPh = this.placeholder(resolved.end);
             return `${col} NOT BETWEEN ${this.wrapLiteral(startPh, ref.wrap)} AND ${this.wrapLiteral(endPh, ref.wrap)}`;
           }
-          // <, <=, >, >= は端点を使う
           const boundary = (op === "<" || op === "<=") ? resolved.start : resolved.end;
           const ph = this.placeholder(boundary);
           return `${col} ${op} ${this.wrapLiteral(ph, ref.wrap)}`;
@@ -213,17 +260,39 @@ class Compiler {
       case "like": {
         const resolved = this.resolveValue(c.value, undefined);
         const raw = resolved.kind === "range" ? resolved.start : resolved.literal;
-        // kintone は単語検索だが SQLite には相当機能が無いので部分一致で代用
         const ph = this.placeholder(`%${String(raw)}%`);
         return `${col} ${c.negate ? "NOT LIKE" : "LIKE"} ${ph}`;
       }
       case "is": {
-        // is empty / is not empty
-        // 空 = NULL or 空文字 or 空白文字のみ
         const emptyCond = `(${col} IS NULL OR trim(${col}) = '')`;
         return c.negate ? `NOT ${emptyCond}` : emptyCond;
       }
     }
+  }
+
+  /**
+   * SUBTABLE 内フィールドに対する条件は、行単位の EXISTS / NOT EXISTS に変換する。
+   * - positive (in / like / >, < 等 / is empty): EXISTS (いずれかの行が条件を満たす)
+   * - negative (not in / not like / is not empty): NOT EXISTS (条件を満たす行が無い = 全行が not 条件を満たす)
+   * これにより実機と同じ「少なくとも 1 行 / 全行」のセマンティクスになる。
+   */
+  private compileSubtableCondition(
+    c: Condition,
+    resolved: { location: "subtable"; subtableCode: string; type: string },
+  ): string {
+    const innerCode = (c.field as { code: string }).code;
+    const ref = subtableInnerExpr(innerCode, resolved.type);
+    // 常に positive 側の条件を生成して、negative フラグに応じて NOT EXISTS でラップする
+    const positiveCondition = { ...c, negate: false } as Condition;
+    const innerSql = this.buildSimpleCondition(positiveCondition, ref);
+    const enumerator = `json_each(body, '$.${resolved.subtableCode}.value')`;
+    const existsClause = `EXISTS (SELECT 1 FROM ${enumerator} AS sub WHERE ${innerSql})`;
+    const negate = isNegativeCondition(c);
+    if (!negate) return existsClause;
+    // negative は「1 行もマッチしない」ではなく「行があり、どの行もマッチしない」。
+    // 空配列のレコードは返さないのが実 kintone の挙動
+    const hasRows = `EXISTS (SELECT 1 FROM ${enumerator} AS sub)`;
+    return `(${hasRows} AND NOT ${existsClause})`;
   }
 
   private wrapLiteral(placeholder: string, wrap?: "datetime" | "date"): string {

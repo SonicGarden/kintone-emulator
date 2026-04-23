@@ -4,7 +4,7 @@ import type { FieldRow } from "../db/fields";
 import { deleteRecords, findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { RecordRow } from "../db/records";
 import { ParseError, TokenizeError, compile, parseQuery } from "../query";
-import type { FieldTypeMap } from "../query";
+import type { FieldTypeMap, SubtableFieldMap } from "../query";
 import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { applyLookups } from "./lookup";
@@ -62,8 +62,15 @@ export const get = ({ request, params }: HandlerArgs) => {
 
     const fieldRows = findFields(db, app!);
     const fieldTypes: FieldTypeMap = {};
+    const subtableFields: SubtableFieldMap = {};
     for (const row of fieldRows) {
-      fieldTypes[row.code] = (JSON.parse(row.body) as { type: string }).type;
+      const def = JSON.parse(row.body) as { type: string; fields?: Record<string, { type: string }> };
+      fieldTypes[row.code] = def.type;
+      if (def.type === "SUBTABLE" && def.fields) {
+        for (const [innerCode, innerDef] of Object.entries(def.fields)) {
+          subtableFields[innerCode] = { subtableCode: row.code, type: innerDef.type };
+        }
+      }
     }
 
     const locale = detectLocale(request.headers.get("accept-language"));
@@ -99,7 +106,7 @@ export const get = ({ request, params }: HandlerArgs) => {
       if ((ast.limit != null && ast.limit < 0) || (ast.offset != null && ast.offset < 0)) {
         return errorInvalidInput({}, locale);
       }
-      const compiled = compile(ast, { fieldTypes });
+      const compiled = compile(ast, { fieldTypes, subtableFields });
       const whereClause = compiled.where ? `AND ${compiled.where}` : "";
       const orderClause = compiled.orderBy ? `ORDER BY ${compiled.orderBy}` : "";
       const limitClause = compiled.limit != null ? `LIMIT ${compiled.limit}` : "";

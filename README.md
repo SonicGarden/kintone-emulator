@@ -250,7 +250,7 @@ npx --package @sonicgarden/kintone-emulator-cli sg-kintone export-app \
 - `like` / `not like` は SQLite の LIKE `%...%` で部分一致として代用（実 kintone は単語検索・添付ファイル内検索など独自挙動あり）
 - `LOGINUSER()` / `PRIMARY_ORGANIZATION()` はパーサー自体は対応しているが、ハンドラー層で認証ユーザー情報を `ExpandContext` に渡す仕組みが未実装のため、実行すると「要設定」エラー
 - 関連レコードの参照記法（`Company.Name` のような入れ子フィールド）は未対応
-- SUBTABLE 内フィールド参照は未対応
+- SUBTABLE 内フィールド参照は実装済み（`in` / `not in` / `>` / `<` / `>=` / `<=` / `like` / `not like` / `is empty` / `is not empty` を EXISTS サブクエリで評価）。ただし同一 SUBTABLE 内の AND 結合は実装が「行独立判定」で、実機の「同一行制約」とは挙動が異なる
 - DATETIME と `TODAY()` などの範囲関数の組み合わせはサーバータイムゾーン依存（実機は JST 基準で「今日」を判定、エミュレーターはローカル TZ で判定）
 
 実機観察メモ: [`doc/kintone-query-behavior.md`](doc/kintone-query-behavior.md)

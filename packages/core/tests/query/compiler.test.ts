@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { compile, parseQuery } from "../../src/query";
-import type { FieldTypeMap } from "../../src/query";
+import type { FieldTypeMap, SubtableFieldMap } from "../../src/query";
 
 const FIELD_TYPES: FieldTypeMap = {
   title: "SINGLE_LINE_TEXT",
@@ -27,9 +27,11 @@ describe("compile: 基本", () => {
     expect(c.params).toEqual(["foo"]);
   });
 
-  test("数値 >= と <= の AND", () => {
+  test("数値 >= と <= の AND（NUMBER は REAL にキャストして比較）", () => {
     const c = doCompile("num >= 10 and num <= 20");
-    expect(c.where).toBe("(body->>'$.num.value' >= ?) AND (body->>'$.num.value' <= ?)");
+    expect(c.where).toBe(
+      "(CAST(body->>'$.num.value' AS REAL) >= ?) AND (CAST(body->>'$.num.value' AS REAL) <= ?)",
+    );
     expect(c.params).toEqual([10, 20]);
   });
 
@@ -125,6 +127,76 @@ describe("compile: order by / limit / offset", () => {
     expect(c.orderBy).toBe("id ASC, datetime(updated_at) DESC");
     expect(c.limit).toBe(50);
     expect(c.offset).toBe(100);
+  });
+});
+
+describe("compile: SUBTABLE 内フィールド", () => {
+  const SUBTABLE_FIELDS: SubtableFieldMap = {
+    item_name: { subtableCode: "items", type: "SINGLE_LINE_TEXT" },
+    item_qty:  { subtableCode: "items", type: "NUMBER" },
+    item_date: { subtableCode: "items", type: "DATE" },
+    item_memo: { subtableCode: "items", type: "MULTI_LINE_TEXT" },
+  };
+  const FTYPES: FieldTypeMap = { title: "SINGLE_LINE_TEXT" };
+
+  const doc = (q: string) => compile(parseQuery(q), { fieldTypes: FTYPES, subtableFields: SUBTABLE_FIELDS });
+
+  test("SUBTABLE 内の in は EXISTS (json_each(...))", () => {
+    const c = doc('item_name in ("foo")');
+    expect(c.where).toContain("EXISTS");
+    expect(c.where).toContain("json_each(body, '$.items.value')");
+    expect(c.where).toContain("sub.value->>'$.value.item_name.value'");
+    expect(c.where).toContain("IN (?)");
+    expect(c.params).toEqual(["foo"]);
+  });
+
+  test("SUBTABLE 内の not in は NOT EXISTS でラップ", () => {
+    const c = doc('item_name not in ("foo")');
+    expect(c.where!.startsWith("NOT EXISTS") || c.where!.includes("NOT EXISTS")).toBe(true);
+    // 内側は positive （IN）
+    expect(c.where).toContain("IN (?)");
+  });
+
+  test("SUBTABLE 内の like", () => {
+    const c = doc('item_name like "foo"');
+    expect(c.where).toContain("EXISTS");
+    expect(c.where).toContain("LIKE ?");
+    expect(c.params).toEqual(["%foo%"]);
+  });
+
+  test("SUBTABLE 内の > 比較も EXISTS で実現", () => {
+    const c = doc('item_qty > 10');
+    expect(c.where).toContain("EXISTS");
+    expect(c.where).toContain("> ?");
+    expect(c.params).toEqual([10]);
+  });
+
+  test("SUBTABLE 内 MULTI_LINE_TEXT の is empty / is not empty", () => {
+    const c1 = doc('item_memo is empty');
+    expect(c1.where).toContain("EXISTS");
+    expect(c1.where).toContain("IS NULL");
+    const c2 = doc('item_memo is not empty');
+    // negative は「行がある AND どの行も空でない」という形
+    expect(c2.where).toContain("AND NOT EXISTS");
+  });
+
+  test("SUBTABLE 内 DATE に =・!= は GAIA_IQ07", () => {
+    expect(() => doc('item_date = "2026-01-01"')).toThrow(/テーブル.*item_date.*=/);
+    expect(() => doc('item_date != "2026-01-01"')).toThrow(/テーブル.*item_date.*!=/);
+  });
+
+  test("SUBTABLE 内 SINGLE_LINE_TEXT に =・!= は GAIA_IQ07", () => {
+    expect(() => doc('item_name = "x"')).toThrow(/テーブル/);
+  });
+
+  test("SUBTABLE と top-level の混合は AND で結合", () => {
+    const c = doc('title = "top" and item_name in ("foo")');
+    expect(c.where).toContain("body->>'$.title.value' = ?");
+    expect(c.where).toContain("EXISTS");
+  });
+
+  test("SUBTABLE 内を order by に指定するとエラー", () => {
+    expect(() => doc('order by item_name asc')).toThrow();
   });
 });
 

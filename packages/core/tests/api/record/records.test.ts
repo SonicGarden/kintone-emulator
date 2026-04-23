@@ -508,6 +508,83 @@ describe("一括 addRecords / updateRecords", () => {
   });
 });
 
+describe("SUBTABLE 内フィールドでの検索クエリ", () => {
+  const SESSION = "records-subtable-query";
+  let URL_BASE: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(URL_BASE);
+    client = new KintoneRestAPIClient({ baseUrl: URL_BASE, auth: { apiToken: "test" } });
+    appId = await createApp(URL_BASE, {
+      name: "subtable query",
+      properties: {
+        top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: {
+            name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" },
+            qty:  { type: "NUMBER", code: "qty", label: "qty" },
+          },
+        },
+      },
+      records: [
+        { top_title: { value: "r1" }, items: { value: [
+          { value: { name: { value: "apple" },  qty: { value: "100" } } },
+          { value: { name: { value: "orange" }, qty: { value: "200" } } },
+        ] } },
+        { top_title: { value: "r2" }, items: { value: [
+          { value: { name: { value: "shared" }, qty: { value: "50" } } },
+        ] } },
+        { top_title: { value: "r3" }, items: { value: [] } },
+      ],
+    });
+  });
+  afterEach(async () => { await finalizeSession(URL_BASE); });
+
+  test("SUBTABLE 内フィールド in で 1 行でもマッチするレコードが返る", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple")',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.top_title!.value).toBe("r1");
+  });
+
+  test("SUBTABLE 内フィールド > で数値比較", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: "qty > 50",
+    });
+    // r1 の行2 (200) がマッチするので r1 だけ
+    expect(records.map((r) => r.top_title!.value).sort()).toEqual(["r1"]);
+  });
+
+  test("同一 SUBTABLE の AND は同一行制約（not yet - 実装は行独立）", async () => {
+    // 実装は行独立なので、shared/50 持つ r2 も、apple/100 持つ r1 も返る
+    // 実機は同一行制約だが、Phase 1 では行独立で許容。ドキュメントに明記
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple") and qty in ("100")',
+    });
+    expect(records.map((r) => r.top_title!.value)).toContain("r1");
+  });
+
+  test("not in は全行条件（r1 は shared を含まないので返る、r2 は shared を含むので返らない）", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name not in ("shared")',
+    });
+    expect(records.map((r) => r.top_title!.value).sort()).toEqual(["r1"]);
+  });
+
+  test("top-level と SUBTABLE の混合クエリ", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'top_title = "r1" and name in ("apple")',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.top_title!.value).toBe("r1");
+  });
+});
+
 describe("システムフィールドコードでの検索クエリ", () => {
   const SESSION = "records-system-fields-query";
   let QUERY_URL: string;
@@ -618,6 +695,27 @@ describe("クエリのエラーレスポンス / 上限チェック", () => {
     const json = await r.json();
     expect(json.code).toBe("GAIA_IQ11");
     expect(json.message).toContain("xyz");
+  });
+
+  test("SUBTABLE 内フィールドへの = は GAIA_IQ07", async () => {
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: {
+          items: {
+            type: "SUBTABLE", code: "items", label: "items",
+            fields: { name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" } },
+          },
+        },
+      }),
+    });
+    const r = await fetchRecords('name = "x"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ07");
+    expect(json.message).toContain("テーブル");
+    expect(json.message).toContain("name");
   });
 
   test("MULTI_LINE_TEXT / RICH_TEXT に = は GAIA_IQ03", async () => {
