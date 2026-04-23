@@ -17,3 +17,11 @@ node_modules
 
 # Directory for issues to be processed by agent
 /.issues
+
+.pnpm-store
+
+.claude/settings.local.json
+.claude/.plans
+
+.devcontainer/.ssh_authorized_keys
+.devcontainer/.tmux.conf

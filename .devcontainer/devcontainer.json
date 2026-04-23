@@ -1,0 +1,57 @@
+{
+  "name": "kintone-emulator",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:Asia/Tokyo}",
+      "GIT_DELTA_VERSION": "0.18.2",
+      "ZSH_IN_DOCKER_VERSION": "1.2.0",
+      "PNPM_VERSION": "10.30.2",
+      "FIREWALL_MODE": "restrict"
+    }
+  },
+  // NET_ADMIN / NET_RAW are required for init-firewall.sh
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "-p",
+    "127.0.0.1:2223:22"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "eamodio.gitlens",
+        "anthropic.claude-code",
+        ""
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "debug.javascript.autoAttachFilter": "disabled"
+      }
+    }
+  },
+  "remoteUser": "dev",
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-zsh-history,target=/commandhistory,type=volume",
+    "source=${localWorkspaceFolderBasename}-claude-config,target=/home/dev/.claude,type=volume",
+    "source=${localWorkspaceFolderBasename}-pnpm-store,target=/workspace/.pnpm-store,type=volume",
+    "source=${localWorkspaceFolderBasename}-node-modules,target=/workspace/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-packages-cli-node-modules,target=/workspace/packages/cli/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-packages-core-node-modules,target=/workspace/packages/core/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-packages-server-node-modules,target=/workspace/packages/server/node_modules,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/dev/.claude",
+    "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
+    "HISTFILE": "/commandhistory/.zsh_history",
+    "NODE_OPTIONS": "--max-old-space-size=4096 --dns-result-order=ipv4first"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "initializeCommand": "bash .devcontainer/initialize.sh",
+  "postCreateCommand": "pnpm install",
+  "postStartCommand": "bash .devcontainer/post-start.sh",
+  "waitFor": "postStartCommand",
+  "forwardPorts": [],
+  "portsAttributes": {}
+}
