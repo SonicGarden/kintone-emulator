@@ -6,7 +6,7 @@ import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByC
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
-import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeSubtableNumbers, validateRecord } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
 
 type FieldTypes = { [key: string]: FieldTypeRow["type"] };
 
@@ -198,7 +198,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   for (let i = 0; i < records.length; i++) {
     const withDefaults = applyDefaults(fieldRows, records[i]!);
-    const normalized = normalizeSubtableNumbers(fieldRows, withDefaults);
+    const normalized = normalizeNumbers(fieldRows, withDefaults);
     prepared.push(normalized);
     const errors = validateRecord(fieldRows, normalized, { db, appId: body.app, locale });
     if (errors) Object.assign(allErrors, prefixErrorKeys(errors, i));
@@ -271,7 +271,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
     const existingBody = JSON.parse(target.body);
     const incoming = mergeSubtableRows(fieldRows, existingBody, item.record);
-    const merged = normalizeSubtableNumbers(fieldRows, { ...existingBody, ...incoming });
+    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...incoming });
     const errors = validateRecord(fieldRows, merged, {
       db, appId: body.app, excludeId: target.id, locale,
     });

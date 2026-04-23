@@ -758,8 +758,9 @@ GET で qty を見ると value: ""
 
 ### その他
 
-- SUBTABLE 内 NUMBER の正規化は `validate.ts` の `normalizeSubtableNumbers` で実装済み。POST / PUT / 一括 API 全てで保存前に適用される
-- 対照的に top-level NUMBER は正規化未実装（`"1.5e1"` を送るとそのまま `"1.5e1"` で保存。実機は `"15"` に正規化）。必要なら別タスクで対応
+- NUMBER の正規化は `validate.ts` の `normalizeNumbers` で top-level / SUBTABLE 両方に実装済み（POST / PUT / 一括 API 全てで保存前に適用）
+  - 解釈可能な値: `String(Number(value))` に置換（`"1.5e1"` → `"15"`, `" 42 "` → `"42"`）
+  - 解釈不能な値: top-level は `validateRanges` で 400 にする、SUBTABLE 内は `""` に置換（実機準拠）
 - SUBTABLE 自身に required / maxLength / defaultValue / unique 等は設定不可
 - SUBTABLE 内フィールドに `unique` は設定不可
 

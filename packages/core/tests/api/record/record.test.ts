@@ -1275,7 +1275,7 @@ describe("SUBTABLE 内 NUMBER の正規化 / 非数値の扱い", () => {
       record: { items: { value: [{ value: { qty: { value: qtyValue as string } } }] } },
     });
     const { record } = await client.record.getRecord({ app: appId, id });
-    const row = (record.items!.value as Array<{ value: { qty: { value: unknown } } }>)[0]!;
+    const row = (record.items!.value as unknown as Array<{ value: { qty: { value: unknown } } }>)[0]!;
     return row.value.qty.value;
   };
 
@@ -1301,5 +1301,57 @@ describe("SUBTABLE 内 NUMBER の正規化 / 非数値の扱い", () => {
 
   test("空文字列はそのまま空文字列", async () => {
     expect(await addRow("")).toBe("");
+  });
+});
+
+describe("top-level NUMBER の正規化", () => {
+  const SESSION = "record-top-num";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    appId = await createApp(BASE_URL, {
+      name: "top number normalize",
+      properties: {
+        n: { type: "NUMBER", code: "n", label: "n" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const addAndGet = async (input: unknown) => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { n: { value: input as string } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    return record.n!.value;
+  };
+
+  test("指数表記は整数文字列に正規化される（\"1.5e1\" → \"15\"）", async () => {
+    expect(await addAndGet("1.5e1")).toBe("15");
+  });
+
+  test("前後空白は取り除かれる（\" 42 \" → \"42\"）", async () => {
+    expect(await addAndGet(" 42 ")).toBe("42");
+  });
+
+  test("整数はそのまま保存（\"100\" → \"100\"）", async () => {
+    expect(await addAndGet("100")).toBe("100");
+  });
+
+  test("非数値は 400 エラー（SUBTABLE 内と違い top-level は拒否）", async () => {
+    const r = await fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app: appId, record: { n: { value: "abc" } } }),
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record[n].value"]).toEqual({
+      messages: ["数字でなければなりません。"],
+    });
   });
 });

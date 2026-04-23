@@ -127,34 +127,52 @@ const nowTime = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes()
 // SUBTABLE 行 ID。既存 ID は保持し、無ければ生成
 const generateRowId = () => crypto.randomBytes(6).toString("hex");
 
-// SUBTABLE 内 NUMBER を実 kintone の保存時挙動に合わせて正規化する。
-// - Number() で解釈可能 → String(Number(trimmed)) に置換（例: "1.5e1" → "15", " 42 " → "42"）
-// - 解釈不能（"abc", "12abc", "1,000" 等） → "" に置換（実機はエラーにならず空文字列で保存する）
-// top-level の NUMBER には適用しない（実機は top-level では非数値で 400 エラーを返す）
-export const normalizeSubtableNumbers = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
+// NUMBER を実 kintone の保存時挙動に合わせて正規化する。
+// 共通:
+//   - Number() で解釈可能 → String(Number(value)) に置換（例: "1.5e1" → "15", " 42 " → "42"）
+// top-level NUMBER:
+//   - 解釈不能（"abc" 等） → そのまま残す（後段の validateRanges が `record[<code>].value` でエラー化）
+// SUBTABLE 内 NUMBER:
+//   - 解釈不能 → "" に置換（実機はエラーにならず空文字列で保存する）
+export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
   const result: RecordInput = { ...record };
   for (const row of fieldRows) {
     const def = JSON.parse(row.body) as FieldDef;
-    if (def.type !== "SUBTABLE" || !def.fields) continue;
-    const rows = result[row.code]?.value;
-    if (!Array.isArray(rows)) continue;
-    const numberCodes = Object.entries(def.fields)
-      .filter(([, f]) => f.type === "NUMBER")
-      .map(([code]) => code);
-    if (numberCodes.length === 0) continue;
-    const newRows: SubtableRow[] = (rows as SubtableRow[]).map((r) => {
-      const val: RecordInput = { ...(r.value ?? {}) };
-      for (const code of numberCodes) {
-        const cell = val[code];
-        if (cell == null) continue;
-        const v = cell.value;
-        if (typeof v !== "string" || v === "") continue;
-        const n = Number(v);
-        val[code] = { ...cell, value: Number.isFinite(n) ? String(n) : "" };
+
+    if (def.type === "NUMBER") {
+      const cell = result[row.code];
+      if (cell == null) continue;
+      const v = cell.value;
+      if (typeof v !== "string" || v === "") continue;
+      const n = Number(v);
+      if (Number.isFinite(n)) {
+        result[row.code] = { ...cell, value: String(n) };
       }
-      return { ...r, value: val };
-    });
-    result[row.code] = { ...result[row.code], value: newRows };
+      // 非数値は放置（validateRanges がエラー化する）
+      continue;
+    }
+
+    if (def.type === "SUBTABLE" && def.fields) {
+      const rows = result[row.code]?.value;
+      if (!Array.isArray(rows)) continue;
+      const numberCodes = Object.entries(def.fields)
+        .filter(([, f]) => f.type === "NUMBER")
+        .map(([code]) => code);
+      if (numberCodes.length === 0) continue;
+      const newRows: SubtableRow[] = (rows as SubtableRow[]).map((r) => {
+        const val: RecordInput = { ...(r.value ?? {}) };
+        for (const code of numberCodes) {
+          const cell = val[code];
+          if (cell == null) continue;
+          const v = cell.value;
+          if (typeof v !== "string" || v === "") continue;
+          const n = Number(v);
+          val[code] = { ...cell, value: Number.isFinite(n) ? String(n) : "" };
+        }
+        return { ...r, value: val };
+      });
+      result[row.code] = { ...result[row.code], value: newRows };
+    }
   }
   return result;
 };

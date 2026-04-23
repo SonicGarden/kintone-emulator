@@ -4,7 +4,7 @@ import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeSubtableNumbers, validateRecord, validationErrorResponse } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -45,7 +45,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
   const withDefaults = applyDefaults(fieldRows, body.record ?? {});
-  const record = normalizeSubtableNumbers(fieldRows, withDefaults);
+  const record = normalizeNumbers(fieldRows, withDefaults);
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
@@ -87,7 +87,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   // SUBTABLE 行は id マッチで既存とマージ、id 無しは新規採番、送信配列にない既存行は削除
   const incomingRecord = mergeSubtableRows(fieldRows, existingBody, body.record ?? {});
   const beforeNormalize = { ...existingBody, ...incomingRecord };
-  const mergedRecord = normalizeSubtableNumbers(fieldRows, beforeNormalize);
+  const mergedRecord = normalizeNumbers(fieldRows, beforeNormalize);
 
   const errors = validateRecord(fieldRows, mergedRecord, {
     db,
