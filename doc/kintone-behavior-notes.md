@@ -822,7 +822,97 @@ GET で qty を見ると value: ""
 
 ---
 
-## 10. その他観察
+## 10. ルックアップ（LOOKUP）
+
+スカラー系フィールド（`SINGLE_LINE_TEXT` / `NUMBER` / `LINK`）に `lookup` オブジェクトを付けることで、別アプリのフィールドを参照してキー一致するレコードから `fieldMappings` に従って値を自動コピーする機能。
+
+### フィールド定義の保存形式
+
+```json
+"prod_code": {
+  "type": "SINGLE_LINE_TEXT",
+  "code": "prod_code",
+  "label": "商品コード",
+  "required": false,
+  "lookup": {
+    "relatedApp": { "app": "<APP_ID>", "code": "" },
+    "relatedKeyField": "code",
+    "fieldMappings": [
+      { "field": "prod_name",  "relatedField": "name" },
+      { "field": "prod_price", "relatedField": "price" }
+    ],
+    "lookupPickerFields": ["code", "name"],
+    "filterCond": "",
+    "sort": "レコード番号 desc"
+  }
+}
+```
+
+### 書き込み時の挙動（POST / PUT）
+
+| ケース | 結果 |
+|---|---|
+| ルックアップキー一致 | コピー先 `fieldMappings[].field` が **サーバーで自動的に埋まる** |
+| コピー先フィールドに直接値を送信 | **無視される**（ルックアップキーの値で上書き、キー未送信ならコピー先は空で保存） |
+| キー不一致 | 400 `GAIA_LO04`（`errors` オブジェクト**無し**） |
+| キー空文字 / 未送信（POST） | 200、コピー先も空 |
+| PUT でキー変更 | **再コピー**（新キー先の値に置き換わる） |
+| PUT でキーを空文字に更新 | **コピー先もクリア** |
+| PUT でキー未送信 + 他フィールド更新 | コピー先は既存値のまま保持 |
+| マスター側レコードの値変更 | **ルックアップ側には伝播しない**（コピー時点のスナップショット） |
+| ルックアップフィールドが required + 欠落 | 通常の `CB_VA01 / 必須です。`（`record.<code>.value`） |
+| 一括 API（records.json POST/PUT）で 1 件以上不一致 | **最初の 1 件目だけ** `GAIA_LO04` で返る（他行の情報は含まれず、index 情報もなし）。全件ロールバック想定 |
+
+### エラーレスポンス
+
+HTTP 400、`code: "GAIA_LO04"`、`errors` 無し。
+
+| locale | message |
+|---|---|
+| ja | `フィールド「<fieldCode>」の値「<value>」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。` |
+| en | `A value <value> in the field <fieldCode> does not exist in the datasource app for lookup, or you do not have permission to view the app or the field.` |
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>, record:{prod_code:{value:"P999"}}}  (ja)
+-> 400
+{
+  "code": "GAIA_LO04",
+  "id": "J4EyKZSSnVg5OYwfjhIc",
+  "message": "フィールド「prod_code」の値「P999」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。"
+}
+```
+
+### フィールド定義時の制約（保存時バリデーション）
+
+| 制約違反 | エラー |
+|---|---|
+| `relatedKeyField` に `$id` を指定 | `CB_VA01`、`errors["properties[<code>].lookup.relatedKeyField"]: "先頭に数字が使用されているか、使用できない記号、またはスペースが含まれているため保存できません..."`。代わりに日本語ラベル `"レコード番号"` は OK |
+| 同じ `fieldMappings[].field` を複数の lookup で共有 | `CB_VA01`、`"コピー先のフィールドの設定が重複しています..."` |
+| 型違い fieldMapping（例: NUMBER → SINGLE_LINE_TEXT） | `CB_VA01`、`"指定したフィールドの組み合わせが正しくない、または指定できない種類のフィールドを指定しています。"` |
+| `filterCond` に不正な演算子 | `GAIA_IQ03` 等（本エミュレーターはスコープ外） |
+
+→ **型違い fieldMapping はそもそもフィールド保存時に拒否される**ので、ランタイムで型変換を考える必要はない。
+
+### レコード取得時（GET）
+
+lookup フィールドは通常のスカラーとして返る。lookup 情報は `record.json` のレスポンスには含まれない:
+
+```json
+"prod_code": { "type": "SINGLE_LINE_TEXT", "value": "P001" }
+```
+
+lookup 定義を取り出したい場合は `/k/v1/app/form/fields.json` を使う。
+
+### 未確認 / スコープ外
+
+- `filterCond` の実際の絞り込み挙動（本エミュレーターの Phase 1 ではスコープ外）
+- `lookupPickerFields`（UI のみ、API 挙動に影響なし）
+- `relatedApp.code` でアプリ指定するケース
+- SUBTABLE 内のルックアップ（kintone UI でも通常は設定不可）
+
+---
+
+## 11. その他観察
 
 ### preview/deploy のライフサイクル
 

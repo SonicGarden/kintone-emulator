@@ -4,6 +4,7 @@ import { findFields, findFieldTypes } from "../db/fields";
 import type { FieldRow, FieldTypeRow } from "../db/fields";
 import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByClause, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
@@ -198,7 +199,10 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   for (let i = 0; i < records.length; i++) {
     const withDefaults = applyDefaults(fieldRows, records[i]!);
-    const normalized = normalizeNumbers(fieldRows, withDefaults);
+    const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
+    // 実 kintone の一括 API は 1 件目のルックアップエラーで即終了（errors に index 情報は含まれない）
+    if (lookupResult.error) return lookupResult.error;
+    const normalized = normalizeNumbers(fieldRows, lookupResult.record);
     prepared.push(normalized);
     const errors = validateRecord(fieldRows, normalized, { db, appId: body.app, locale });
     if (errors) Object.assign(allErrors, prefixErrorKeys(errors, i));
@@ -271,7 +275,9 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
     const existingBody = JSON.parse(target.body);
     const incoming = mergeSubtableRows(fieldRows, existingBody, item.record);
-    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...incoming });
+    const lookupResult = applyLookups(fieldRows, incoming, { db, locale });
+    if (lookupResult.error) return lookupResult.error;
+    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...lookupResult.record });
     const errors = validateRecord(fieldRows, merged, {
       db, appId: body.app, excludeId: target.id, locale,
     });

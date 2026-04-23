@@ -3,6 +3,7 @@ import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
@@ -45,7 +46,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
   const withDefaults = applyDefaults(fieldRows, body.record ?? {});
-  const record = normalizeNumbers(fieldRows, withDefaults);
+  const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
+  if (lookupResult.error) return lookupResult.error;
+  const record = normalizeNumbers(fieldRows, lookupResult.record);
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
@@ -86,7 +89,10 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const existingBody = JSON.parse(target.body);
   // SUBTABLE 行は id マッチで既存とマージ、id 無しは新規採番、送信配列にない既存行は削除
   const incomingRecord = mergeSubtableRows(fieldRows, existingBody, body.record ?? {});
-  const beforeNormalize = { ...existingBody, ...incomingRecord };
+  // ルックアップ: body.record 側でキーが変わったらコピー先を再計算
+  const lookupResult = applyLookups(fieldRows, incomingRecord, { db, locale });
+  if (lookupResult.error) return lookupResult.error;
+  const beforeNormalize = { ...existingBody, ...lookupResult.record };
   const mergedRecord = normalizeNumbers(fieldRows, beforeNormalize);
 
   const errors = validateRecord(fieldRows, mergedRecord, {
