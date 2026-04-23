@@ -245,13 +245,15 @@ npx --package @sonicgarden/kintone-emulator-cli sg-kintone export-app \
 
 ### 検索クエリ（`/k/v1/records.json` GET）
 
-独自パーサー（`packages/core/src/query/`）でほぼすべての演算子・関数・オプションをサポート。ただし以下は未対応:
+独自パーサー（`packages/core/src/query/`）でほぼすべての演算子・関数・オプションをサポート。実機挙動との主な差分:
 
-- 関連レコードの参照記法（`Company.Name` のような入れ子フィールド）
-- SUBTABLE 内フィールド参照
-- `LOGINUSER()` / `PRIMARY_ORGANIZATION()` はパーサー自体は対応しているが、ハンドラー層で認証ユーザー情報を `ExpandContext` に渡す仕組みが未実装のため、実行すると「要設定」エラー
 - `like` / `not like` は SQLite の LIKE `%...%` で部分一致として代用（実 kintone は単語検索・添付ファイル内検索など独自挙動あり）
-- クエリ構文エラー時の `errors` オブジェクトは非対応（`code: CB_VA01` と message のみ）
+- `LOGINUSER()` / `PRIMARY_ORGANIZATION()` はパーサー自体は対応しているが、ハンドラー層で認証ユーザー情報を `ExpandContext` に渡す仕組みが未実装のため、実行すると「要設定」エラー
+- 関連レコードの参照記法（`Company.Name` のような入れ子フィールド）は未対応
+- SUBTABLE 内フィールド参照は未対応
+- DATETIME と `TODAY()` などの範囲関数の組み合わせはサーバータイムゾーン依存（実機は JST 基準で「今日」を判定、エミュレーターはローカル TZ で判定）
+
+実機観察メモ: [`doc/kintone-query-behavior.md`](doc/kintone-query-behavior.md)
 
 ### エラーレスポンスの差分（エミュレーター固有）
 
