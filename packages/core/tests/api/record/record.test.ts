@@ -434,3 +434,351 @@ describe("required フィールドのバリデーション", () => {
     });
   });
 });
+
+describe("unique フィールドのバリデーション", () => {
+  const SESSION = "record-unique-validation";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => {
+    BASE_URL = createBaseUrl(SESSION);
+  });
+
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    appId = await createApp(BASE_URL, {
+      name: "unique テスト",
+      properties: {
+        uniq_text: { type: "SINGLE_LINE_TEXT", code: "uniq_text", label: "ユニークテキスト", unique: true },
+        opt_text:  { type: "SINGLE_LINE_TEXT", code: "opt_text",  label: "任意テキスト" },
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await finalizeSession(BASE_URL);
+  });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  const putRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("重複する値を POST すると 400", async () => {
+    await client.record.addRecord({ app: appId, record: { uniq_text: { value: "abc" } } });
+    const response = await postRecord({ app: appId, record: { uniq_text: { value: "abc" } } });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({
+      "record.uniq_text.value": { messages: ["値がほかのレコードと重複しています。"] },
+    });
+  });
+
+  test("空文字は重複扱いされない", async () => {
+    await client.record.addRecord({ app: appId, record: { uniq_text: { value: "" } } });
+    const res = await client.record.addRecord({ app: appId, record: { uniq_text: { value: "" } } });
+    expect(res.id).toBeTruthy();
+  });
+
+  test("PUT は自レコード自身との重複を許す", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: { uniq_text: { value: "abc" } } });
+    const result = await client.record.updateRecord({
+      app: appId, id, record: { uniq_text: { value: "abc" }, opt_text: { value: "touched" } },
+    });
+    expect(result.revision).toBe("2");
+  });
+
+  test("PUT で他レコードの値と重複すると 400", async () => {
+    await client.record.addRecord({ app: appId, record: { uniq_text: { value: "abc" } } });
+    const { id } = await client.record.addRecord({ app: appId, record: { uniq_text: { value: "def" } } });
+    const response = await putRecord({
+      app: appId, id, record: { uniq_text: { value: "abc" } },
+    });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors).toEqual({
+      "record.uniq_text.value": { messages: ["値がほかのレコードと重複しています。"] },
+    });
+  });
+});
+
+describe("maxLength / minLength バリデーション", () => {
+  const SESSION = "record-length-validation";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    appId = await createApp(BASE_URL, {
+      name: "length テスト",
+      properties: {
+        text:  { type: "SINGLE_LINE_TEXT", code: "text",  label: "text",  maxLength: "5", minLength: "2" },
+        multi: { type: "MULTI_LINE_TEXT",  code: "multi", label: "multi", maxLength: "10" },
+        link:  { type: "LINK",              code: "link",  label: "link",  minLength: "3", protocol: "WEB" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("maxLength 超過で 400", async () => {
+    const response = await postRecord({ app: appId, record: { text: { value: "123456" } } });
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors["record.text.value"]).toEqual({
+      messages: ["6文字より短くなければなりません。"],
+    });
+  });
+
+  test("minLength 未満で 400（空文字はスキップ）", async () => {
+    const r1 = await postRecord({ app: appId, record: { text: { value: "x" } } });
+    expect(r1.status).toBe(400);
+    const j1 = await r1.json();
+    expect(j1.errors["record.text.value"]).toEqual({
+      messages: ["1文字より長くなければなりません。"],
+    });
+    // 空文字は minLength エラーにならない
+    const r2 = await client.record.addRecord({ app: appId, record: { text: { value: "" } } });
+    expect(r2.id).toBeTruthy();
+  });
+
+  test("範囲内なら成功 / MULTI_LINE_TEXT の maxLength も効く", async () => {
+    const ok = await client.record.addRecord({ app: appId, record: { text: { value: "abc" } } });
+    expect(ok.id).toBeTruthy();
+    const ng = await postRecord({ app: appId, record: { multi: { value: "12345678901" } } });
+    expect(ng.status).toBe(400);
+    const json = await ng.json();
+    expect(json.errors["record.multi.value"]).toEqual({
+      messages: ["11文字より短くなければなりません。"],
+    });
+  });
+
+  test("LINK の minLength も効く", async () => {
+    const r = await postRecord({ app: appId, record: { link: { value: "ab" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.link.value"]).toEqual({
+      messages: ["2文字より長くなければなりません。"],
+    });
+  });
+});
+
+describe("maxValue / minValue バリデーション", () => {
+  const SESSION = "record-range-validation";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    appId = await createApp(BASE_URL, {
+      name: "range テスト",
+      properties: {
+        num: { type: "NUMBER", code: "num", label: "数値", maxValue: "100", minValue: "10" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("maxValue 超過で 400", async () => {
+    const r = await postRecord({ app: appId, record: { num: { value: "150" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.num.value"]).toEqual({
+      messages: ["100以下である必要があります。"],
+    });
+  });
+
+  test("minValue 未満で 400", async () => {
+    const r = await postRecord({ app: appId, record: { num: { value: "5" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.num.value"]).toEqual({
+      messages: ["10以上である必要があります。"],
+    });
+  });
+
+  test("数値以外で 400、キーはブラケット記法", async () => {
+    const r = await postRecord({ app: appId, record: { num: { value: "abc" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record[num].value"]).toEqual({
+      messages: ["数字でなければなりません。"],
+    });
+  });
+
+  test("範囲内なら成功", async () => {
+    const r = await client.record.addRecord({ app: appId, record: { num: { value: "50" } } });
+    expect(r.id).toBeTruthy();
+  });
+});
+
+describe("options 整合バリデーション", () => {
+  const SESSION = "record-options-validation";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    appId = await createApp(BASE_URL, {
+      name: "options テスト",
+      properties: {
+        radio: { type: "RADIO_BUTTON", code: "radio", label: "radio", options: { A: { label: "A", index: "0" }, B: { label: "B", index: "1" } } },
+        drop:  { type: "DROP_DOWN",    code: "drop",  label: "drop",  options: { X: { label: "X", index: "0" }, Y: { label: "Y", index: "1" } } },
+        check: { type: "CHECK_BOX",    code: "check", label: "check", options: { A: { label: "A", index: "0" }, B: { label: "B", index: "1" } } },
+        multi: { type: "MULTI_SELECT", code: "multi", label: "multi", options: { P: { label: "P", index: "0" }, Q: { label: "Q", index: "1" } } },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("RADIO_BUTTON で選択肢外を送ると 400", async () => {
+    const r = await postRecord({ app: appId, record: { radio: { value: "Z" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.radio.value"]).toEqual({
+      messages: ['"Z"は選択肢にありません。'],
+    });
+  });
+
+  test("DROP_DOWN で選択肢外を送ると 400", async () => {
+    const r = await postRecord({ app: appId, record: { drop: { value: "Q" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.drop.value"]).toEqual({
+      messages: ['"Q"は選択肢にありません。'],
+    });
+  });
+
+  test("CHECK_BOX で選択肢外を送ると index 付きキーで 400", async () => {
+    const r = await postRecord({ app: appId, record: { check: { value: ["A", "Z"] } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors["record.check.values[1].value"]).toEqual({
+      messages: ['"Z"は選択肢にありません。'],
+    });
+  });
+
+  test("MULTI_SELECT で複数の選択肢外を送ると複数の errors キー", async () => {
+    const r = await postRecord({ app: appId, record: { multi: { value: ["X", "Y"] } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.errors).toMatchObject({
+      "record.multi.values[0].value": { messages: ['"X"は選択肢にありません。'] },
+      "record.multi.values[1].value": { messages: ['"Y"は選択肢にありません。'] },
+    });
+  });
+
+  test("空文字の RADIO_BUTTON は検証スキップ", async () => {
+    const r = await client.record.addRecord({ app: appId, record: { radio: { value: "" } } });
+    expect(r.id).toBeTruthy();
+  });
+
+  test("空配列の CHECK_BOX は options 整合検証をスキップ", async () => {
+    const r = await client.record.addRecord({ app: appId, record: { check: { value: [] } } });
+    expect(r.id).toBeTruthy();
+  });
+});
+
+describe("Accept-Language によるメッセージ切り替え", () => {
+  const SESSION = "record-locale-validation";
+  let BASE_URL: string;
+  let appId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    appId = await createApp(BASE_URL, {
+      name: "locale テスト",
+      properties: {
+        req_text: { type: "SINGLE_LINE_TEXT", code: "req_text", label: "req", required: true, maxLength: "3", unique: true },
+        num:      { type: "NUMBER",           code: "num",      label: "num", maxValue: "100", minValue: "10" },
+        radio:    { type: "RADIO_BUTTON",     code: "radio",    label: "radio", options: { A: { label: "A", index: "0" } } },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (lang: string | null, body: unknown) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (lang != null) headers["Accept-Language"] = lang;
+    return fetch(`${BASE_URL}/k/v1/record.json`, { method: "POST", headers, body: JSON.stringify(body) });
+  };
+
+  test("Accept-Language: en のとき英語メッセージを返す", async () => {
+    const r = await postRecord("en", { app: appId, record: {} });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.message).toBe("Missing or invalid input.");
+    expect(json.errors["record.req_text.value"]).toEqual({ messages: ["Required."] });
+  });
+
+  test("Accept-Language: en-US も英語", async () => {
+    const r = await postRecord("en-US,en;q=0.9", {
+      app: appId,
+      record: { req_text: { value: "toolong" }, num: { value: "150" }, radio: { value: "Z" } },
+    });
+    const json = await r.json();
+    expect(json.errors["record.req_text.value"]).toEqual({ messages: ["Enter less than 4 characters."] });
+    expect(json.errors["record.num.value"]).toEqual({ messages: ["The value must be 100 or less."] });
+    expect(json.errors["record.radio.value"]).toEqual({ messages: ['The value, "Z", is not in options.'] });
+  });
+
+  test("Accept-Language: zh でも ja 以外なので英語", async () => {
+    const r = await postRecord("zh-CN", { app: appId, record: { num: { value: "5" } } });
+    const json = await r.json();
+    expect(json.errors["record.num.value"]).toEqual({ messages: ["The value must be 10 or more."] });
+  });
+
+  test("Accept-Language: ja は日本語", async () => {
+    const r = await postRecord("ja", { app: appId, record: { num: { value: "abc" } } });
+    const json = await r.json();
+    expect(json.message).toBe("入力内容が正しくありません。");
+    expect(json.errors["record[num].value"]).toEqual({ messages: ["数字でなければなりません。"] });
+  });
+
+  test("unique 重複の英語メッセージ", async () => {
+    await postRecord("en", { app: appId, record: { req_text: { value: "xyz" } } });
+    const r = await postRecord("en", { app: appId, record: { req_text: { value: "xyz" } } });
+    const json = await r.json();
+    expect(json.errors["record.req_text.value"]).toEqual({
+      messages: ["This value already exists in another record."],
+    });
+  });
+
+  test("ヘッダー無しはデフォルトで日本語", async () => {
+    const r = await postRecord(null, { app: appId, record: {} });
+    const json = await r.json();
+    expect(json.message).toBe("入力内容が正しくありません。");
+    expect(json.errors["record.req_text.value"]).toEqual({ messages: ["必須です。"] });
+  });
+});

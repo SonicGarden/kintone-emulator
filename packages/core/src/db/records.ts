@@ -71,7 +71,7 @@ export const deleteRecords = (
   );
 };
 
-export const findRecordByKey = (
+export const findRecordsByKey = (
   db: Database.Database,
   appId: string | number,
   fieldCode: string,
@@ -82,4 +82,11 @@ export const findRecordByKey = (
     `SELECT id, revision, body FROM records WHERE app_id = ? AND body->>'$.${fieldCode}.value' = ?`,
     appId,
     fieldValue
-  )[0];
+  );
+
+export const findRecordByKey = (
+  db: Database.Database,
+  appId: string | number,
+  fieldCode: string,
+  fieldValue: string
+) => findRecordsByKey(db, appId, fieldCode, fieldValue)[0];

@@ -3,7 +3,7 @@ import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
-import { validateRequiredFields, validationErrorResponse } from "./validate";
+import { detectLocale, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -35,9 +35,10 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
+  const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
-  const errors = validateRequiredFields(fieldRows, body.record ?? {});
-  if (errors) return validationErrorResponse(errors);
+  const errors = validateRecord(fieldRows, body.record ?? {}, { db, appId: body.app, locale });
+  if (errors) return validationErrorResponse(errors, locale);
 
   const inserted = insertRecord(db, body.app, body.record);
   if (!inserted) {
@@ -73,9 +74,15 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
 
+  const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
-  const errors = validateRequiredFields(fieldRows, mergedRecord);
-  if (errors) return validationErrorResponse(errors);
+  const errors = validateRecord(fieldRows, mergedRecord, {
+    db,
+    appId: body.app,
+    excludeId: target.id,
+    locale,
+  });
+  if (errors) return validationErrorResponse(errors, locale);
 
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
