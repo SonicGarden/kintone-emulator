@@ -88,9 +88,10 @@ describe("アプリのフォームフィールドAPI", () => {
     });
   });
 
-  test("存在しないアプリのフォームフィールドをGETすると404が返る", async () => {
-    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+  test("存在しないアプリのフォームフィールドをGETすると GAIA_AP01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/form/fields.json?app=99999`);
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_AP01");
   });
 });

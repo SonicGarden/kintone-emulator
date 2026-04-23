@@ -97,14 +97,15 @@ describe("アプリのレコードAPI", () => {
     });
   });
 
-  test("存在しないレコードをGETすると404が返る", async () => {
-    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+  test("存在しないレコードをGETすると GAIA_RE01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1&id=99999`);
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_RE01");
+    expect(json.message).toBe("指定したレコード（id: 99999）が見つかりません。");
   });
 
-  test("存在しないレコードをPUTすると404が返る", async () => {
-    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+  test("存在しないレコードをPUTすると GAIA_RE01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/record.json`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -115,6 +116,25 @@ describe("アプリのレコードAPI", () => {
       }),
     });
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_RE01");
+    expect(json.message).toBe("指定したレコード（id: 99999）が見つかりません。");
+  });
+
+  test("パラメーター欠落（id）で CB_VA01 が返る", async () => {
+    const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1`);
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ id: { messages: ["必須です。"] } });
+  });
+
+  test("Accept-Language: en で英語の GAIA_RE01 が返る", async () => {
+    const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1&id=99999`, {
+      headers: { "Accept-Language": "en" },
+    });
+    const json = await response.json();
+    expect(json.message).toBe("The specified record (ID: 99999) is not found.");
   });
 
   test("setup/app.json の records でレコードを一括作成できる", async () => {

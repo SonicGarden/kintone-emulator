@@ -265,13 +265,4 @@ export const validateRecord = (
   return Object.keys(errors).length > 0 ? errors : null;
 };
 
-export const validationErrorResponse = (errors: ValidationErrors, locale: Locale = "ja") =>
-  Response.json(
-    {
-      code: "CB_VA01",
-      id: "emulator-validation-error",
-      message: MESSAGES[locale].topLevel,
-      errors,
-    },
-    { status: 400 }
-  );
+export { errorInvalidInput as validationErrorResponse } from "./errors";

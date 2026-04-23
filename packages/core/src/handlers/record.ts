@@ -2,6 +2,7 @@ import type { KintoneRecordField } from '@kintone/rest-api-client';
 import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
+import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, detectLocale, validateRecord, validationErrorResponse } from "./validate";
 
@@ -13,10 +14,20 @@ export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
+  const id = url.searchParams.get('id');
+  const locale = detectLocale(request.headers.get("accept-language"));
 
-  const row = findRecord(db, app, url.searchParams.get('id'));
+  const m = errorMessages(locale);
+  if (!app || !id) {
+    const missing: { [key: string]: { messages: string[] } } = {};
+    if (!app) missing.app = { messages: [m.requiredField] };
+    if (!id)  missing.id  = { messages: [m.requiredField] };
+    return errorInvalidInput(missing, locale);
+  }
+
+  const row = findRecord(db, app, id);
   if (!row) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(id, locale);
   }
 
   const body: Record = JSON.parse(row.body);
@@ -70,7 +81,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   }
 
   if (!target) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(body.updateKey ? body.updateKey.value : body.id, detectLocale(request.headers.get("accept-language")));
   }
 
   const mergedRecord = { ...JSON.parse(target.body), ...body.record };
@@ -87,7 +98,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(target.id, locale);
   }
   return Response.json({
     id: updated.id.toString(),

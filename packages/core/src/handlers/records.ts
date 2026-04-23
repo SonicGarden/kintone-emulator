@@ -3,7 +3,9 @@ import { dbSession } from "../db/client";
 import { findFieldTypes } from "../db/fields";
 import type { FieldTypeRow } from "../db/fields";
 import { deleteRecords, findRecords, findRecordsByClause } from "../db/records";
+import { errorInvalidInput, errorMessages } from "./errors";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 type FieldTypes = { [key: string]: FieldTypeRow["type"] };
 
@@ -158,8 +160,13 @@ export const del = ({ request, params }: HandlerArgs) => {
     }
   }
 
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const m = errorMessages(locale);
   if (!app || ids.length === 0) {
-    return Response.json({ message: "app and ids are required." }, { status: 400 });
+    const missing: { [key: string]: { messages: string[] } } = {};
+    if (!app) missing.app = { messages: [m.requiredField] };
+    if (ids.length === 0) missing.ids = { messages: [m.requiredField] };
+    return errorInvalidInput(missing, locale);
   }
 
   deleteRecords(db, app, ids);

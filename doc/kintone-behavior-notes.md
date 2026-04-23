@@ -1,0 +1,614 @@
+# 実 kintone 挙動メモ
+
+エミュレーター実装時に実機で観察した挙動の記録。検証環境: `<your-domain>.cybozu.com` アプリ ID=<APP_ID>。
+
+各節末には一次観察（curl 実行結果）のキャプチャを添える。観察日時は 2026-04-23、JST。
+
+---
+
+## 1. エラーレスポンス共通
+
+### レスポンス形式
+
+- HTTP 400 / 404
+- `{ code, id, message }`（+ バリデーション系は `errors`）
+- `id` はリクエストごとにランダムな文字列（base64url 相当）
+
+### 404 系（Not Found）
+
+| ケース | code | message ja | message en |
+|---|---|---|---|
+| Record not found | `GAIA_RE01` | `指定したレコード（id: <id>）が見つかりません。` | `The specified record (ID: <id>) is not found.` |
+| App not found | `GAIA_AP01` | `指定したアプリ（id: <id>）が見つかりません。削除されている可能性があります。` | `The app (ID: <id>) not found. The app may have been deleted.` |
+| File not found | `GAIA_BL01` | `指定したファイル（id: <id>）が見つかりません。` | `The specified file (id: <id>) not found.` |
+
+#### 生レスポンス
+
+```
+GET /k/v1/record.json?app=<APP_ID>&id=99999  (ja)
+-> 404
+{
+  "code": "GAIA_RE01",
+  "id": "jxcbVKLdjmcOc1wQ2nMT",
+  "message": "指定したレコード（id: 99999）が見つかりません。"
+}
+
+GET /k/v1/record.json?app=<APP_ID>&id=99999  (Accept-Language: en)
+-> 404
+{
+  "code": "GAIA_RE01",
+  "id": "3Z4lr65VBuuvQuob95sx",
+  "message": "The specified record (ID: 99999) is not found."
+}
+
+GET /k/v1/app.json?id=99999  (ja)
+-> 404
+{
+  "code": "GAIA_AP01",
+  "id": "BkzBLir5NlPlbSqZjxRB",
+  "message": "指定したアプリ（id: 99999）が見つかりません。削除されている可能性があります。"
+}
+
+GET /k/v1/app.json?id=99999  (en)
+-> 404
+{
+  "code": "GAIA_AP01",
+  "id": "zyNsMgNfPkhtkhCgnil8",
+  "message": "The app (ID: 99999) not found. The app may have been deleted."
+}
+
+GET /k/v1/file.json?fileKey=nonexistent_key  (ja)
+-> 404
+{
+  "code": "GAIA_BL01",
+  "id": "KscKY35G5ntVbSAwTM9x",
+  "message": "指定したファイル（id: nonexistent_key）が見つかりません。"
+}
+
+GET /k/v1/file.json?fileKey=xxx  (en)
+-> 404
+{
+  "code": "GAIA_BL01",
+  "id": "2QfmZjTRidxPTtMaqwby",
+  "message": "The specified file (id: xxx) not found."
+}
+```
+
+### 400 系（コメント削除失敗は 400！）
+
+| ケース | code | HTTP | message ja | message en |
+|---|---|---|---|---|
+| Comment not found | `GAIA_RE02` | 400 | `指定したコメントが存在しません。削除された可能性があります。` | `The specified comment does not exist. The comment may have been deleted.` |
+
+#### 生レスポンス
+
+```
+DELETE /k/v1/record/comment.json  body={app:<APP_ID>, record:93, comment:99999}  (ja)
+-> 400
+{
+  "code": "GAIA_RE02",
+  "id": "f5loVndKkFGtQBrg1Q5h",
+  "message": "指定したコメントが存在しません。削除された可能性があります。"
+}
+
+DELETE ... (en)
+-> 400
+{
+  "code": "GAIA_RE02",
+  "id": "wNx9OQmlFLHy0Duill8l",
+  "message": "The specified comment does not exist. The comment may have been deleted."
+}
+```
+
+### 400 CB_VA01 パラメーター検証
+
+| ケース | errors キー | messages ja | messages en |
+|---|---|---|---|
+| パラメーター必須欠落（app, id, ids, record, comment 等） | `<name>` | `必須です。` | `Required field.` |
+| `app` が負数 / 0 | `app` | `最小でも1以上です。` | `must be greater than or equal to 1` |
+| `ids` 空配列（records.json DELETE） | `ids` | 2 メッセージ: `必須です。` + `一度に1件から100件までのレコードを削除できます。` | 順逆: `Between 1 and 100 records can be deleted at one time.` + `Required field.` |
+| order が enum 外（comments 系） | `order` | `Enum値のいずれかでなければなりません。` | `must be one of the enum value` |
+
+備考: レコード内の「必須フィールド」用の英語メッセージは `Required.`（後述）だが、URL/body パラメーター用の英語は `Required field.` と異なる。文脈ごとに使い分け。
+
+#### 生レスポンス
+
+```
+GET /k/v1/record.json?app=<APP_ID>  (id 欠落, ja)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "aBc8xyRm9kiFutkr90f1",
+  "message": "入力内容が正しくありません。",
+  "errors": { "id": { "messages": ["必須です。"] } }
+}
+
+GET /k/v1/record.json?app=<APP_ID>  (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "lU7ktS1gHDiuQrE2FRJc",
+  "message": "Missing or invalid input.",
+  "errors": { "id": { "messages": ["Required field."] } }
+}
+
+GET /k/v1/app/status.json?app=-1  (ja)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "BjLkOEsyMYmeiTjeZReF",
+  "message": "入力内容が正しくありません。",
+  "errors": { "app": { "messages": ["最小でも1以上です。"] } }
+}
+
+GET /k/v1/app/status.json?app=-1  (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "uq1CPEYBCdZF2M8ci0MO",
+  "message": "Missing or invalid input.",
+  "errors": { "app": { "messages": ["must be greater than or equal to 1"] } }
+}
+
+DELETE /k/v1/records.json  body={app:<APP_ID>}  (ids 欠落, ja)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "eyvqi2nsaZN6D8vryyWD",
+  "message": "入力内容が正しくありません。",
+  "errors": {
+    "ids": { "messages": ["必須です。", "一度に1件から100件までのレコードを削除できます。"] }
+  }
+}
+
+DELETE /k/v1/records.json  body={app:<APP_ID>}  (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "KM59HVsp4eQ0KSLGG24Q",
+  "message": "Missing or invalid input.",
+  "errors": {
+    "ids": { "messages": ["Between 1 and 100 records can be deleted at one time.", "Required field."] }
+  }
+}
+
+GET /k/v1/record/comments.json?app=<APP_ID>&record=93&order=wrong  (ja)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "2wFWmZujq0ar5Up7VK9H",
+  "message": "入力内容が正しくありません。",
+  "errors": { "order": { "messages": ["Enum値のいずれかでなければなりません。"] } }
+}
+
+GET .../comments.json?...&order=wrong  (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "9vMxNZLeIek4Qu67XO0v",
+  "message": "Missing or invalid input.",
+  "errors": { "order": { "messages": ["must be one of the enum value"] } }
+}
+```
+
+### ロケール切り替え（`Accept-Language` ヘッダー）
+
+| リクエスト | message | messages |
+|---|---|---|
+| `Accept-Language: ja` | `入力内容が正しくありません。` | 日本語 |
+| `Accept-Language: en` | `Missing or invalid input.` | 英語 |
+| `Accept-Language: zh` | `输入有误。` | 中国語（エミュレーターでは実装していない） |
+| ヘッダー無し | `入力内容が正しくありません。` | 日本語（デフォルト） |
+
+#### 生レスポンス（zh サンプル）
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "VOTQSp4k0sAt9gXdQ2CL",
+  "message": "输入有误。",
+  "errors": {
+    "record.req_check.values":     {"messages":["此为必填项。"]},
+    "record.req_user.values.value":{"messages":["此为必填项。"]},
+    "record.req_text.value":       {"messages":["此为必填项。"]},
+    "record.req_number.value":     {"messages":["此为必填项。"]},
+    "record.req_multi.values":     {"messages":["此为必填项。"]}
+  }
+}
+```
+
+備考: Node.js の `undici` fetch は自動で `accept-language: *` を付けてくる。`"*"` もデフォルト扱い（日本語）にしないと、ヘッダー無し想定のテストが壊れる。
+
+### errors キーの接尾辞（レコードバリデーション）
+
+| 設定 | タイプ | キー接尾辞 |
+|---|---|---|
+| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `RADIO_BUTTON` / `DROP_DOWN` / `CALC` | `.value` |
+| required（配列値） | `CHECK_BOX` / `MULTI_SELECT` / `FILE` | `.values` |
+| required（ユーザー系） | `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` | `.values.value` |
+| `options` 違反（スカラー） | `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
+| `options` 違反（配列） | `CHECK_BOX` / `MULTI_SELECT` | `.values[<index>].value` |
+| NaN（数値パース失敗） | `NUMBER` | `record[<code>].value` ※ドット区切りではなくブラケット |
+
+---
+
+## 2. required
+
+### 挙動
+
+- 未送信 / `null` / `""` / `[]` のいずれでも必須エラー
+- PUT はマージ後のレコードに対して検証（既存値が埋まっていて、差分更新が別フィールドだけなら成功）
+- `SUBTABLE` / `GROUP` / `LABEL` / `SPACER` / `HR` / `REFERENCE_TABLE` / `CATEGORY` / `STATUS` / `STATUS_ASSIGNEE` / `CREATED_TIME` / `UPDATED_TIME` / `CREATOR` / `MODIFIER` / `CALC` / `RECORD_NUMBER` / `__REVISION__` は required 検証の対象外
+- **`defaultValue` が設定されている場合、未送信でも補完されるため required エラーにならない**（§7 参照）
+- SUBTABLE 内の入れ子 required は別のキー形式（今回未実装 / 未確認）
+
+### messages
+
+| locale | messages |
+|---|---|
+| ja | `必須です。` |
+| en | `Required.` |
+
+### 生レスポンス
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>, record:{}}  (ja)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "BQup4D133smPezTHZDU3",
+  "message": "入力内容が正しくありません。",
+  "errors": {
+    "record.req_check.values":     {"messages":["必須です。"]},
+    "record.req_file.values":      {"messages":["必須です。"]},
+    "record.req_user.values.value":{"messages":["必須です。"]},
+    "record.req_text.value":       {"messages":["必須です。"]},
+    "record.req_number.value":     {"messages":["必須です。"]},
+    "record.req_multi.values":     {"messages":["必須です。"]}
+  }
+}
+
+POST /k/v1/record.json  body={app:<APP_ID>, record:{}}  (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "pwD8228Ry9Cl9W8KVdQy",
+  "message": "Missing or invalid input.",
+  "errors": {
+    "record.req_check.values":     {"messages":["Required."]},
+    "record.req_user.values.value":{"messages":["Required."]},
+    "record.req_text.value":       {"messages":["Required."]},
+    "record.req_number.value":     {"messages":["Required."]},
+    "record.req_multi.values":     {"messages":["Required."]}
+  }
+}
+```
+
+---
+
+## 3. unique
+
+### 挙動
+
+- `code: CB_VA01`（`GAIA_RE02` ではない）
+- 空文字 `""` は重複扱いされない（複数レコードで `""` OK）
+- 配列値のフィールドは `unique` 設定自体できない（CHECK_BOX / USER_SELECT 等）
+- PUT は自レコード自身を除外して判定（同じ値に上書きは通る。他レコードと重複する値への更新は 400）
+
+### messages
+
+| locale | messages |
+|---|---|
+| ja | `値がほかのレコードと重複しています。` |
+| en | `This value already exists in another record.` |
+
+### 生レスポンス
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>, record:{req_text:{value:"abc"}, ...}}
+# 既に req_text=abc を持つレコードが存在
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "LyJKDMrsYD4xdYBEfweL",
+  "message": "入力内容が正しくありません。",
+  "errors": {
+    "record.req_text.value": {"messages":["値がほかのレコードと重複しています。"]}
+  }
+}
+
+POST ... (en)
+-> 400
+{
+  "code": "CB_VA01",
+  "id": "aImRBUSI5Bsx3i8lZOsX",
+  "message": "Missing or invalid input.",
+  "errors": {
+    "record.req_text.value": {"messages":["This value already exists in another record."]}
+  }
+}
+
+PUT /k/v1/record.json  body={app:<APP_ID>, id:89, record:{req_text:{value:"abc"}}}
+# id=89 の req_text が既に "abc" のとき
+-> 200 {"revision":"2"}
+
+PUT /k/v1/record.json  body={app:<APP_ID>, id:90, record:{req_text:{value:"abc"}}}
+# 他レコードが "abc" を保持、90 は "def" を "abc" に変更
+-> 400 （同じ errors）
+```
+
+---
+
+## 4. 文字数（`maxLength` / `minLength`）
+
+### 対象タイプ
+
+`SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `LINK`
+
+### 挙動
+
+- 空文字 `""` は検証対象外（required と同時なら「必須です。」のみ）
+- 超過/未満のメッセージは **`maxLength+1` / `minLength-1`** の値を文字列に埋め込む（＝「入力許容範囲外の最小値」を示す表現）
+
+### messages
+
+| | ja | en |
+|---|---|---|
+| maxLength 超過 | `(maxLength+1)文字より短くなければなりません。` | `Enter less than (maxLength+1) characters.` |
+| minLength 未満 | `(minLength-1)文字より長くなければなりません。` | `Enter more than (minLength-1) characters.` |
+
+### 生レスポンス
+
+```
+# req_text に maxLength=5 設定、6文字送信  (ja)
+POST /k/v1/record.json  body={app:<APP_ID>, record:{req_text:{value:"123456"}, ...}}
+-> 400
+{
+  "code":"CB_VA01",
+  "id":"Wq2YOHicjdgDKQhSJbqn",
+  "message":"入力内容が正しくありません。",
+  "errors":{
+    "record.req_text.value":{"messages":["6文字より短くなければなりません。"]}
+    ... (他 required も同時に発生)
+  }
+}
+
+# minLength=2, 1文字 (ja)
+POST ...
+{
+  "errors":{ "record.req_text.value":{"messages":["1文字より長くなければなりません。"]} }
+}
+
+# en の maxLength=3, "toolong"(7文字) → "less than 4 characters"
+"errors": { "record.req_text.value": {"messages":["Enter less than 4 characters."]} }
+```
+
+---
+
+## 5. 数値範囲（`maxValue` / `minValue`）と数値パース
+
+### 対象タイプ
+
+`NUMBER`
+
+### 挙動
+
+- 空文字 `""` は検証対象外
+- 数値以外の文字列が入ってきた場合、**ブラケット記法のキー** `record[<code>].value` に `"数字でなければなりません。"` を返す
+  - 同時に `record.<code>.value` に `"必須です。"` も返る（parse 不能を「未入力」と同等扱い）
+
+### messages
+
+| | ja | en |
+|---|---|---|
+| maxValue 超過 | `<maxValue>以下である必要があります。` | `The value must be <maxValue> or less.` |
+| minValue 未満 | `<minValue>以上である必要があります。` | `The value must be <minValue> or more.` |
+| 非数値 | `数字でなければなりません。` | `Only numbers are allowed.` |
+
+### 生レスポンス
+
+```
+# maxValue=100, 150 送信 (ja)
+-> {
+  "code":"CB_VA01",
+  "id":"jf5er4gBdWYmdIVEMzSm",
+  "message":"入力内容が正しくありません。",
+  "errors":{ "record.req_number.value":{"messages":["100以下である必要があります。"]} }
+}
+
+# minValue=10, 5 送信 (ja)
+-> "errors":{ "record.req_number.value":{"messages":["10以上である必要があります。"]} }
+
+# maxValue=100, 150 送信 (en)
+-> "errors":{ "record.req_number.value":{"messages":["The value must be 100 or less."]} }
+
+# 非数値 "abc" 送信 (ja)  ― 2 キー同時
+-> {
+  "code":"CB_VA01",
+  "id":"gMYr0iBrdp9372UdWHqM",
+  "errors":{
+    "record.req_number.value":  {"messages":["必須です。"]},
+    "record[req_number].value": {"messages":["数字でなければなりません。"]}
+  }
+}
+
+# 非数値 "abc" (en)
+-> "errors":{
+  "record.req_number.value":  {"messages":["Required."]},
+  "record[req_number].value": {"messages":["Only numbers are allowed."]}
+}
+```
+
+---
+
+## 6. `options` 整合性
+
+### 対象タイプ
+
+`RADIO_BUTTON` / `DROP_DOWN` / `CHECK_BOX` / `MULTI_SELECT`
+
+### 挙動
+
+- 選択肢に含まれない値を送ると 400
+- スカラー系（RADIO / DROP_DOWN）は `record.<code>.value`
+- 配列系（CHECK_BOX / MULTI_SELECT）は **要素 index 付きキー** `record.<code>.values[<i>].value`
+- 空文字 / 空配列は検証スキップ
+
+### messages
+
+| | ja | en |
+|---|---|---|
+| 範囲外 | `"<value>"は選択肢にありません。` | `The value, "<value>", is not in options.` |
+
+### 生レスポンス
+
+```
+# RADIO_BUTTON "Z" (範囲外)
+-> "errors": {
+  "record.fld_radio.value": {"messages":["\"Z\"は選択肢にありません。"]}
+}
+
+# DROP_DOWN "Q"
+-> "errors": {
+  "record.fld_drop.value": {"messages":["\"Q\"は選択肢にありません。"]}
+}
+
+# CHECK_BOX に ["X"] (範囲外)
+-> {
+  "code":"CB_VA01",
+  "id":"SeWojMlyki16mOmKduKi",
+  "errors":{
+    "record.req_check.values":            {"messages":["必須です。"]},
+    "record.req_check.values[0].value":   {"messages":["\"X\"は選択肢にありません。"]},
+    ...
+  }
+}
+
+# (en) RADIO_BUTTON "Z" + CHECK_BOX ["X"] 同時
+-> "errors":{
+  "record.req_check.values":           {"messages":["Required."]},
+  "record.req_check.values[0].value":  {"messages":["The value, \"X\", is not in options."]},
+  "record.fld_radio.value":            {"messages":["The value, \"Z\", is not in options."]}
+}
+```
+
+---
+
+## 7. `defaultValue` / `defaultNowValue` の自動補完
+
+### 補完のトリガー
+
+- **record に該当 key が存在しない** → 補完
+- **`{value:""}` / `{value:[]}` が明示的に送信** → 補完しない（空値として尊重）
+- 明示的な値あり → そのまま保存（defaultValue で上書きしない）
+- **PUT（更新）では defaultValue は適用されない**（POST 時のみ）
+
+### タイプ別
+
+| タイプ | defaultValue 形状 | defaultNowValue | 補完後の形式 |
+|---|---|---|---|
+| SINGLE_LINE_TEXT / NUMBER / RADIO_BUTTON / DROP_DOWN / LINK | 文字列 | — | そのまま |
+| CHECK_BOX / MULTI_SELECT | 配列 | — | そのまま |
+| DATE | `"YYYY-MM-DD"` | `true` で現在日（ローカル日付） | `"YYYY-MM-DD"` |
+| DATETIME | `"2012-07-19T00:00Z"` 等 | `true` で現在日時（UTC、**秒は 00 に丸め**） | `"YYYY-MM-DDTHH:MM:00Z"` |
+| TIME | `"HH:mm"` | `true` で現在時刻（ローカル時刻） | `"HH:MM"` |
+| USER_SELECT / ORGANIZATION_SELECT / GROUP_SELECT | `[{code, type}]` | — | そのまま（`LOGINUSER()` 等の関数はエミュレーターでは評価しない） |
+| FILE | 設定不可 | — | — |
+
+### required との関係
+
+- `required: true` + `defaultValue` がある場合、未送信でも defaultValue で補完されて 200 になる
+- `{value:""}` を明示的に送ると補完されず、required エラーで 400
+
+### 生レスポンス
+
+```
+# POST /k/v1/record.json  body={app:<APP_ID>, record:{}}  (全未送信)
+-> 200 {"id":"92","revision":"1"}
+# そのレコードを GET すると defaultValue/defaultNowValue がすべて補完されている:
+GET /k/v1/record.json?app=<APP_ID>&id=92
+-> {
+  "record": {
+    "txt_def":      {"type":"SINGLE_LINE_TEXT", "value":"デフォルト"},
+    "num_def":      {"type":"NUMBER",           "value":"42"},
+    "radio_def":    {"type":"RADIO_BUTTON",     "value":"B"},
+    "check_def":    {"type":"CHECK_BOX",        "value":["A","B"]},
+    "multi_def":    {"type":"MULTI_SELECT",     "value":["Q"]},
+    "date_def":     {"type":"DATE",             "value":"2020-01-15"},
+    "date_now":     {"type":"DATE",             "value":"2026-04-23"},
+    "dt_now":       {"type":"DATETIME",         "value":"2026-04-23T06:31:00Z"},
+    "time_now":     {"type":"TIME",             "value":"15:31"},
+    "req_with_def": {"type":"SINGLE_LINE_TEXT", "value":"required_default"},
+    ...
+  }
+}
+
+# POST body={record:{req_with_def:{value:""}}}  (required + default、明示的 "")
+-> 400
+{
+  "code":"CB_VA01",
+  "id":"g5mrVO4JhfIkoO2Cl8wV",
+  "message":"入力内容が正しくありません。",
+  "errors":{ "record.req_with_def.value": {"messages":["必須です。"]} }
+}
+```
+
+---
+
+## 8. その他観察
+
+### preview/deploy のライフサイクル
+
+- `POST /k/v1/preview/app/form/fields.json` → preview にフィールド追加（レスポンス: `{"revision":"<n>"}`）
+- `POST /k/v1/preview/app/deploy.json` body `{"apps":[{"app":<APP_ID>}]}` → 本番反映キック（レスポンス: `{}` だけ返り、非同期で反映される）
+- `GET /k/v1/preview/app/deploy.json?apps[0]=<APP_ID>` で状態を確認: `{"apps":[{"app":"9","status":"PROCESSING"|"SUCCESS"|"FAIL"}]}`
+- 既存レコードがある状態で unique や maxLength などを後付けすると deploy が FAIL する場合がある（既存データが制約に違反するため）
+
+### 権限不足のレスポンス
+
+```
+# 管理権限のないアプリ/操作  (ja)
+POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
+-> 403? 実際は 403 ではなく 4xx で:
+{
+  "code":"CB_NO02",
+  "id":"yCqXLCSCUYD9jUxOeqL9",
+  "message":"権限がありません。"
+}
+```
+
+### ユーザー権限
+
+- 2026-04-23 時点、認証ユーザー `<user@example.com>` は 複数の検証アプリ いずれもアプリ管理権限あり（確認済み）
+- 以前は 一部の検証アプリ には権限がなく `CB_NO02 権限がありません。` を返したが、後に付与された
+- 検証時は必要に応じて複数アプリを使い分けると、既存レコードや preview 状態が絡むデプロイ失敗を回避しやすい
+
+### undici fetch の自動ヘッダー
+
+- Node.js `fetch` は `accept-language: *` を自動付与する
+- ヘッダー無しとして扱いたいロジックでは `"*"` もデフォルト扱いにする必要がある
+
+---
+
+## Appendix: 観察用コマンド例
+
+```sh
+# 認証ヘッダー
+AUTH=$(echo -n '<user@example.com>:<password>' | base64 -w0)
+
+# レコード取得
+curl -s -H "X-Cybozu-Authorization: $AUTH" "https://<your-domain>.cybozu.com/k/v1/record.json?app=<APP_ID>&id=1"
+
+# 英語版
+curl -s -H "X-Cybozu-Authorization: $AUTH" -H "Accept-Language: en" "https://<your-domain>.cybozu.com/k/v1/record.json?app=<APP_ID>&id=1"
+
+# preview でフィールド追加 → deploy → poll
+curl -s -X POST -H "X-Cybozu-Authorization: $AUTH" -H "Content-Type: application/json" \
+  "https://<your-domain>.cybozu.com/k/v1/preview/app/form/fields.json" -d '{"app":<APP_ID>,"properties":{...}}'
+curl -s -X POST -H "X-Cybozu-Authorization: $AUTH" -H "Content-Type: application/json" \
+  "https://<your-domain>.cybozu.com/k/v1/preview/app/deploy.json" -d '{"apps":[{"app":<APP_ID>}]}'
+curl -s -H "X-Cybozu-Authorization: $AUTH" \
+  "https://<your-domain>.cybozu.com/k/v1/preview/app/deploy.json?apps%5B0%5D=<APP_ID>"
+```

@@ -84,23 +84,33 @@ describe("プロセス管理の設定取得API", () => {
     expect(data.actions[1].name).toBe("完了にする");
   });
 
-  test("存在しないアプリで404が返る", async () => {
+  test("存在しないアプリで GAIA_AP01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=99999`);
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_AP01");
   });
 
-  test("appパラメータ未指定で400が返る", async () => {
+  test("appパラメータ未指定で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ app: { messages: ["必須です。"] } });
   });
 
-  test("appパラメータが非整数で400が返る", async () => {
+  test("appパラメータが非整数で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=abc`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ app: { messages: ["最小でも1以上です。"] } });
   });
 
-  test("appパラメータが0で400が返る", async () => {
+  test("appパラメータが0で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=0`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors.app.messages).toContain("最小でも1以上です。");
   });
 });

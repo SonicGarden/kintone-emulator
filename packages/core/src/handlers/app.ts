@@ -4,7 +4,9 @@
 import { findApp } from "../db/apps";
 import type { AppRow } from "../db/apps";
 import { dbSession } from "../db/client";
+import { errorInvalidInput, errorMessages, errorNotFoundApp } from "./errors";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 const toAppResponse = (row: AppRow) => ({
   appId: row.id.toString(),
@@ -20,15 +22,16 @@ const toAppResponse = (row: AppRow) => ({
 });
 
 export const get = ({ request, params }: HandlerArgs) => {
+  const locale = detectLocale(request.headers.get("accept-language"));
   const url = new URL(request.url);
   const idParam = url.searchParams.get('id');
   if (!idParam) {
-    return Response.json({ message: 'id is required.' }, { status: 400 });
+    return errorInvalidInput({ id: { messages: [errorMessages(locale).requiredField] } }, locale);
   }
 
   const row = findApp(dbSession(params.session), Number(idParam));
   if (!row) {
-    return Response.json({ message: 'App not found.' }, { status: 404 });
+    return errorNotFoundApp(idParam, locale);
   }
 
   return Response.json(toAppResponse(row));
