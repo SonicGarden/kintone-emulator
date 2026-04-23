@@ -409,14 +409,28 @@ export const validateRecord = (
   return Object.keys(errors).length > 0 ? errors : null;
 };
 
+// DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を kintone の CREATED_TIME / UPDATED_TIME 形式に整形。
+// 実 kintone は秒を 00 に丸めた ISO 8601 UTC（"YYYY-MM-DDTHH:MM:00Z"）で返す。
+const formatKintoneDateTime = (sqlTime: string): string => {
+  const d = new Date(sqlTime.replace(" ", "T") + "Z");
+  d.setUTCSeconds(0, 0);
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+};
+
+export type RecordMeta = {
+  recordId?: number | string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 // getRecord / getRecords 応答で各フィールドに type を注入するヘルパー。
 // - SUBTABLE の場合は行内の各フィールドにも type を注入する
-// - recordId が渡された場合、RECORD_NUMBER フィールド（レコード番号等のフィールドコード）を
-//   `{type: "RECORD_NUMBER", value: <recordId>}` として補完する（body には保存されていないため）
+// - meta が渡された場合、システムフィールド（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME）の
+//   フィールドコードに対して `{type, value}` を補完する（body には保存されていないため）
 export const attachFieldTypes = (
   body: RecordInput,
   fieldRows: FieldRow[],
-  recordId?: number | string,
+  meta: RecordMeta = {},
 ): void => {
   const topTypes: Record<string, string> = {};
   const subTypes: Record<string, Record<string, string>> = {};
@@ -429,8 +443,13 @@ export const attachFieldTypes = (
         subTypes[row.code]![c] = f.type;
       }
     }
-    if (def.type === "RECORD_NUMBER" && recordId != null && !(row.code in body)) {
-      body[row.code] = { type: "RECORD_NUMBER", value: String(recordId) };
+    if (row.code in body) continue;
+    if (def.type === "RECORD_NUMBER" && meta.recordId != null) {
+      body[row.code] = { type: "RECORD_NUMBER", value: String(meta.recordId) };
+    } else if (def.type === "CREATED_TIME" && meta.createdAt != null) {
+      body[row.code] = { type: "CREATED_TIME", value: formatKintoneDateTime(meta.createdAt) };
+    } else if (def.type === "UPDATED_TIME" && meta.updatedAt != null) {
+      body[row.code] = { type: "UPDATED_TIME", value: formatKintoneDateTime(meta.updatedAt) };
     }
   }
   for (const code of Object.keys(body)) {

@@ -912,7 +912,25 @@ GET /k/v1/record.json?app=<APP_ID>&id=14
 }
 ```
 
-エミュレーターでは `attachFieldTypes(body, fieldRows, recordId)` がこの補完と `type` 付与を担当する。
+エミュレーターでは `attachFieldTypes(body, fieldRows, { recordId, createdAt, updatedAt })` が type 付与と以下のシステムフィールド補完を担当する:
+
+- RECORD_NUMBER（既定コード `レコード番号`）: `{type: "RECORD_NUMBER", value: "<id>"}`
+- CREATED_TIME（既定コード `作成日時`）: `{type: "CREATED_TIME", value: "YYYY-MM-DDTHH:MM:00Z"}`（**API 応答は分単位**、秒は常に `00`）
+- UPDATED_TIME（既定コード `更新日時`）: `{type: "UPDATED_TIME", value: "YYYY-MM-DDTHH:MM:00Z"}`（同上）
+
+実機は秒の異なるタイミング（例: `14:10:59` / `14:11:17` / `14:11:53`）で POST しても、返される値はすべて `"2026-04-23T14:11:00Z"` のように分単位に揃う。kintone の内部記憶が秒精度で持っているかどうかは REST API 経由では判別できない。エミュレーターは SQLite の `CURRENT_TIMESTAMP`（秒精度）を保存しているが、応答時に `setUTCSeconds(0, 0)` で分単位へ丸める。
+
+#### 補足: CALC で秒を取り出せるか試した結果
+
+CALC フィールドの expression `更新日時 - 作成日時`（format: NUMBER）で、POST → 70 秒後に PUT したレコードの差分を観察:
+
+- 実差: 70 秒（UTC 14:23:02 → 14:24:12）
+- API 応答: 作成日時 `14:23:00Z` / 更新日時 `14:24:00Z`
+- sec_check（差分）: **`"60"`**（= 1 分ぶん。秒精度なら 70 になるはず）
+
+つまり **CALC の datetime 演算も分単位で丸めた値同士で行われる**。REST API のどのルート（GET / CALC / DATE_FORMAT 等）からも秒情報は取り出せないので、実用上「秒情報は無いのと同じ」として扱ってよい。内部で秒を保存しているかどうかは REST API からは判定不可能。
+
+CREATED_TIME / UPDATED_TIME の値は SQLite の `records.created_at` / `records.updated_at`（`CURRENT_TIMESTAMP` で自動設定、PUT 時に `updated_at` を明示更新）を整形したもの。
 
 ### RECORD_NUMBER を relatedKeyField にするケース
 

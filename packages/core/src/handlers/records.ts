@@ -3,6 +3,7 @@ import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
 import type { FieldRow, FieldTypeRow } from "../db/fields";
 import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByClause, insertRecord, updateRecord } from "../db/records";
+import type { RecordRow } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
@@ -55,13 +56,17 @@ const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
 };
 
 const generateRecords = ({ recordResult, fieldRows, fields }: {
-  recordResult: { id: number, body: string, revision: number }[],
+  recordResult: RecordRow[],
   fieldRows: FieldRow[],
   fields: string[]
 }) => {
   return recordResult.map((record) => {
     const body = JSON.parse(record.body);
-    attachFieldTypes(body, fieldRows, record.id);
+    attachFieldTypes(body, fieldRows, {
+      recordId: record.id,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+    });
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) {

@@ -6,24 +6,26 @@ import { insertRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults } from "./validate";
 
-// 実 kintone ではアプリ作成時に RECORD_NUMBER フィールドが常に存在する。
-// setup/app.json で properties が指定されていても、ユーザーが RECORD_NUMBER を明示していなければ自動補完する。
-// フィールドコードは ja の既定値 "レコード番号"（英語環境では "Record_number"、後からフィールドコード変更も可）。
-const DEFAULT_RECORD_NUMBER_CODE = "レコード番号";
+// 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
+// setup/app.json で properties が指定されていても、ユーザーが同じ type を明示していなければ自動補完する。
+// フィールドコードは ja 既定値（英語環境では異なるコードになるが後から変更も可能）。
+const DEFAULT_SYSTEM_FIELDS: FieldProperties = {
+  レコード番号: { type: "RECORD_NUMBER", code: "レコード番号", label: "レコード番号" },
+  作成日時:     { type: "CREATED_TIME",  code: "作成日時",     label: "作成日時" },
+  更新日時:     { type: "UPDATED_TIME",  code: "更新日時",     label: "更新日時" },
+};
 
 const withDefaultSystemFields = (properties: FieldProperties): FieldProperties => {
-  const hasRecordNumber = Object.values(properties).some(
-    (p) => (p as { type?: string }).type === "RECORD_NUMBER",
+  const existingTypes = new Set(
+    Object.values(properties).map((p) => (p as { type?: string }).type),
   );
-  if (hasRecordNumber) return properties;
-  return {
-    ...properties,
-    [DEFAULT_RECORD_NUMBER_CODE]: {
-      type: "RECORD_NUMBER",
-      code: DEFAULT_RECORD_NUMBER_CODE,
-      label: DEFAULT_RECORD_NUMBER_CODE,
-    },
-  };
+  const result: FieldProperties = { ...properties };
+  for (const [code, def] of Object.entries(DEFAULT_SYSTEM_FIELDS)) {
+    if (!existingTypes.has((def as { type: string }).type)) {
+      result[code] = def;
+    }
+  }
+  return result;
 };
 
 const toPositiveInt = (value: unknown): number | undefined => {

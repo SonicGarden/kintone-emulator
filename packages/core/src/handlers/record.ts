@@ -33,7 +33,11 @@ export const get = ({ request, params }: HandlerArgs) => {
 
   const body: Record = JSON.parse(row.body);
   const fieldRows = findFields(db, app);
-  attachFieldTypes(body, fieldRows, row.id);
+  attachFieldTypes(body, fieldRows, {
+    recordId: row.id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
   body['$id'] = { value: row.id.toString(), type: '__ID__' };
   body['$revision'] = { value: row.revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
