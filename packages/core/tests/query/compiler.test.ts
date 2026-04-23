@@ -55,13 +55,14 @@ describe("compile: 基本", () => {
 
   test("DATETIME 型は body JSON + datetime()", () => {
     const c = doCompile('published_at <= "2026-01-01T00:00:00Z"');
-    expect(c.where).toContain(`datetime(body->>'$.published_at.value')`);
-    expect(c.where).toContain("<= datetime(?)");
+    expect(c.where).toBe("datetime(body->>'$.published_at.value') <= datetime(?)");
+    expect(c.params).toEqual(["2026-01-01T00:00:00Z"]);
   });
 
-  test("DATE 型は date()", () => {
+  test("DATE 型は date() + BETWEEN（TODAY 等と同様に範囲展開）", () => {
     const c = doCompile('deadline = "2026-04-01"');
-    expect(c.where).toContain(`date(body->>'$.deadline.value')`);
+    expect(c.where).toBe("date(body->>'$.deadline.value') = date(?)");
+    expect(c.params).toEqual(["2026-04-01"]);
   });
 });
 
@@ -96,13 +97,12 @@ describe("compile: like", () => {
 describe("compile: is empty", () => {
   test("is empty: NULL または trim 後の空文字を判定", () => {
     const c = doCompile("detail is empty");
-    expect(c.where).toContain("IS NULL");
-    expect(c.where).toContain("trim(");
+    expect(c.where).toBe("(body->>'$.detail.value' IS NULL OR trim(body->>'$.detail.value') = '')");
   });
 
   test("is not empty: 否定形", () => {
     const c = doCompile("detail is not empty");
-    expect(c.where?.startsWith("NOT ")).toBe(true);
+    expect(c.where).toBe("NOT (body->>'$.detail.value' IS NULL OR trim(body->>'$.detail.value') = '')");
   });
 });
 
@@ -143,41 +143,58 @@ describe("compile: SUBTABLE 内フィールド", () => {
 
   test("SUBTABLE 内の in は EXISTS (json_each(...))", () => {
     const c = doc('item_name in ("foo")');
-    expect(c.where).toContain("EXISTS");
-    expect(c.where).toContain("json_each(body, '$.items.value')");
-    expect(c.where).toContain("sub.value->>'$.value.item_name.value'");
-    expect(c.where).toContain("IN (?)");
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE sub.value->>'$.value.item_name.value' IN (?))",
+    );
     expect(c.params).toEqual(["foo"]);
   });
 
-  test("SUBTABLE 内の not in は NOT EXISTS でラップ", () => {
+  test("SUBTABLE 内の not in は「行があり、どの行もマッチしない」形", () => {
     const c = doc('item_name not in ("foo")');
-    expect(c.where!.startsWith("NOT EXISTS") || c.where!.includes("NOT EXISTS")).toBe(true);
-    // 内側は positive （IN）
-    expect(c.where).toContain("IN (?)");
+    expect(c.where).toBe(
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub) AND " +
+        "NOT EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+    );
+    expect(c.params).toEqual(["foo"]);
   });
 
   test("SUBTABLE 内の like", () => {
     const c = doc('item_name like "foo"');
-    expect(c.where).toContain("EXISTS");
-    expect(c.where).toContain("LIKE ?");
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE sub.value->>'$.value.item_name.value' LIKE ?)",
+    );
     expect(c.params).toEqual(["%foo%"]);
   });
 
-  test("SUBTABLE 内の > 比較も EXISTS で実現", () => {
+  test("SUBTABLE 内の > 比較も EXISTS で実現（NUMBER は REAL にキャスト）", () => {
     const c = doc('item_qty > 10');
-    expect(c.where).toContain("EXISTS");
-    expect(c.where).toContain("> ?");
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE CAST(sub.value->>'$.value.item_qty.value' AS REAL) > ?)",
+    );
     expect(c.params).toEqual([10]);
   });
 
-  test("SUBTABLE 内 MULTI_LINE_TEXT の is empty / is not empty", () => {
-    const c1 = doc('item_memo is empty');
-    expect(c1.where).toContain("EXISTS");
-    expect(c1.where).toContain("IS NULL");
-    const c2 = doc('item_memo is not empty');
-    // negative は「行がある AND どの行も空でない」という形
-    expect(c2.where).toContain("AND NOT EXISTS");
+  test("SUBTABLE 内 MULTI_LINE_TEXT の is empty", () => {
+    const c = doc('item_memo is empty');
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE (sub.value->>'$.value.item_memo.value' IS NULL OR " +
+        "trim(sub.value->>'$.value.item_memo.value') = ''))",
+    );
+  });
+
+  test("SUBTABLE 内 MULTI_LINE_TEXT の is not empty は「行があり、どの行も空でない」形", () => {
+    const c = doc('item_memo is not empty');
+    expect(c.where).toBe(
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub) AND " +
+        "NOT EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE (sub.value->>'$.value.item_memo.value' IS NULL OR " +
+        "trim(sub.value->>'$.value.item_memo.value') = '')))",
+    );
   });
 
   test("SUBTABLE 内 DATE に =・!= は GAIA_IQ07", () => {
@@ -191,8 +208,49 @@ describe("compile: SUBTABLE 内フィールド", () => {
 
   test("SUBTABLE と top-level の混合は AND で結合", () => {
     const c = doc('title = "top" and item_name in ("foo")');
-    expect(c.where).toContain("body->>'$.title.value' = ?");
-    expect(c.where).toContain("EXISTS");
+    expect(c.where).toBe(
+      "(body->>'$.title.value' = ?) AND " +
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
+        "WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+    );
+    expect(c.params).toEqual(["top", "foo"]);
+  });
+
+  test("同一 SUBTABLE の AND は単一 EXISTS にまとめて同一行制約を表現", () => {
+    const c = doc('item_name in ("foo") and item_qty > 10');
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE " +
+        "(sub.value->>'$.value.item_name.value' IN (?)) AND " +
+        "(CAST(sub.value->>'$.value.item_qty.value' AS REAL) > ?))",
+    );
+    expect(c.params).toEqual(["foo", 10]);
+  });
+
+  test("異なる SUBTABLE の AND はマージされず個別 EXISTS", () => {
+    const SUBTABLE_FIELDS_2: SubtableFieldMap = {
+      a_name: { subtableCode: "tblA", type: "SINGLE_LINE_TEXT" },
+      b_name: { subtableCode: "tblB", type: "SINGLE_LINE_TEXT" },
+    };
+    const c = compile(parseQuery('a_name in ("x") and b_name in ("y")'), {
+      fieldTypes: {}, subtableFields: SUBTABLE_FIELDS_2,
+    });
+    expect(c.where).toBe(
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.tblA.value') AS sub WHERE sub.value->>'$.value.a_name.value' IN (?))) AND " +
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.tblB.value') AS sub WHERE sub.value->>'$.value.b_name.value' IN (?)))",
+    );
+    expect(c.params).toEqual(["x", "y"]);
+  });
+
+  test("SUBTABLE 内の AND で negative 条件は個別 EXISTS のまま", () => {
+    // positive と negative が混在する場合、negative は同一行マージせず独立評価
+    const c = doc('item_name in ("foo") and item_memo is not empty');
+    expect(c.where).toBe(
+      "((EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub) AND " +
+        "NOT EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE " +
+        "(sub.value->>'$.value.item_memo.value' IS NULL OR trim(sub.value->>'$.value.item_memo.value') = '')))) AND " +
+      "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+    );
+    expect(c.params).toEqual(["foo"]);
   });
 
   test("SUBTABLE 内を order by に指定するとエラー", () => {
@@ -203,30 +261,34 @@ describe("compile: SUBTABLE 内フィールド", () => {
 describe("compile: 関数の展開", () => {
   test("NOW() は分単位 ISO 8601 UTC", () => {
     const c = doCompile('作成日時 > NOW()');
-    expect(c.params[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/);
+    expect(c.where).toBe("datetime(created_at) > datetime(?)");
+    // NOW は単一値で、分単位の ISO 8601 UTC
+    expect(c.params).toEqual(["2026-04-24T02:00:00Z"]);
   });
 
   test("TODAY() は日付の範囲に展開 / = は BETWEEN", () => {
     const c = doCompile('deadline = TODAY()');
-    expect(c.where).toMatch(/BETWEEN/);
-    expect(c.params).toHaveLength(2);
-    // DATE 型なので YYYY-MM-DD 形式
-    expect(c.params[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(c.params[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(c.where).toBe("date(body->>'$.deadline.value') BETWEEN date(?) AND date(?)");
+    // DATE 型なので YYYY-MM-DD 形式。start = end = 当日
+    expect(c.params).toEqual(["2026-04-24", "2026-04-24"]);
   });
 
   test("TODAY() >= は開始日を使う", () => {
     const c = doCompile('deadline >= TODAY()');
-    expect(c.where).toMatch(/>= date\(\?\)/);
+    expect(c.where).toBe("date(body->>'$.deadline.value') >= date(?)");
+    expect(c.params).toEqual(["2026-04-24"]);
   });
 
   test("YESTERDAY() / TOMORROW()", () => {
     const c = doCompile('作成日時 > YESTERDAY() and 作成日時 < TOMORROW()');
-    expect(c.params).toHaveLength(2);
+    expect(c.where).toBe("(datetime(created_at) > datetime(?)) AND (datetime(created_at) < datetime(?))");
+    // `>` は範囲の終端、`<` は範囲の始端を境界に使う（"昨日より後" / "明日より前"）
+    expect(c.params).toEqual(["2026-04-23T23:59:59Z", "2026-04-25T00:00:00Z"]);
   });
 
-  test("THIS_YEAR() で年の範囲", () => {
+  test("THIS_YEAR() で年の範囲（DATETIME 比較は秒単位）", () => {
     const c = doCompile('作成日時 = THIS_YEAR()');
-    expect(c.where).toMatch(/BETWEEN/);
+    expect(c.where).toBe("datetime(created_at) BETWEEN datetime(?) AND datetime(?)");
+    expect(c.params).toEqual(["2026-01-01T00:00:00Z", "2026-12-31T23:59:59Z"]);
   });
 });

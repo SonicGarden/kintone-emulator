@@ -560,13 +560,20 @@ describe("SUBTABLE 内フィールドでの検索クエリ", () => {
     expect(records.map((r) => r.top_title!.value).sort()).toEqual(["r1"]);
   });
 
-  test("同一 SUBTABLE の AND は同一行制約（not yet - 実装は行独立）", async () => {
-    // 実装は行独立なので、shared/50 持つ r2 も、apple/100 持つ r1 も返る
-    // 実機は同一行制約だが、Phase 1 では行独立で許容。ドキュメントに明記
+  test("同一 SUBTABLE の AND は同一行制約を満たすレコードが返る", async () => {
+    // r1 の行1 に apple/100 が揃っているのでヒット
     const { records } = await client.record.getRecords({
       app: appId, query: 'name in ("apple") and qty in ("100")',
     });
-    expect(records.map((r) => r.top_title!.value)).toContain("r1");
+    expect(records.map((r) => r.top_title!.value)).toEqual(["r1"]);
+  });
+
+  test("同一 SUBTABLE の AND で別行の組み合わせはヒットしない", async () => {
+    // r1 は apple(行1) と 200(行2) を別々の行に持つので、同一行制約によりヒットしない
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple") and qty in ("200")',
+    });
+    expect(records).toHaveLength(0);
   });
 
   test("not in は全行条件（r1 は shared を含まないので返る、r2 は shared を含むので返らない）", async () => {

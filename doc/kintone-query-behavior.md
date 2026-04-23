@@ -175,7 +175,7 @@ app=10 の `テーブル_3` サブテーブルで検証。
 | 演算子種別 | 意味 |
 |---|---|
 | positive（`in` / `like` / `>` / `<` / `>=` / `<=` / `is empty`） | **少なくとも 1 行がマッチするレコード**を返す |
-| negative（`not in` / `not like` / `is not empty`） | **全行が条件を満たすレコード**を返す |
+| negative（`not in` / `not like` / `is not empty`） | **行が 1 つ以上あり、かつ全行が条件を満たすレコード**を返す（空配列は除外） |
 | 同一 SUBTABLE の `and` 結合 | **同一行制約**（例: `A in ("x") and B in ("y")` は同じ行に A=x かつ B=y がある行が必要） |
 | top-level と SUBTABLE の混合 | 通常の論理演算 |
 
@@ -185,7 +185,9 @@ app=10 の `テーブル_3` サブテーブルで検証。
 文字列1行table in ("row1-a") and 数値table in ("200") → ヒットせず（別の行）
 ```
 
-- サブテーブルが空配列のレコードは、どのような positive クエリでもヒットしない（`in ("")` でさえも）
+- サブテーブルが空配列のレコードは、**positive / negative どちらのクエリでもヒットしない**
+  - positive（`in ("x")` / `like` / `>` など）: 行が 1 つも無いので「少なくとも 1 行がマッチ」を満たせずヒット対象外
+  - negative（`not in ("x")` / `is not empty` など）: 「全行が条件を満たす」は空集合に対して真（vacuous truth）になりそうだが、実機は空配列をヒット対象外として扱う（`in ("")` でさえもヒットしない挙動と一貫）
 
 ## サポート状況まとめ（エミュレーター）
 
@@ -212,4 +214,4 @@ app=10 の `テーブル_3` サブテーブルで検証。
 | GAIA_IQ07（SUBTABLE 内 = / !=）| ✅ | SUBTABLE 内フィールドに = / != を使うと拒否 |
 | GAIA_IQ23 / IQ25 / IL08（関数引数エラー）| ⚠️ | 汎用のクエリ記法エラーで弾く |
 | 関連レコード記法 `App.Field` | ❌ | |
-| SUBTABLE 内フィールド | ⚠️ | `in` / `not in` / `>` `<` `>=` `<=` / `like` / `is empty` をサポート。行単位の EXISTS / NOT EXISTS に変換。ただし同一 SUBTABLE 内の AND は**独立行判定**（実機は同一行制約。差分あり） |
+| SUBTABLE 内フィールド | ✅ | `in` / `not in` / `>` `<` `>=` `<=` / `like` / `is empty` をサポート。行単位の EXISTS / NOT EXISTS に変換。同一 SUBTABLE 内の positive 条件の AND は単一 EXISTS にマージして実機と同じ**同一行制約**を表現 |

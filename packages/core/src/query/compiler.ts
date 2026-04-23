@@ -198,7 +198,7 @@ class Compiler {
   private compileExpr(e: Expr): string {
     switch (e.type) {
       case "and":
-        return `(${this.compileExpr(e.left)}) AND (${this.compileExpr(e.right)})`;
+        return this.compileAnd(e);
       case "or":
         return `(${this.compileExpr(e.left)}) OR (${this.compileExpr(e.right)})`;
       case "group":
@@ -206,6 +206,67 @@ class Compiler {
       default:
         return this.compileCondition(e as Condition);
     }
+  }
+
+  /** AND 連鎖をフラット化する。group はノード境界を越えて展開してよい（precedence は OR で保たれる） */
+  private flattenAnd(e: Expr): Expr[] {
+    if (e.type === "and") return [...this.flattenAnd(e.left), ...this.flattenAnd(e.right)];
+    if (e.type === "group") return this.flattenAnd(e.inner);
+    return [e];
+  }
+
+  private isCondition(e: Expr): e is Condition {
+    return e.type === "cmp" || e.type === "in" || e.type === "like" || e.type === "is";
+  }
+
+  /**
+   * AND 式をコンパイル。同一 SUBTABLE に属する positive 条件は単一 EXISTS にまとめて、
+   * 「同じ行で全条件を満たす」という実機の同一行制約を表現する。
+   */
+  private compileAnd(e: Expr): string {
+    const parts = this.flattenAnd(e);
+    const subtableGroups = new Map<string, Condition[]>();
+    const otherParts: Expr[] = [];
+
+    for (const part of parts) {
+      if (this.isCondition(part) && !isNegativeCondition(part)) {
+        const resolved = resolveField(part.field, this.ctx);
+        if (resolved.location === "subtable") {
+          const list = subtableGroups.get(resolved.subtableCode) ?? [];
+          list.push(part);
+          subtableGroups.set(resolved.subtableCode, list);
+          continue;
+        }
+      }
+      otherParts.push(part);
+    }
+
+    const sqlParts = otherParts.map((p) => this.compileExpr(p));
+    for (const [subtableCode, conds] of subtableGroups) {
+      sqlParts.push(
+        conds.length === 1
+          ? this.compileExpr(conds[0]!)
+          : this.compileSubtableGroup(subtableCode, conds),
+      );
+    }
+
+    if (sqlParts.length === 1) return sqlParts[0]!;
+    return sqlParts.map((s) => `(${s})`).join(" AND ");
+  }
+
+  /** 同一 SUBTABLE の positive 条件を単一 EXISTS にまとめる（同一行制約） */
+  private compileSubtableGroup(subtableCode: string, conds: Condition[]): string {
+    const inners = conds.map((c) => {
+      const resolved = resolveField(c.field, this.ctx);
+      if (resolved.location !== "subtable") throw new Error("unreachable");
+      assertOperatorAllowed(c.field, resolved, conditionOp(c));
+      const innerCode = (c.field as { code: string }).code;
+      const ref = subtableInnerExpr(innerCode, resolved.type);
+      return this.buildSimpleCondition(c, ref);
+    });
+    const enumerator = `json_each(body, '$.${subtableCode}.value')`;
+    const whereClause = inners.map((i) => `(${i})`).join(" AND ");
+    return `EXISTS (SELECT 1 FROM ${enumerator} AS sub WHERE ${whereClause})`;
   }
 
   private compileCondition(c: Condition): string {
