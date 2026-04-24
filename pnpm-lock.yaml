@@ -57,6 +57,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@kintone/rest-api-client':
+        specifier: ^5.0.0
+        version: 5.6.0
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
