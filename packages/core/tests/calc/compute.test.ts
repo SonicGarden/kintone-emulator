@@ -68,23 +68,88 @@ describe("computeCalcFields", () => {
     expect(record.c).toEqual({ type: "CALC", value: "0.3333" });
   });
 
-  test("Phase 2 範囲外の format は空文字列", () => {
+  test("関数呼び出しが評価される", () => {
     const rows = [
       field("a", { type: "NUMBER" }),
-      field("c", { type: "CALC", expression: "a", format: "DATETIME" }),
-    ];
-    const record: Record<string, { value: unknown; type?: string }> = { a: { value: "100" } };
-    computeCalcFields(rows, record);
-    expect(record.c).toEqual({ type: "CALC", value: "" });
-  });
-
-  test("Phase 2 範囲外の式（関数呼び出し等）は空文字列", () => {
-    const rows = [
-      field("a", { type: "NUMBER" }),
-      field("c", { type: "CALC", expression: "SUM(a)" }),
+      field("c", { type: "CALC", expression: "ROUND(a / 3, 2)" }),
     ];
     const record: Record<string, { value: unknown; type?: string }> = { a: { value: "10" } };
     computeCalcFields(rows, record);
-    expect(record.c).toEqual({ type: "CALC", value: "" });
+    expect(record.c).toEqual({ type: "CALC", value: "3.33" });
+  });
+
+  test("SUBTABLE 内 NUMBER の SUM が動く", () => {
+    const rows = [
+      field("items", {
+        type: "SUBTABLE",
+        fields: { qty: { type: "NUMBER", code: "qty" } },
+      }),
+      field("total", { type: "CALC", expression: "SUM(qty)" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {
+      items: { value: [
+        { value: { qty: { value: "10" } } },
+        { value: { qty: { value: "20" } } },
+        { value: { qty: { value: "" } } },
+      ] },
+    };
+    computeCalcFields(rows, record);
+    expect(record.total).toEqual({ type: "CALC", value: "30" });
+  });
+
+  test("DATE 加算 (format=DATE)", () => {
+    const rows = [
+      field("d", { type: "DATE" }),
+      field("plus", { type: "CALC", expression: "d + 86400", format: "DATE" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = { d: { value: "2026-04-25" } };
+    computeCalcFields(rows, record);
+    expect(record.plus).toEqual({ type: "CALC", value: "2026-04-26" });
+  });
+
+  test("DATETIME 加算 (format=DATETIME)", () => {
+    const rows = [
+      field("dt", { type: "DATETIME" }),
+      field("plus", { type: "CALC", expression: "dt + 3600", format: "DATETIME" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {
+      dt: { value: "2026-04-25T10:00:00Z" },
+    };
+    computeCalcFields(rows, record);
+    expect(record.plus).toEqual({ type: "CALC", value: "2026-04-25T11:00:00Z" });
+  });
+
+  test("DATETIME - DATE は秒数の差 (format=NUMBER)", () => {
+    const rows = [
+      field("d",  { type: "DATE" }),
+      field("dt", { type: "DATETIME" }),
+      field("diff", { type: "CALC", expression: "dt - d" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {
+      d:  { value: "2026-04-25" },
+      dt: { value: "2026-04-25T10:00:00Z" },
+    };
+    computeCalcFields(rows, record);
+    expect(record.diff).toEqual({ type: "CALC", value: "36000" });
+  });
+
+  test("HOUR_MINUTE フォーマット (秒 → HH:MM, 24h 超え可)", () => {
+    const rows = [
+      field("n", { type: "NUMBER" }),
+      field("hm", { type: "CALC", expression: "n", format: "HOUR_MINUTE" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = { n: { value: "90061" } };
+    computeCalcFields(rows, record);
+    expect(record.hm).toEqual({ type: "CALC", value: "25:01" });
+  });
+
+  test("TIME フォーマット (mod 86400)", () => {
+    const rows = [
+      field("n", { type: "NUMBER" }),
+      field("t", { type: "CALC", expression: "n", format: "TIME" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = { n: { value: "90061" } };
+    computeCalcFields(rows, record);
+    expect(record.t).toEqual({ type: "CALC", value: "01:01" });
   });
 });

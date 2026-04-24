@@ -66,6 +66,134 @@ describeDualMode("CALC フィールドの計算（数値）", () => {
   });
 });
 
+describeDualMode("CALC フィールド: 比較・論理・条件分岐", () => {
+  const SESSION = "calc-bool-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc bool",
+      properties: {
+        a: { type: "NUMBER", code: "a", label: "a" },
+        calc_cmp: { type: "CALC", code: "calc_cmp", label: "cmp", expression: "a > 10", format: "NUMBER" },
+        calc_and: { type: "CALC", code: "calc_and", label: "and", expression: "AND(a > 0, a < 100)", format: "NUMBER" },
+        calc_if:  { type: "CALC", code: "calc_if",  label: "if",  expression: "IF(a > 10, a * 2, a / 2)", format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("比較演算子は 0 / 1 で返る", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: { a: { value: "50" } } });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_cmp).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_and).toEqual({ type: "CALC", value: "1" });
+  });
+
+  test("AND は片方 false で 0", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: { a: { value: "200" } } });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_and).toEqual({ type: "CALC", value: "0" });
+  });
+
+  test("IF の数値分岐", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: { a: { value: "15" } } });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_if).toEqual({ type: "CALC", value: "30" });
+  });
+});
+
+describeDualMode("CALC フィールド: ROUND 系・SUM(SUBTABLE)", () => {
+  const SESSION = "calc-round-sum-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc round/sum",
+      properties: {
+        n: { type: "NUMBER", code: "n", label: "n" },
+        calc_round:   { type: "CALC", code: "calc_round",   label: "r",  expression: "ROUND(n, 2)",     format: "NUMBER" },
+        calc_roundup: { type: "CALC", code: "calc_roundup", label: "ru", expression: "ROUNDUP(n, 2)",   format: "NUMBER" },
+        calc_rdown:   { type: "CALC", code: "calc_rdown",   label: "rd", expression: "ROUNDDOWN(n, 2)", format: "NUMBER" },
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: { qty: { type: "NUMBER", code: "qty", label: "qty" } },
+        },
+        calc_sum: { type: "CALC", code: "calc_sum", label: "s", expression: "SUM(qty)", format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("ROUND / ROUNDUP / ROUNDDOWN", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { n: { value: "3.14159" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_round).toEqual({ type: "CALC", value: "3.14" });
+    expect(record.calc_roundup).toEqual({ type: "CALC", value: "3.15" });
+    expect(record.calc_rdown).toEqual({ type: "CALC", value: "3.14" });
+  });
+
+  test("SUM(SUBTABLE 内 NUMBER)", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: {
+        items: { value: [
+          { value: { qty: { value: "10" } } },
+          { value: { qty: { value: "20" } } },
+          { value: { qty: { value: "" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_sum).toEqual({ type: "CALC", value: "30" });
+  });
+});
+
+describeDualMode("CALC フィールド: 日付演算とフォーマット", () => {
+  const SESSION = "calc-date-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc date",
+      properties: {
+        d:  { type: "DATE",     code: "d",  label: "d" },
+        dt: { type: "DATETIME", code: "dt", label: "dt" },
+        n:  { type: "NUMBER",   code: "n",  label: "n" },
+        calc_d_plus:  { type: "CALC", code: "calc_d_plus",  label: "dp",  expression: "d + 86400",  format: "DATE" },
+        calc_dt_plus: { type: "CALC", code: "calc_dt_plus", label: "dtp", expression: "dt + 3600",  format: "DATETIME" },
+        calc_diff:    { type: "CALC", code: "calc_diff",    label: "df",  expression: "dt - d",     format: "NUMBER" },
+        calc_hm:      { type: "CALC", code: "calc_hm",      label: "hm",  expression: "n",          format: "HOUR_MINUTE" },
+        calc_time:    { type: "CALC", code: "calc_time",    label: "t",   expression: "n",          format: "TIME" },
+      },
+    }));
+  });
+
+  test("DATE + 86400 = 翌日", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: {
+        d: { value: "2026-04-25" },
+        dt: { value: "2026-04-25T10:00:00Z" },
+        n: { value: "90061" },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_d_plus).toEqual({ type: "CALC", value: "2026-04-26" });
+    expect(record.calc_dt_plus).toEqual({ type: "CALC", value: "2026-04-25T11:00:00Z" });
+    expect(record.calc_diff).toEqual({ type: "CALC", value: "36000" });
+    expect(record.calc_hm).toEqual({ type: "CALC", value: "25:01" });
+    expect(record.calc_time).toEqual({ type: "CALC", value: "01:01" });
+  });
+});
+
 describeDualMode("CALC フィールドが別 CALC を参照", () => {
   const SESSION = "calc-nested-session";
   let client: KintoneRestAPIClient;

@@ -61,9 +61,59 @@ describe("evaluateNumeric", () => {
 
   test("未サポートのノード", () => {
     expect(() => evaluateNumeric(parseExpression('"x"'), {})).toThrow(CalcEvalError);
-    expect(() => evaluateNumeric(parseExpression("TRUE"), {})).toThrow(CalcEvalError);
-    expect(() => evaluateNumeric(parseExpression("a = b"), { a: 1, b: 1 })).toThrow(CalcEvalError);
     expect(() => evaluateNumeric(parseExpression('a & "x"'), { a: 1 })).toThrow(CalcEvalError);
+  });
+
+  test("比較演算子はブール値 (0/1) を返す", () => {
+    expect(evalExpr("3 > 2")).toBe(1);
+    expect(evalExpr("3 < 2")).toBe(0);
+    expect(evalExpr("3 = 3")).toBe(1);
+    expect(evalExpr("3 != 3")).toBe(0);
+    expect(evalExpr("a >= b", { a: 5, b: 5 })).toBe(1);
+  });
+
+  test("AND / OR / NOT", () => {
+    expect(evalExpr("AND(1, 1, 1)")).toBe(1);
+    expect(evalExpr("AND(1, 0, 1)")).toBe(0);
+    expect(evalExpr("OR(0, 0, 1)")).toBe(1);
+    expect(evalExpr("OR(0, 0, 0)")).toBe(0);
+    expect(evalExpr("NOT(0)")).toBe(1);
+    expect(evalExpr("NOT(1)")).toBe(0);
+    expect(evalExpr("AND(a > 0, a < 10)", { a: 5 })).toBe(1);
+  });
+
+  test("TRUE / FALSE", () => {
+    expect(evalExpr("TRUE")).toBe(1);
+    expect(evalExpr("FALSE")).toBe(0);
+  });
+
+  test("IF — 数値分岐", () => {
+    expect(evalExpr("IF(a > 10, a * 2, a / 2)", { a: 15 })).toBe(30);
+    expect(evalExpr("IF(a > 10, a * 2, a / 2)", { a: 4 })).toBe(2);
+    expect(evalExpr("IF(0, 1, 2)")).toBe(2);
+    expect(evalExpr("IF(1, 1, 2)")).toBe(1);
+  });
+
+  test("ROUND / ROUNDUP / ROUNDDOWN", () => {
+    expect(evalExpr("ROUND(3.14159, 2)")).toBe(3.14);
+    expect(evalExpr("ROUNDUP(3.14159, 2)")).toBe(3.15);
+    expect(evalExpr("ROUNDDOWN(3.14159, 2)")).toBe(3.14);
+    expect(evalExpr("ROUND(3.5, 0)")).toBe(4);
+    expect(evalExpr("ROUNDDOWN(3.99, 0)")).toBe(3);
+  });
+
+  test("SUM — 可変長", () => {
+    expect(evalExpr("SUM(1, 2, 3)")).toBe(6);
+    expect(evalExpr("SUM(a, b, 10)", { a: 1, b: 2 })).toBe(13);
+  });
+
+  test("SUM — SUBTABLE 内 NUMBER フィールド配列を展開", () => {
+    expect(evaluateNumeric(parseExpression("SUM(qty)"), { qty: [10, 20, 30] })).toBe(60);
+    expect(evaluateNumeric(parseExpression("SUM(qty)"), { qty: [] })).toBe(0);
+  });
+
+  test("配列を SUM 以外で参照すると 0", () => {
+    expect(evaluateNumeric(parseExpression("qty + 1"), { qty: [10, 20] })).toBe(1);
   });
 });
 
