@@ -4,6 +4,7 @@
 
 ## 完了済み（describeDualMode）
 
+- `records.test.ts` > `アプリのレコード一覧のAPI` (13 tests; 削除の存在しない ID テスト 1 件は testEmulatorOnly)
 - `records.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` (6 tests)
 - `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
 - `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
@@ -11,10 +12,12 @@
 - `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
 - `record.test.ts` > `options 整合バリデーション` (6 tests)
 - `record.test.ts` > `defaultValue / defaultNowValue の自動補完` (8 tests)
+- `record.test.ts` > `SUBTABLE 対応` (10 tests; 行 id 保持テスト 1 件は testEmulatorOnly)
+- `record.test.ts` > `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）` (5 tests; マージ独自挙動 2 件は testEmulatorOnly)
 - `record.test.ts` > `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` (6 tests)
 - `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
 
-合計 43 tests を実 kintone 環境で検証済み（全 pass）。
+合計 72 tests を実 kintone 環境で検証済み（全 pass / 約 276 秒）。
 
 ### 実機差分を発見して emulator-only に退避した項目
 
@@ -22,6 +25,13 @@
   - 空文字は minLength 検証をスキップ → 実機では NG の可能性（要追加調査）
   - LINK に短い値を入れると minLength エラーに加えて「URL の形式が正しくありません」エラーも同時に返る → 実機のみの挙動
   - MULTI_LINE_TEXT の maxLength: 実機で独自の状態エラーが出て失敗（要追加調査）
+
+- **`records.test.ts` > クエリの文字列リテラル**: 実機は double-quote のみ許容。`test = 'test'` は CB_VA01。エミュは single / double どちらも受け付ける → dualMode テストは double-quote に統一
+- **`records.test.ts` > `getRecords` の `totalCount`**: 実機は `?totalCount=true` 指定時のみ件数を返す（デフォルト null）。エミュは常に件数を返す → テストは `records.length` で代用
+- **`records.test.ts` > `レコード削除 > 存在しないレコードIDを指定してもエラーにならない`**: 実機は GAIA_RE01、エミュは 200 OK。`testEmulatorOnly` 化
+- **`record.test.ts` > SUBTABLE 行に id を送ると保持される**: 実機は行 id を無視して自動採番、エミュはクライアント指定 id を保持 → `testEmulatorOnly`
+- **`record.test.ts` > SUBTABLE PUT の行 id 単位マージ**: 実機は PUT で SUBTABLE 全体を置き換え、エミュは行 id 単位で内部フィールドをマージ。該当 2 テストを `testEmulatorOnly` 化
+- **アプリ作成時のフィールドコード衝突**: 実機は `ステータス` (STATUS システムフィールド) / `カテゴリー` / `作業者` 等のコードを予約。ユーザーが同じコードで DROP_DOWN 等を作ろうとすると CB_VA01 → dualMode テストで使う時はリネーム必須
 
 ## 未移行（describeEmulatorOnly でタグ付け、実 kintone では skip）
 
@@ -33,14 +43,13 @@
 | `一括 addRecords / updateRecords` | `ids: ["1","2","3"]` という逐次 ID 前提が多数。実 kintone は自動採番で 1 始まりにならない |
 | `クエリのエラーレスポンス / 上限チェック` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いている。実 kintone は deploy 必須。app=1 ハードコード |
 
-### record.test.ts (残り emulator-only 5 ブロック)
+### record.test.ts (残り emulator-only 3 ブロック)
 
 | ブロック | 障壁 |
 |---|---|
 | `アプリのレコードAPI` | 逐次 ID (`result.id === "1"` 等) と `$id = 1` ハードコードが多数 |
 | `required フィールドのバリデーション` | `USER_SELECT` に `{ code: "u1" }` というダミーユーザーコード → 実機には存在しないのでエラー |
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
-| `SUBTABLE 対応` / `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）` | 実機の SUBTABLE 行 id 採番が実機独自（数値連番）で、エミュの hex と不一致。テスト assertion の書き換え必要 |
 | `ルックアップ（LOOKUP）` / `ルックアップ: relatedKeyField が RECORD_NUMBER` | 2 つのアプリ + ルックアップ設定が必要。実機では addFormFields 後 deployApp、かつ relatedApp 指定が必要 |
 
 ### comment.test.ts
@@ -81,10 +90,8 @@
 ## 次フェーズの優先順位案
 
 **中**:
-1. `record.test.ts` > SUBTABLE CRUD 系（行 id の書き換え必要）
-2. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy）
-3. `records.test.ts` > `一括 addRecords / updateRecords`（ID assertions の書き換え）
-4. `records.test.ts` > `アプリのレコード一覧のAPI`（`createTestApp` + recordIds 置換で可、$id アサーション書き換え）
+1. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy）
+2. `records.test.ts` > `一括 addRecords / updateRecords`（ID assertions の書き換え）
 
 **低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
 - `auth.test.ts`（エミュ固有の /setup/auth.json）

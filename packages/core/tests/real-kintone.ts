@@ -7,7 +7,7 @@
 //   フィールド定義のハッシュキャッシュで deploy 回数を最小化する。
 
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { describe } from "vitest";
+import { describe, test } from "vitest";
 import {
   createApp as emulatorCreateApp,
   createBaseUrl as emulatorCreateBaseUrl,
@@ -249,7 +249,10 @@ const deleteAllRecords = async (client: KintoneRestAPIClient, appId: number): Pr
 };
 
 const deleteAllFields = async (client: KintoneRestAPIClient, appId: number): Promise<void> => {
-  const { properties } = await client.app.getFormFields({ app: appId });
+  // preview: true でプレビュー側のフィールド一覧を取得する。
+  // getFormFields のデフォルト（live）だと、ライブにのみ存在する（プレビューから消えた）フィールドを
+  // 削除対象に含めてしまい、deleteFormFields（プレビュー対象）が GAIA_FC01 で失敗する。
+  const { properties } = await client.app.getFormFields({ app: appId, preview: true });
   const fieldCodes = Object.entries(properties)
     .filter(([, field]) => !SYSTEM_FIELD_TYPES.has((field as { type: string }).type))
     .map(([code]) => code);
@@ -345,3 +348,9 @@ export const describeEmulatorOnly: typeof describe = ((name: string, fn: () => v
   if (isUsingRealKintone()) return describe.skip(name, fn);
   return describe(name, fn);
 }) as typeof describe;
+
+/** エミュレーターでのみ実行する test。実 kintone モード時は skip */
+export const testEmulatorOnly: typeof test = ((name: string, fn: () => void | Promise<void>) => {
+  if (isUsingRealKintone()) return test.skip(name, fn);
+  return test(name, fn);
+}) as typeof test;

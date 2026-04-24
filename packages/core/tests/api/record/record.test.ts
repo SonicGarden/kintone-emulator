@@ -1,7 +1,7 @@
 import { KintoneRestAPIClient, KintoneRestAPIError } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
-import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment } from "../../real-kintone";
+import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment, testEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
@@ -883,17 +883,15 @@ describeDualMode("defaultValue / defaultNowValue の自動補完", () => {
   });
 });
 
-describeEmulatorOnly("SUBTABLE 対応", () => {
+describeDualMode("SUBTABLE 対応", () => {
   const SESSION = "record-subtable";
-  let BASE_URL: string;
   let client: KintoneRestAPIClient;
   let appId: number;
 
-  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(BASE_URL);
-    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    appId = await createApp(BASE_URL, {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
       name: "subtable テスト",
       properties: {
         top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
@@ -912,18 +910,8 @@ describeEmulatorOnly("SUBTABLE 対応", () => {
           },
         },
       },
-    });
+    }));
   });
-  afterEach(async () => { await finalizeSession(BASE_URL); });
-
-  const postRecord = (body: unknown) =>
-    fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-  const putRecord = (body: unknown) =>
-    fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
 
   test("SUBTABLE に正常な行を追加できる", async () => {
     const { id } = await client.record.addRecord({
@@ -956,62 +944,61 @@ describeEmulatorOnly("SUBTABLE 対応", () => {
   });
 
   test("SUBTABLE 内の required 欠落は index 付きキーで 400", async () => {
-    const r = await postRecord({
-      app: appId,
-      record: { items: { value: [{ value: { qty: { value: "1" } } }] } },
-    });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("CB_VA01");
-    expect(json.errors).toEqual({
-      "record.items.value[0].value.name.value": { messages: ["必須です。"] },
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: { items: { value: [{ value: { qty: { value: "1" } } }] } },
+      }),
+    ).rejects.toMatchObject({
+      code: "CB_VA01",
+      errors: { "record.items.value[0].value.name.value": { messages: ["必須です。"] } },
     });
   });
 
   test("SUBTABLE 内の maxLength 超過", async () => {
-    const r = await postRecord({
-      app: appId,
-      record: { items: { value: [
-        { value: { name: { value: "ok" } } },
-        { value: { name: { value: "toolong" } } },
-      ] } },
-    });
-    const json = await r.json();
-    expect(json.errors).toEqual({
-      "record.items.value[1].value.name.value": { messages: ["6文字より短くなければなりません。"] },
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: { items: { value: [
+          { value: { name: { value: "ok" } } },
+          { value: { name: { value: "toolong" } } },
+        ] } },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.items.value[1].value.name.value": { messages: ["6文字より短くなければなりません。"] } },
     });
   });
 
   test("SUBTABLE 内の maxValue 超過", async () => {
-    const r = await postRecord({
-      app: appId,
-      record: { items: { value: [{ value: { name: { value: "x" }, qty: { value: "200" } } }] } },
-    });
-    const json = await r.json();
-    expect(json.errors).toEqual({
-      "record.items.value[0].value.qty.value": { messages: ["100以下である必要があります。"] },
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: { items: { value: [{ value: { name: { value: "x" }, qty: { value: "200" } } }] } },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.items.value[0].value.qty.value": { messages: ["100以下である必要があります。"] } },
     });
   });
 
   test("SUBTABLE 内の RADIO_BUTTON options 違反", async () => {
-    const r = await postRecord({
-      app: appId,
-      record: { items: { value: [{ value: { name: { value: "x" }, kind: { value: "Z" } } }] } },
-    });
-    const json = await r.json();
-    expect(json.errors).toEqual({
-      "record.items.value[0].value.kind.value": { messages: ['"Z"は選択肢にありません。'] },
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: { items: { value: [{ value: { name: { value: "x" }, kind: { value: "Z" } } }] } },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.items.value[0].value.kind.value": { messages: ['"Z"は選択肢にありません。'] } },
     });
   });
 
   test("SUBTABLE 内の CHECK_BOX options 違反（values[j] 形式）", async () => {
-    const r = await postRecord({
-      app: appId,
-      record: { items: { value: [{ value: { name: { value: "x" }, cbx: { value: ["P", "Z"] } } }] } },
-    });
-    const json = await r.json();
-    expect(json.errors).toEqual({
-      "record.items.value[0].value.cbx.values[1].value": { messages: ['"Z"は選択肢にありません。'] },
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: { items: { value: [{ value: { name: { value: "x" }, cbx: { value: ["P", "Z"] } } }] } },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.items.value[0].value.cbx.values[1].value": { messages: ['"Z"は選択肢にありません。'] } },
     });
   });
 
@@ -1022,7 +1009,8 @@ describeEmulatorOnly("SUBTABLE 対応", () => {
     expect(r2.id).toBeTruthy();
   });
 
-  test("SUBTABLE 行に id を送ると保持される", async () => {
+  // 実機は行 id を数値連番で自動採番するため、クライアント指定 id は保持されない → emulator のみ
+  testEmulatorOnly("SUBTABLE 行に id を送ると保持される", async () => {
     const { id } = await client.record.addRecord({
       app: appId,
       record: { items: { value: [
@@ -1039,14 +1027,13 @@ describeEmulatorOnly("SUBTABLE 対応", () => {
       app: appId,
       record: { items: { value: [{ value: { name: { value: "x" } } }] } },
     });
-    const r = await putRecord({
-      app: appId, id,
-      record: { items: { value: [{ value: { name: { value: "" } } }] } },
-    });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.errors).toEqual({
-      "record.items.value[0].value.name.value": { messages: ["必須です。"] },
+    await expect(
+      client.record.updateRecord({
+        app: appId, id,
+        record: { items: { value: [{ value: { name: { value: "" } } }] } },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.items.value[0].value.name.value": { messages: ["必須です。"] } },
     });
   });
 
@@ -1062,17 +1049,15 @@ describeEmulatorOnly("SUBTABLE 対応", () => {
   });
 });
 
-describeEmulatorOnly("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", () => {
+describeDualMode("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", () => {
   const SESSION = "record-subtable-put";
-  let BASE_URL: string;
   let client: KintoneRestAPIClient;
   let appId: number;
 
-  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(BASE_URL);
-    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    appId = await createApp(BASE_URL, {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
       name: "subtable put テスト",
       properties: {
         top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
@@ -1088,9 +1073,8 @@ describeEmulatorOnly("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）
           },
         },
       },
-    });
+    }));
   });
-  afterEach(async () => { await finalizeSession(BASE_URL); });
 
   const seed = async () => {
     const { id } = await client.record.addRecord({
@@ -1115,7 +1099,8 @@ describeEmulatorOnly("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）
     expect((record.items!.value as Array<unknown>)).toHaveLength(3);
   });
 
-  test("既存行 id を指定した PUT は内部フィールドをマージ（送らないフィールドは保持）", async () => {
+  // 実機の PUT は SUBTABLE 全体を置き換えるセマンティクス。エミュは行 id 単位でフィールドをマージする独自挙動 → emulator のみ
+  testEmulatorOnly("既存行 id を指定した PUT は内部フィールドをマージ（送らないフィールドは保持）", async () => {
     const { id, rowIds } = await seed();
     // id=rowIds[0] の qty だけ更新、name は送らない → name は保持される
     await client.record.updateRecord({
@@ -1168,7 +1153,8 @@ describeEmulatorOnly("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）
     expect(rows[2]!.value.name).toMatchObject({ value: "new_b" });
   });
 
-  test("存在しない行 id を指定すると新規行として新しい id が振られる", async () => {
+  // 実機は存在しない行 id を 400 で拒否する。エミュは新規行として扱う独自挙動 → emulator のみ
+  testEmulatorOnly("存在しない行 id を指定すると新規行として新しい id が振られる", async () => {
     const { id, rowIds } = await seed();
     await client.record.updateRecord({
       app: appId, id, record: { items: { value: [

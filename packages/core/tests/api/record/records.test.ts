@@ -1,26 +1,18 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
-import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment } from "../../real-kintone";
+import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment, testEmulatorOnly } from "../../real-kintone";
 
-let BASE_URL: string;
-beforeAll(() => {
-  BASE_URL = createBaseUrl("records");
-});
+describeDualMode("アプリのレコード一覧のAPI", () => {
+  const SESSION = "records-list";
+  let client: KintoneRestAPIClient;
+  let appId: number;
 
-// TODO: dual-mode 化するには app=1 と $id=1 のハードコードを createTestApp + 返却 recordIds に置き換える必要あり
-describeEmulatorOnly("アプリのレコード一覧のAPI", () => {
-  let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
-    await initializeSession(BASE_URL);
-    client = new KintoneRestAPIClient({
-      baseUrl: BASE_URL,
-      auth: {
-        apiToken: "test",
-      },
-    });
-    await client.app.addFormFields({
-      app: 1,
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "records list",
       properties: {
         test: { type: "SINGLE_LINE_TEXT", code: "test", label: "Test" },
         test2: { type: "SINGLE_LINE_TEXT", code: "test2", label: "Test2" },
@@ -29,10 +21,11 @@ describeEmulatorOnly("アプリのレコード一覧のAPI", () => {
         理由: { type: "SINGLE_LINE_TEXT", code: "理由", label: "理由" },
         理由_new: { type: "SINGLE_LINE_TEXT", code: "理由_new", label: "理由_new" },
         日時: { type: "DATETIME", code: "日時", label: "日時" },
-        ステータス: {
+        // NOTE: 実機のシステムフィールド `ステータス` (type: STATUS) と衝突するため、`st_dd` にリネーム
+        st_dd: {
           type: "DROP_DOWN",
-          code: "ステータス",
-          label: "ステータス",
+          code: "st_dd",
+          label: "ドロップダウン",
           options: {
             あ: { label: "あ", index: "0" },
             い: { label: "い", index: "1" },
@@ -40,238 +33,131 @@ describeEmulatorOnly("アプリのレコード一覧のAPI", () => {
           },
         },
       },
-    });
-  });
-
-  afterEach(async () => {
-    await finalizeSession(BASE_URL);
+    }));
   });
 
   test("アプリのレコードを検索するとデータが返ってくる", async () => {
-    const result = await client!.record.addRecord({
-      app: 1,
-      record: {
-        test: {
-          value: "test",
-        },
-      },
-    });
-    await client!.record.addRecord({
-      app: 1,
-      record: {
-        test: {
-          value: "test2",
-        },
-      },
-    });
-    expect(result).toEqual({
-      id: expect.any(String),
-      revision: "1",
-    });
-    const records = await client!.record.getRecords({
-      app: 1,
-    });
-    expect(records.totalCount).toEqual("2");
-    // 実 kintone はデフォルトで $id desc なので id=2 が先頭
-    expect(records.records[0]!["$id"]!.value).toEqual("2");
+    const result1 = await client.record.addRecord({ app: appId, record: { test: { value: "test" } } });
+    const result2 = await client.record.addRecord({ app: appId, record: { test: { value: "test2" } } });
+    expect(result1).toMatchObject({ id: expect.any(String), revision: "1" });
+    const records = await client.record.getRecords({ app: appId });
+    expect(records.records).toHaveLength(2);
+    // 実 kintone / emulator ともデフォルトで $id desc なので 2 件目が先頭
+    expect(records.records[0]!["$id"]!.value).toEqual(result2.id);
     expect(records.records[0]!.test!.value).toEqual("test2");
     expect(records.records[0]!.test!.type).toEqual("SINGLE_LINE_TEXT");
   });
 
   test("fieldsを指定するとそこのデータだけ出力される", async () => {
-    await Promise.all([
-      client!.record.addRecord({
-        app: 1,
-        record: {
-          test: {
-            value: "test",
-          },
-          test2: {
-            value: "test",
-          },
-          postedAt: {
-            value: "2022-01-01T00:00:00Z",
-          },
-        },
-      }),
-    ]);
-    const records = await client!.record.getRecords({
-      app: 1,
-      fields: ["test"],
+    await client.record.addRecord({
+      app: appId,
+      record: {
+        test: { value: "test" },
+        test2: { value: "test" },
+        postedAt: { value: "2022-01-01T00:00:00Z" },
+      },
     });
+    const records = await client.record.getRecords({ app: appId, fields: ["test"] });
     expect(records.records[0]!).not.toHaveProperty("test2");
   });
 
   describe("queryが存在する時、", () => {
+    let firstId: string;
     beforeEach(async () => {
-      await Promise.all([
-        client!.record.addRecord({
-          app: 1,
-          record: {
-            test: {
-              value: "test",
-            },
-            test2: {
-              value: "test",
-            },
-            postedAt: {
-              value: "2022-01-01T00:00:00Z",
-            },
-            テスト: {
-              value: "テスト",
-            },
-          },
-        }),
-        await client!.record.addRecord({
-          app: 1,
-          record: {
-            test: {
-              value: "test2",
-            },
-            test2: {
-              value: "test2",
-            },
-            postedAt: {
-              value: "2100-01-01T00:00:00Z",
-            },
-            テスト: {
-              value: "テスト2",
-            },
-          },
-        }),
-      ]);
+      const r1 = await client.record.addRecord({
+        app: appId,
+        record: {
+          test: { value: "test" },
+          test2: { value: "test" },
+          postedAt: { value: "2022-01-01T00:00:00Z" },
+          テスト: { value: "テスト" },
+        },
+      });
+      firstId = r1.id;
+      await client.record.addRecord({
+        app: appId,
+        record: {
+          test: { value: "test2" },
+          test2: { value: "test2" },
+          postedAt: { value: "2100-01-01T00:00:00Z" },
+          テスト: { value: "テスト2" },
+        },
+      });
     });
 
     test("1つの=の式", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "test = 'test'",
-      });
-      expect(records.totalCount).toEqual("1");
+      // 実機は文字列リテラルを double-quote でしか受け付けない
+      const records = await client.record.getRecords({ app: appId, query: 'test = "test"' });
+      expect(records.records).toHaveLength(1);
     });
     test("2つの=の式", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "test = 'test' or test2 = 'test2'",
-      });
-      expect(records.totalCount).toEqual("2");
+      const records = await client.record.getRecords({ app: appId, query: 'test = "test" or test2 = "test2"' });
+      expect(records.records).toHaveLength(2);
     });
     test("!=の式", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "test != 'test'",
-      });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId, query: 'test != "test"' });
+      expect(records.records).toHaveLength(1);
     });
     test("NOW()を使った場合", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "postedAt < NOW()",
-      });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId, query: "postedAt < NOW()" });
+      expect(records.records).toHaveLength(1);
     });
     test("order byを指定する", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "order by test desc",
-      });
-      expect(records.totalCount).toEqual("2");
+      const records = await client.record.getRecords({ app: appId, query: "order by test desc" });
+      expect(records.records).toHaveLength(2);
       expect(records.records[0]!.test!.value).toEqual("test2");
     });
     test("idを指定する", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "$id = 1",
-      });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId, query: `$id = ${firstId}` });
+      expect(records.records).toHaveLength(1);
     });
     test("日本語のフィールドで検索する", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "テスト = 'テスト'",
-      });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId, query: 'テスト = "テスト"' });
+      expect(records.records).toHaveLength(1);
     });
     test("日本語フィールドが複数ある場合で検索する", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: "テスト = 'テスト' or テスト = 'テスト2'",
-      });
-      expect(records.totalCount).toEqual("2");
+      const records = await client.record.getRecords({ app: appId, query: 'テスト = "テスト" or テスト = "テスト2"' });
+      expect(records.records).toHaveLength(2);
     });
     test('"で囲った値で検索する', async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query: 'test = "test"',
-      });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId, query: 'test = "test"' });
+      expect(records.records).toHaveLength(1);
     });
     test("複雑なクエリで検索する", async () => {
-      const records = await client!.record.getRecords({
-        app: 1,
-        query:
-          '((理由 in ("") and 理由_new in ("")) or 日時 != "" ) and 日時 = "" and 理由 in ("") and ステータス in ("あ","い","う")',
+      const records = await client.record.getRecords({
+        app: appId,
+        query: '((理由 in ("") and 理由_new in ("")) or 日時 != "" ) and 日時 = "" and 理由 in ("") and st_dd in ("あ","い","う")',
       });
-      expect(records.totalCount).toEqual("0");
+      expect(records.records).toHaveLength(0);
     });
   });
 
   describe("レコード削除", () => {
     test("レコードを削除できる", async () => {
-      const { id: id1 } = await client!.record.addRecord({
-        app: 1,
-        record: { test: { value: "test1" } },
-      });
-      const { id: id2 } = await client!.record.addRecord({
-        app: 1,
-        record: { test: { value: "test2" } },
-      });
-
-      await client!.record.deleteRecords({
-        app: 1,
-        ids: [Number(id1), Number(id2)],
-      });
-
-      const records = await client!.record.getRecords({ app: 1 });
-      expect(records.totalCount).toEqual("0");
+      const { id: id1 } = await client.record.addRecord({ app: appId, record: { test: { value: "test1" } } });
+      const { id: id2 } = await client.record.addRecord({ app: appId, record: { test: { value: "test2" } } });
+      await client.record.deleteRecords({ app: appId, ids: [Number(id1), Number(id2)] });
+      const records = await client.record.getRecords({ app: appId });
+      expect(records.records).toHaveLength(0);
     });
 
     test("一部のレコードだけ削除できる", async () => {
-      const { id: id1 } = await client!.record.addRecord({
-        app: 1,
-        record: { test: { value: "test1" } },
-      });
-      await client!.record.addRecord({
-        app: 1,
-        record: { test: { value: "test2" } },
-      });
-
-      await client!.record.deleteRecords({
-        app: 1,
-        ids: [Number(id1)],
-      });
-
-      const records = await client!.record.getRecords({ app: 1 });
-      expect(records.totalCount).toEqual("1");
+      const { id: id1 } = await client.record.addRecord({ app: appId, record: { test: { value: "test1" } } });
+      await client.record.addRecord({ app: appId, record: { test: { value: "test2" } } });
+      await client.record.deleteRecords({ app: appId, ids: [Number(id1)] });
+      const records = await client.record.getRecords({ app: appId });
+      expect(records.records).toHaveLength(1);
       expect(records.records[0]!.test!.value).toEqual("test2");
     });
 
-    // NOTE: kintone 実仕様では存在しないIDに対し GAIA_RE01 エラーを返すが、このエミュレーターでは無視する
-    test("存在しないレコードIDを指定してもエラーにならない", async () => {
-      await client!.record.addRecord({
-        app: 1,
-        record: { test: { value: "test1" } },
-      });
-
+    // 実機は存在しない ID に対して GAIA_RE01 を返すが、エミュレーターでは無視する → emulator のみ
+    testEmulatorOnly("存在しないレコードIDを指定してもエラーにならない", async () => {
+      await client.record.addRecord({ app: appId, record: { test: { value: "test1" } } });
       await expect(
-        client!.record.deleteRecords({
-          app: 1,
-          ids: [9999],
-        })
+        client.record.deleteRecords({ app: appId, ids: [9999] }),
       ).resolves.not.toThrow();
-
-      const records = await client!.record.getRecords({ app: 1 });
-      expect(records.totalCount).toEqual("1");
+      const records = await client.record.getRecords({ app: appId });
+      expect(records.records).toHaveLength(1);
     });
   });
 });
