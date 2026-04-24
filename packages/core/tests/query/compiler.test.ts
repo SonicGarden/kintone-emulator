@@ -78,6 +78,44 @@ describe("compile: in / not in", () => {
     expect(c.where).toBe("body->>'$.title.value' NOT IN (?)");
     expect(c.params).toEqual(["x"]);
   });
+
+  test("CHECK_BOX の in は json_each で配列要素を列挙", () => {
+    const c = compile(parseQuery('cb in ("opt1", "opt3")'), {
+      fieldTypes: { cb: "CHECK_BOX" },
+    });
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.cb.value') AS elem WHERE elem.value IN (?, ?))",
+    );
+    expect(c.params).toEqual(["opt1", "opt3"]);
+  });
+
+  test("CHECK_BOX の not in は NOT EXISTS（空配列もヒット）", () => {
+    const c = compile(parseQuery('cb not in ("opt1")'), {
+      fieldTypes: { cb: "CHECK_BOX" },
+    });
+    expect(c.where).toBe(
+      "NOT EXISTS (SELECT 1 FROM json_each(body, '$.cb.value') AS elem WHERE elem.value IN (?))",
+    );
+    expect(c.params).toEqual(["opt1"]);
+  });
+
+  test("USER_SELECT の in は要素の code で比較", () => {
+    const c = compile(parseQuery('assignee in ("user1")'), {
+      fieldTypes: { assignee: "USER_SELECT" },
+    });
+    expect(c.where).toBe(
+      "EXISTS (SELECT 1 FROM json_each(body, '$.assignee.value') AS elem WHERE elem.value->>'$.code' IN (?))",
+    );
+    expect(c.params).toEqual(["user1"]);
+  });
+
+  test("RADIO_BUTTON / DROP_DOWN の in は単一値比較（配列展開しない）", () => {
+    const c = compile(parseQuery('radio in ("a")'), {
+      fieldTypes: { radio: "RADIO_BUTTON" },
+    });
+    expect(c.where).toBe("body->>'$.radio.value' IN (?)");
+    expect(c.params).toEqual(["a"]);
+  });
 });
 
 describe("compile: like", () => {

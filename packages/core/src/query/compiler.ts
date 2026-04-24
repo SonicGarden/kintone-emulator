@@ -129,6 +129,23 @@ const isNegativeCondition = (c: Condition): boolean => {
   return (c.type === "in" || c.type === "like" || c.type === "is") && c.negate;
 };
 
+/** 値が配列で保存されるフィールド型（`in` / `not in` を EXISTS + json_each に展開する必要がある） */
+const ARRAY_VALUE_TYPES = new Set([
+  "CHECK_BOX",
+  "MULTI_SELECT",
+  "CATEGORY",
+  "USER_SELECT",
+  "ORGANIZATION_SELECT",
+  "GROUP_SELECT",
+]);
+
+/** 配列要素がオブジェクト `{code, name}` で保存される型。要素の `code` で比較する */
+const OBJECT_ELEMENT_TYPES = new Set([
+  "USER_SELECT",
+  "ORGANIZATION_SELECT",
+  "GROUP_SELECT",
+]);
+
 /** Condition から「実機の表記で言う演算子名」を取り出す */
 const conditionOp = (c: Condition): string => {
   switch (c.type) {
@@ -279,8 +296,38 @@ class Compiler {
       return this.compileSubtableCondition(c, resolved);
     }
 
+    // 配列値フィールド（CHECK_BOX / MULTI_SELECT / USER_SELECT 等）の in / not in は
+    // 配列要素を列挙して比較する必要がある
+    if (c.type === "in" && ARRAY_VALUE_TYPES.has(resolved.type) && c.field.type === "field") {
+      return this.compileArrayInCondition(c, c.field.code, resolved.type);
+    }
+
     const ref = topLevelFieldExpr(c.field, this.ctx.fieldTypes);
     return this.buildSimpleCondition(c, ref);
+  }
+
+  /**
+   * 配列値フィールドの in / not in を EXISTS + json_each で評価する。
+   * - 文字列配列（CHECK_BOX 等）: `elem.value IN (...)`
+   * - オブジェクト配列（USER_SELECT 等）: `elem.value->>'$.code' IN (...)`
+   * - negate: 配列に該当要素を含まないレコード（空配列もヒット）
+   */
+  private compileArrayInCondition(
+    c: Condition & { type: "in" },
+    code: string,
+    type: string,
+  ): string {
+    const elemExpr = OBJECT_ELEMENT_TYPES.has(type)
+      ? "elem.value->>'$.code'"
+      : "elem.value";
+    const placeholders = c.values.map((v) => {
+      const r = this.resolveValue(v, undefined);
+      const lit = r.kind === "range" ? r.start : r.literal;
+      return this.placeholder(lit);
+    });
+    const enumerator = `json_each(body, '$.${code}.value')`;
+    const existsClause = `EXISTS (SELECT 1 FROM ${enumerator} AS elem WHERE ${elemExpr} IN (${placeholders.join(", ")}))`;
+    return c.negate ? `NOT ${existsClause}` : existsClause;
   }
 
   /** top-level フィールドに対する条件を SQL 式として生成 */
