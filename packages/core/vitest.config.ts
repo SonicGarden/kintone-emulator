@@ -1,19 +1,23 @@
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
-// 実 kintone モードでは deploy が 5-10 秒かかるため、タイムアウトを大きめに取る
-const isRealKintoneMode = process.env.USE_REAL_KINTONE === "1";
-
-export default defineConfig({
-  plugins: [tsconfigPaths()],
-  test: {
-    setupFiles: ["tests/setup.ts"],
-    pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
-    testTimeout: isRealKintoneMode ? 30_000 : 5_000,
-    hookTimeout: isRealKintoneMode ? 60_000 : 10_000,
-    alias: {
-      "tests/": new URL("./tests/", import.meta.url).pathname,
+// vitest/vite のデフォルト挙動で `.env.<mode>` から VITE_ プレフィックス付きの
+// 環境変数がロードされ、`import.meta.env` 経由でアクセスできる。
+// `--mode real-kintone` で packages/core/.env.real-kintone を読む。
+export default defineConfig(({ mode }) => {
+  const isRealKintoneMode = mode === "real-kintone";
+  return {
+    plugins: [tsconfigPaths()],
+    test: {
+      setupFiles: ["tests/setup.ts"],
+      pool: "forks",
+      poolOptions: { forks: { singleFork: true } },
+      // 実 kintone モードでは deploy が 5-10 秒かかるため、タイムアウトを大きめに取る
+      testTimeout: isRealKintoneMode ? 30_000 : 5_000,
+      hookTimeout: isRealKintoneMode ? 60_000 : 10_000,
+      alias: {
+        "tests/": new URL("./tests/", import.meta.url).pathname,
+      },
     },
-  },
+  };
 });

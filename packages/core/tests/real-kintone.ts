@@ -1,10 +1,15 @@
-// デュアルモードテスト層。`USE_REAL_KINTONE=1` でテストを実 kintone に対して実行する。
+/// <reference types="vite/client" />
+// デュアルモードテスト層。`vitest --mode real-kintone` でテストを実 kintone に対して実行する。
 //
-// - emulator モード: 既存の `tests/helpers.ts` プリミティブに委譲する
-// - real モード: 事前に用意した `KINTONE_TEST_APP_IDS` のアプリ群を順番に割り当て、
-//   レコード全削除 → (フィールド定義が変わっていれば) フィールド全削除 + 追加 + deploy
-//   → レコード一括追加、という流れでテスト前の状態を揃える。
+// - emulator モード（default mode = "test"）: 既存の `tests/helpers.ts` プリミティブに委譲する
+// - real モード（mode === "real-kintone"）: 事前に用意した VITE_KINTONE_TEST_APP_IDS の
+//   アプリ群を順番に割り当て、レコード全削除 → (フィールド定義が変わっていれば)
+//   フィールド全削除 + 追加 + deploy → レコード一括追加、という流れでテスト前の状態を揃える。
 //   フィールド定義のハッシュキャッシュで deploy 回数を最小化する。
+//
+// 環境変数は vite のデフォルト `.env.<mode>` 機構で注入される:
+//   packages/core/.env.real-kintone に VITE_KINTONE_TEST_* を書いておくと、
+//   `--mode real-kintone` で実行したときに import.meta.env にロードされる。
 
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { describe, test } from "vitest";
@@ -20,7 +25,8 @@ import {
 // モード判定
 // ============================================================
 
-export const isUsingRealKintone = (): boolean => process.env.USE_REAL_KINTONE === "1";
+// vitest の `--mode real-kintone` フラグで判定する（vite の import.meta.env.MODE を参照）
+export const isUsingRealKintone = (): boolean => import.meta.env.MODE === "real-kintone";
 
 // ============================================================
 // 実 kintone 設定
@@ -29,29 +35,29 @@ export const isUsingRealKintone = (): boolean => process.env.USE_REAL_KINTONE ==
 type RealKintoneConfig = { domain: string; username: string; password: string };
 
 const getRealKintoneConfig = (): RealKintoneConfig => {
-  const domain = process.env.KINTONE_TEST_DOMAIN;
-  const username = process.env.KINTONE_TEST_USER;
-  const password = process.env.KINTONE_TEST_PASSWORD;
+  const domain = import.meta.env.VITE_KINTONE_TEST_DOMAIN;
+  const username = import.meta.env.VITE_KINTONE_TEST_USER;
+  const password = import.meta.env.VITE_KINTONE_TEST_PASSWORD;
   if (!domain || !username || !password) {
     throw new Error(
-      "KINTONE_TEST_DOMAIN, KINTONE_TEST_USER, KINTONE_TEST_PASSWORD are required when USE_REAL_KINTONE=1",
+      "VITE_KINTONE_TEST_DOMAIN, VITE_KINTONE_TEST_USER, VITE_KINTONE_TEST_PASSWORD are required when running with --mode real-kintone",
     );
   }
   return { domain, username, password };
 };
 
 const getRealKintoneAppIds = (): number[] => {
-  const raw = process.env.KINTONE_TEST_APP_IDS;
+  const raw = import.meta.env.VITE_KINTONE_TEST_APP_IDS;
   if (!raw) {
-    throw new Error("KINTONE_TEST_APP_IDS is required when USE_REAL_KINTONE=1");
+    throw new Error("VITE_KINTONE_TEST_APP_IDS is required when running with --mode real-kintone");
   }
   return raw
     .split(",")
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0);
+    .map((s: string) => Number(s.trim()))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
 };
 
-// 各テストで createTestApp 呼び出しごとに KINTONE_TEST_APP_IDS から順番に割り当てる。
+// 各テストで createTestApp 呼び出しごとに VITE_KINTONE_TEST_APP_IDS から順番に割り当てる。
 // resetAppAssignment() で先頭に戻す（setup.ts の beforeEach から呼ぶ）。
 let nextRealAppIndex = 0;
 
@@ -59,8 +65,8 @@ const nextRealAppId = (): number => {
   const ids = getRealKintoneAppIds();
   if (nextRealAppIndex >= ids.length) {
     throw new Error(
-      `KINTONE_TEST_APP_IDS には ${ids.length} 個のアプリ ID しか指定されていません。` +
-        `1 つのテスト内で必要なアプリ数を確保するため、KINTONE_TEST_APP_IDS の個数を増やしてください。`,
+      `VITE_KINTONE_TEST_APP_IDS には ${ids.length} 個のアプリ ID しか指定されていません。` +
+        `1 つのテスト内で必要なアプリ数を確保するため、VITE_KINTONE_TEST_APP_IDS の個数を増やしてください。`,
     );
   }
   const id = ids[nextRealAppIndex]!;

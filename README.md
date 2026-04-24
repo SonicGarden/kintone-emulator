@@ -129,30 +129,39 @@ pnpm test:e2e
 
 ### 実 kintone に対してテストを流す
 
-`USE_REAL_KINTONE=1` を付けると、`describeDualMode` でマークされたテストブロックだけが実 kintone 環境に対して実行されます（`describeEmulatorOnly` のブロックは skip）。エミュレーターの挙動が実機と一致しているかの検証用。
+`describeDualMode` でマークされたテストブロックだけを実 kintone 環境に対して実行できます（`describeEmulatorOnly` のブロックは skip）。エミュレーターの挙動が実機と一致しているかの検証用。
 
-必須の環境変数:
+#### セットアップ
 
-| 変数 | 例 | 用途 |
-|---|---|---|
-| `USE_REAL_KINTONE` | `1` | モード切り替え |
-| `KINTONE_TEST_DOMAIN` | `my-tenant` | `https://<domain>.cybozu.com` のサブドメイン |
-| `KINTONE_TEST_USER` | `foo@example.com` | ユーザー名 |
-| `KINTONE_TEST_PASSWORD` | `...` | パスワード |
-| `KINTONE_TEST_APP_IDS` | `9,10,11` | 事前に作成しておくテスト用アプリ ID のプール |
+1. `packages/core/.env.real-kintone.sample` をコピーして `packages/core/.env.real-kintone` を作る（`.gitignore` 済み）:
+   ```sh
+   cp packages/core/.env.real-kintone.sample packages/core/.env.real-kintone
+   ```
+2. 以下の環境変数を設定:
 
-`KINTONE_TEST_APP_IDS` は「**1 つのテスト内で `createTestApp` が呼ばれる最大回数**」を賄える個数が必要です。各テスト前にアプリ ID の割り当ては先頭に戻るため、テスト間では使い回しが効きます。プール内のアプリは最低限何か 1 つフィールドが作成された状態で、削除してよいフィールド・レコードを含んでいれば十分です。
+   | 変数 | 例 | 用途 |
+   |---|---|---|
+   | `KINTONE_TEST_DOMAIN` | `my-tenant` | `https://<domain>.cybozu.com` のサブドメイン |
+   | `KINTONE_TEST_USER` | `foo@example.com` | アプリ管理権限を持つユーザー |
+   | `KINTONE_TEST_PASSWORD` | `...` | パスワード |
+   | `KINTONE_TEST_APP_IDS` | `9,10,11` | 事前に作成しておくテスト用アプリ ID のプール |
+
+   `KINTONE_TEST_APP_IDS` は「**1 つのテスト内で `createTestApp` が呼ばれる最大回数**」を賄える個数が必要です（ルックアップ系テストでは 2 アプリ使用）。各テスト前にアプリ ID の割り当ては先頭に戻るため、テスト間では使い回しが効きます。プール内のアプリは最低限何か 1 つフィールドが作成された状態で、削除してよいフィールド・レコードを含んでいれば十分です。
+
+#### 実行
 
 ```sh
-USE_REAL_KINTONE=1 \
-  KINTONE_TEST_DOMAIN=my-tenant \
-  KINTONE_TEST_USER=foo@example.com \
-  KINTONE_TEST_PASSWORD='...' \
-  KINTONE_TEST_APP_IDS=9,10,11 \
-  pnpm test -- -t "SUBTABLE"
+# 全 dualMode テスト
+pnpm test:real-kintone
+
+# テスト名フィルタ（vitest の -t を追加引数で渡す）
+pnpm test:real-kintone -- -t "SUBTABLE"
+
+# 特定ファイル
+pnpm test:real-kintone tests/api/record/record.test.ts
 ```
 
-フィールド定義が前回のテストと同じ場合は deploy をスキップしてキャッシュするので、クエリ系のテストは 2 回目以降高速化されます（初回だけ 10 秒前後）。
+内部的には `vitest --mode real-kintone` が走り、`packages/core/.env.real-kintone` が vite の `loadEnv()` 経由で process.env に注入されます（追加の npm パッケージは不要）。フィールド定義が前回のテストと同じ場合は deploy をスキップしてキャッシュするので、クエリ系のテストは 2 回目以降高速化されます（初回だけ 10 秒前後）。
 
 ## セッションの使い方
 
