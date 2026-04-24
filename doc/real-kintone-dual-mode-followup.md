@@ -21,8 +21,9 @@
 - `record.test.ts` > `ルックアップ（LOOKUP）` (11 tests; 応答メッセージ / Accept-Language の 2 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `ルックアップ: relatedKeyField が RECORD_NUMBER` (3 tests)
 - `records.test.ts` > `クエリのエラーレスポンス / 上限チェック` (8 tests; CB_VA01 / GAIA_QU01 / GAIA_QU02 / GAIA_IQ11 / GAIA_IQ07 / GAIA_IQ03 / GAIA_IQ10 すべて実機と一致)
+- `comment.test.ts` > `アプリのレコードコメントAPI` (9 tests; mentions 2 件は testEmulatorOnly)
 
-合計 111 tests を実 kintone 環境で検証済み（全 pass）。
+合計 120 tests を実 kintone 環境で検証済み（全 pass）。
 
 ### 実機差分を発見して emulator-only に退避した項目
 
@@ -37,6 +38,7 @@
 - **`record.test.ts` > SUBTABLE 行に id を送ると保持される**: 実機は行 id を無視して自動採番、エミュはクライアント指定 id を保持 → `testEmulatorOnly`
 - **`record.test.ts` > SUBTABLE PUT の行 id 単位マージ**: 実機は PUT で SUBTABLE 全体を置き換え、エミュは行 id 単位で内部フィールドをマージ。該当 2 テストを `testEmulatorOnly` 化
 - **アプリ作成時のフィールドコード衝突**: 実機は `ステータス` (STATUS システムフィールド) / `カテゴリー` / `作業者` 等のコードを予約。ユーザーが同じコードで DROP_DOWN 等を作ろうとすると CB_VA01 → dualMode テストで使う時はリネーム必須
+- **コメントテキストの末尾空白付加**: 実機は `addRecordComment({comment: {text: "コメント2"}})` に対して `getRecordComments` の返却 text を `"コメント2 "` のように末尾空白付きで返す。エミュは入力値そのまま。dualMode テストでは `.trim()` で正規化して比較
 
 ## 未移行（describeEmulatorOnly でタグ付け、実 kintone では skip）
 
