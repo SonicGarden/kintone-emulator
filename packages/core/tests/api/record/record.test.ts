@@ -1,13 +1,14 @@
 import { KintoneRestAPIClient, KintoneRestAPIError } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("record-test-session");
 });
 
-describe("アプリのレコードAPI", () => {
+describeEmulatorOnly("アプリのレコードAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
     await initializeSession(BASE_URL);
@@ -283,7 +284,7 @@ describe("アプリのレコードAPI", () => {
   });
 });
 
-describe("required フィールドのバリデーション", () => {
+describeEmulatorOnly("required フィールドのバリデーション", () => {
   const SESSION = "record-required-validation";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -455,7 +456,7 @@ describe("required フィールドのバリデーション", () => {
   });
 });
 
-describe("unique フィールドのバリデーション", () => {
+describeEmulatorOnly("unique フィールドのバリデーション", () => {
   const SESSION = "record-unique-validation";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -529,7 +530,7 @@ describe("unique フィールドのバリデーション", () => {
   });
 });
 
-describe("maxLength / minLength バリデーション", () => {
+describeEmulatorOnly("maxLength / minLength バリデーション", () => {
   const SESSION = "record-length-validation";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -597,7 +598,7 @@ describe("maxLength / minLength バリデーション", () => {
   });
 });
 
-describe("maxValue / minValue バリデーション", () => {
+describeEmulatorOnly("maxValue / minValue バリデーション", () => {
   const SESSION = "record-range-validation";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -654,7 +655,7 @@ describe("maxValue / minValue バリデーション", () => {
   });
 });
 
-describe("options 整合バリデーション", () => {
+describeEmulatorOnly("options 整合バリデーション", () => {
   const SESSION = "record-options-validation";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -729,7 +730,7 @@ describe("options 整合バリデーション", () => {
   });
 });
 
-describe("Accept-Language によるメッセージ切り替え", () => {
+describeEmulatorOnly("Accept-Language によるメッセージ切り替え", () => {
   const SESSION = "record-locale-validation";
   let BASE_URL: string;
   let appId: number;
@@ -803,7 +804,7 @@ describe("Accept-Language によるメッセージ切り替え", () => {
   });
 });
 
-describe("defaultValue / defaultNowValue の自動補完", () => {
+describeEmulatorOnly("defaultValue / defaultNowValue の自動補完", () => {
   const SESSION = "record-default-value";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -920,7 +921,7 @@ describe("defaultValue / defaultNowValue の自動補完", () => {
   });
 });
 
-describe("SUBTABLE 対応", () => {
+describeEmulatorOnly("SUBTABLE 対応", () => {
   const SESSION = "record-subtable";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -1099,7 +1100,7 @@ describe("SUBTABLE 対応", () => {
   });
 });
 
-describe("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", () => {
+describeEmulatorOnly("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", () => {
   const SESSION = "record-subtable-put";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -1245,7 +1246,7 @@ describe("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", () => {
   });
 });
 
-describe("SUBTABLE 内 NUMBER の正規化 / 非数値の扱い", () => {
+describeEmulatorOnly("SUBTABLE 内 NUMBER の正規化 / 非数値の扱い", () => {
   const SESSION = "record-subtable-num";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -1304,7 +1305,7 @@ describe("SUBTABLE 内 NUMBER の正規化 / 非数値の扱い", () => {
   });
 });
 
-describe("top-level NUMBER の正規化", () => {
+describeEmulatorOnly("top-level NUMBER の正規化", () => {
   const SESSION = "record-top-num";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -1356,7 +1357,7 @@ describe("top-level NUMBER の正規化", () => {
   });
 });
 
-describe("ルックアップ（LOOKUP）", () => {
+describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
   const SESSION = "record-lookup";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
@@ -1583,7 +1584,7 @@ describe("ルックアップ（LOOKUP）", () => {
   });
 });
 
-describe("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
+describeEmulatorOnly("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
   const SESSION = "record-lookup-recno";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;

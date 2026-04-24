@@ -6,6 +6,7 @@ import {
   createApp,
   setupAuth,
 } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 const SESSION = "auth-test";
 let BASE_URL: string;
@@ -14,7 +15,7 @@ beforeAll(() => {
   BASE_URL = createBaseUrl(SESSION);
 });
 
-describe("パスワード認証", () => {
+describeEmulatorOnly("パスワード認証", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });

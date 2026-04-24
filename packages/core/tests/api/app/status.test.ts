@@ -1,12 +1,13 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("status-test-session");
 });
 
-describe("プロセス管理の設定取得API", () => {
+describeEmulatorOnly("プロセス管理の設定取得API", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });

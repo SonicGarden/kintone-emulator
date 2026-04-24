@@ -1,13 +1,14 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("app-test-session");
 });
 
-describe("アプリ作成API", () => {
+describeEmulatorOnly("アプリ作成API", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });
@@ -294,7 +295,7 @@ describe("アプリ作成API", () => {
   });
 });
 
-describe("アプリ情報取得API", () => {
+describeEmulatorOnly("アプリ情報取得API", () => {
   let client: KintoneRestAPIClient;
   beforeAll(() => {
     client = new KintoneRestAPIClient({

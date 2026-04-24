@@ -1,13 +1,14 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("comment-test-session");
 });
 
-describe("アプリのレコードコメントAPI", () => {
+describeEmulatorOnly("アプリのレコードコメントAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   let recordId: string;
 

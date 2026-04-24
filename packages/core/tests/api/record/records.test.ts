@@ -1,13 +1,15 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("records");
 });
 
-describe("アプリのレコード一覧のAPI", () => {
+// TODO: dual-mode 化するには app=1 と $id=1 のハードコードを createTestApp + 返却 recordIds に置き換える必要あり
+describeEmulatorOnly("アプリのレコード一覧のAPI", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
     await initializeSession(BASE_URL);
@@ -274,7 +276,8 @@ describe("アプリのレコード一覧のAPI", () => {
   });
 });
 
-describe("一括 addRecords / updateRecords", () => {
+// TODO: dual-mode 化は ids: ["1","2","3"] の逐次 ID 前提をすべて書き換える必要あり
+describeEmulatorOnly("一括 addRecords / updateRecords", () => {
   const SESSION = "records-bulk";
   let BULK_URL: string;
   let client: KintoneRestAPIClient;
@@ -508,17 +511,15 @@ describe("一括 addRecords / updateRecords", () => {
   });
 });
 
-describe("SUBTABLE 内フィールドでの検索クエリ", () => {
+describeDualMode("SUBTABLE 内フィールドでの検索クエリ", () => {
   const SESSION = "records-subtable-query";
-  let URL_BASE: string;
   let client: KintoneRestAPIClient;
   let appId: number;
 
-  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(URL_BASE);
-    client = new KintoneRestAPIClient({ baseUrl: URL_BASE, auth: { apiToken: "test" } });
-    appId = await createApp(URL_BASE, {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
       name: "subtable query",
       properties: {
         top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
@@ -540,9 +541,8 @@ describe("SUBTABLE 内フィールドでの検索クエリ", () => {
         ] } },
         { top_title: { value: "r3" }, items: { value: [] } },
       ],
-    });
+    }));
   });
-  afterEach(async () => { await finalizeSession(URL_BASE); });
 
   test("SUBTABLE 内フィールド in で 1 行でもマッチするレコードが返る", async () => {
     const { records } = await client.record.getRecords({
@@ -592,18 +592,16 @@ describe("SUBTABLE 内フィールドでの検索クエリ", () => {
   });
 });
 
-describe("システムフィールドコードでの検索クエリ", () => {
+describeDualMode("システムフィールドコードでの検索クエリ", () => {
   const SESSION = "records-system-fields-query";
-  let QUERY_URL: string;
   let client: KintoneRestAPIClient;
   let appId: number;
+  let recordIds: number[];
 
-  beforeAll(() => { QUERY_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(QUERY_URL);
-    client = new KintoneRestAPIClient({ baseUrl: QUERY_URL, auth: { apiToken: "test" } });
-    // setup/app.json 経由で作ることでシステムフィールド（レコード番号等）が自動補完される
-    appId = await createApp(QUERY_URL, {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId, recordIds } = await createTestApp(SESSION, {
       name: "system fields query",
       properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "title" } },
       records: [
@@ -611,13 +609,20 @@ describe("システムフィールドコードでの検索クエリ", () => {
         { title: { value: "B" } },
         { title: { value: "C" } },
       ],
-    });
+    }));
+    // emulator は createTestApp が recordIds を返さないので getRecords で取り直す
+    if (recordIds.length === 0) {
+      const all = await client.record.getRecords({
+        app: appId, query: "order by $id asc",
+      });
+      recordIds = all.records.map((r) => Number(r.$id!.value));
+    }
   });
-  afterEach(async () => { await finalizeSession(QUERY_URL); });
 
   test("レコード番号フィールドコードで = クエリできる", async () => {
+    // recordIds[1] は 2番目のレコード（title=B）
     const { records } = await client.record.getRecords({
-      app: appId, query: 'レコード番号 = "2"',
+      app: appId, query: `レコード番号 = "${recordIds[1]}"`,
     });
     expect(records).toHaveLength(1);
     expect(records[0]!.title!.value).toBe("B");
@@ -631,7 +636,7 @@ describe("システムフィールドコードでの検索クエリ", () => {
   });
 
   test("アンダースコアを含む日本語混在フィールドコードで = クエリが動作する", async () => {
-    const app2 = await createApp(QUERY_URL, {
+    const { appId: app2 } = await createTestApp(SESSION, {
       name: "mixed field code",
       properties: {
         文字列__1行_: { type: "SINGLE_LINE_TEXT", code: "文字列__1行_", label: "mixed" },
@@ -646,7 +651,8 @@ describe("システムフィールドコードでの検索クエリ", () => {
   });
 });
 
-describe("クエリのエラーレスポンス / 上限チェック", () => {
+// TODO: /k/v1/preview/app/form/fields.json を直叩き + app=1 + エミュ固有のレスポンス形を検証している
+describeEmulatorOnly("クエリのエラーレスポンス / 上限チェック", () => {
   const SESSION = "records-query-errors";
   let URL_BASE: string;
 
