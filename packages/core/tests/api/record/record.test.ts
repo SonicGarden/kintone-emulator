@@ -8,118 +8,93 @@ beforeAll(() => {
   BASE_URL = createBaseUrl("record-test-session");
 });
 
-describeEmulatorOnly("アプリのレコードAPI", () => {
+describeDualMode("アプリのレコードAPI", () => {
+  const SESSION = "record-basic";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "record basic",
+      properties: {
+        test: { type: "SINGLE_LINE_TEXT", code: "test", label: "Test" },
+      },
+    }));
+  });
+
+  test("アプリにレコードを追加し、変更し、検索できる", async () => {
+    const result = await client.record.addRecord({
+      app: appId,
+      record: { test: { value: "test" } },
+    });
+    expect(result).toMatchObject({ id: expect.any(String), revision: "1" });
+    const record = await client.record.getRecord({ app: appId, id: result.id });
+    expect(record.record.$id).toEqual({ value: result.id, type: "__ID__" });
+    expect(record.record.$revision).toEqual({ value: "1", type: "__REVISION__" });
+    expect(record.record.test).toEqual({ value: "test", type: "SINGLE_LINE_TEXT" });
+
+    await client.record.updateRecord({
+      app: appId, id: result.id, record: { test: { value: "test2" } },
+    });
+    const updatedRecord = await client.record.getRecord({ app: appId, id: result.id });
+    expect(updatedRecord.record.$revision).toEqual({ value: "2", type: "__REVISION__" });
+    expect(updatedRecord.record.test).toEqual({ value: "test2", type: "SINGLE_LINE_TEXT" });
+  });
+
+  test("存在しないレコードをGETすると GAIA_RE01 が返る", async () => {
+    // KintoneRestAPIError.message は `[404] [GAIA_RE01] ...` 形式なので code だけチェック
+    await expect(
+      client.record.getRecord({ app: appId, id: 99999 }),
+    ).rejects.toMatchObject({ code: "GAIA_RE01" });
+  });
+
+  test("存在しないレコードをPUTすると GAIA_RE01 が返る", async () => {
+    await expect(
+      client.record.updateRecord({
+        app: appId, id: 99999, record: { test: { value: "test" } },
+      }),
+    ).rejects.toMatchObject({ code: "GAIA_RE01" });
+  });
+
+  test("setup（createTestApp / records 指定）でレコードを一括作成できる", async () => {
+    const { appId: otherAppId } = await createTestApp(SESSION, {
+      name: "レコード付きアプリ",
+      properties: {
+        title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
+      },
+      records: [
+        { title: { value: "レコード1" } },
+        { title: { value: "レコード2" } },
+      ],
+    });
+    const records = await client.record.getRecords({ app: otherAppId, query: "order by $id asc" });
+    expect(records.records).toHaveLength(2);
+    expect(records.records[0]!.title).toEqual({ value: "レコード1", type: "SINGLE_LINE_TEXT" });
+    expect(records.records[1]!.title).toEqual({ value: "レコード2", type: "SINGLE_LINE_TEXT" });
+  });
+});
+
+// 以下はエミュレーター固有の挙動（raw fetch / /setup/app.json / 逐次 ID / 未定義フィールドの許容など）
+describeEmulatorOnly("アプリのレコードAPI（emulator 固有）", () => {
   let client: KintoneRestAPIClient | undefined = undefined;
   beforeEach(async () => {
     await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,
-      auth: {
-        apiToken: "test",
-      },
+      auth: { apiToken: "test" },
     });
     await client.app.addFormFields({
       app: 1,
       properties: {
-        test: {
-          type: "SINGLE_LINE_TEXT",
-          code: "test",
-          label: "Test",
-        },
+        test: { type: "SINGLE_LINE_TEXT", code: "test", label: "Test" },
       },
     });
   });
 
   afterEach(async () => {
     await finalizeSession(BASE_URL);
-  });
-
-  test("アプリにレコードを追加し、変更し、検索できる", async () => {
-    const result = await client!.record.addRecord({
-      app: 1,
-      record: {
-        test: {
-          value: "test",
-        },
-      },
-    });
-    expect(result).toEqual({
-      id: expect.any(String),
-      revision: "1",
-    });
-    const record = await client!.record.getRecord({
-      app: 1,
-      id: result.id,
-    });
-    expect(record).toEqual({
-      record: {
-        $id: {
-          value: result.id,
-          type: "__ID__",
-        },
-        $revision: {
-          value: "1",
-          type: "__REVISION__",
-        },
-        test: {
-          value: "test",
-          type: "SINGLE_LINE_TEXT",
-        },
-      },
-    });
-    await client!.record.updateRecord({
-      app: 1,
-      id: result.id,
-      record: {
-        test: {
-          value: "test2",
-        },
-      },
-    });
-    const updatedRecord = await client!.record.getRecord({
-      app: 1,
-      id: result.id,
-    });
-    expect(updatedRecord).toEqual({
-      record: {
-        $id: {
-          value: result.id,
-          type: "__ID__",
-        },
-        $revision: {
-          value: "2",
-          type: "__REVISION__",
-        },
-        test: {
-          value: "test2",
-          type: "SINGLE_LINE_TEXT",
-        },
-      },
-    });
-  });
-
-  test("存在しないレコードをGETすると GAIA_RE01 が返る", async () => {
-    const response = await fetch(`${BASE_URL}/k/v1/record.json?app=1&id=99999`);
-    expect(response.status).toBe(404);
-    const json = await response.json();
-    expect(json.code).toBe("GAIA_RE01");
-    expect(json.message).toBe("指定したレコード（id: 99999）が見つかりません。");
-  });
-
-  test("存在しないレコードをPUTすると GAIA_RE01 が返る", async () => {
-    const response = await fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app: 1,
-        id: "99999",
-        record: { test: { value: "test" } },
-      }),
-    });
-    expect(response.status).toBe(404);
-    const json = await response.json();
-    expect(json.code).toBe("GAIA_RE01");
-    expect(json.message).toBe("指定したレコード（id: 99999）が見つかりません。");
   });
 
   test("パラメーター欠落（id）で CB_VA01 が返る", async () => {
@@ -136,24 +111,6 @@ describeEmulatorOnly("アプリのレコードAPI", () => {
     });
     const json = await response.json();
     expect(json.message).toBe("The specified record (ID: 99999) is not found.");
-  });
-
-  test("setup/app.json の records でレコードを一括作成できる", async () => {
-    const appId = await createApp(BASE_URL, {
-      name: "レコード付きアプリ",
-      properties: {
-        title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
-      },
-      records: [
-        { title: { value: "レコード1" } },
-        { title: { value: "レコード2" } },
-      ],
-    });
-
-    const records = await client!.record.getRecords({ app: appId, query: "order by $id asc" });
-    expect(records.records).toHaveLength(2);
-    expect(records.records[0]!.title).toEqual({ value: "レコード1", type: "SINGLE_LINE_TEXT" });
-    expect(records.records[1]!.title).toEqual({ value: "レコード2", type: "SINGLE_LINE_TEXT" });
   });
 
   test("setup/app.json の records で $id を指定するとレコード ID が維持される", async () => {
@@ -214,7 +171,6 @@ describeEmulatorOnly("アプリのレコードAPI", () => {
     expect(result1.id).toBe("1");
     expect(result2.id).toBe("1");
 
-    // 各アプリのレコードが独立して取得できることを検証
     const record1 = await client!.record.getRecord({ app: app1, id: 1 });
     expect(record1.record.field1).toEqual({ value: "アプリ1のレコード", type: "SINGLE_LINE_TEXT" });
 
@@ -242,45 +198,18 @@ describeEmulatorOnly("アプリのレコードAPI", () => {
     const result = await client!.record.addRecord({
       app: 1,
       record: {
-        レコード番号: {
-          value: "test",
-        },
-        内容: {
-          value: "test",
-        },
+        レコード番号: { value: "test" },
+        内容: { value: "test" },
       },
     });
     await client!.record.updateRecord({
       app: 1,
       updateKey: { field: "レコード番号", value: "test" },
-      record: {
-        内容: {
-          value: "test2",
-        },
-      },
+      record: { 内容: { value: "test2" } },
     });
-    const updatedRecord = await client!.record.getRecord({
-      app: 1,
-      id: result.id,
-    });
-    expect(updatedRecord).toEqual({
-      record: {
-        $id: {
-          value: result.id,
-          type: "__ID__",
-        },
-        $revision: {
-          value: "2",
-          type: "__REVISION__",
-        },
-        レコード番号: {
-          value: "test",
-        },
-        内容: {
-          value: "test2",
-        },
-      },
-    });
+    const updatedRecord = await client!.record.getRecord({ app: 1, id: result.id });
+    expect(updatedRecord.record.レコード番号).toMatchObject({ value: "test" });
+    expect(updatedRecord.record.内容).toMatchObject({ value: "test2" });
   });
 });
 

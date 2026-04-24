@@ -7,6 +7,8 @@
 - `records.test.ts` > `アプリのレコード一覧のAPI` (13 tests; 削除の存在しない ID テスト 1 件は testEmulatorOnly)
 - `records.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` (6 tests)
 - `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
+- `records.test.ts` > `一括 addRecords / updateRecords` (11 tests; Accept-Language en / app 欠落 raw fetch の 2 件は emulatorOnly の別ブロック)
+- `record.test.ts` > `アプリのレコードAPI` (3 tests; 逐次 ID / Accept-Language / /setup/app.json の 6 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
 - `record.test.ts` > `maxLength / minLength バリデーション` (2 tests)
 - `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
@@ -17,7 +19,7 @@
 - `record.test.ts` > `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` (6 tests)
 - `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
 
-合計 72 tests を実 kintone 環境で検証済み（全 pass / 約 276 秒）。
+合計 89 tests を実 kintone 環境で検証済み（全 pass / record.test.ts 53 + records.test.ts 36 件 / 約 370 秒）。
 
 ### 実機差分を発見して emulator-only に退避した項目
 
@@ -43,11 +45,10 @@
 | `一括 addRecords / updateRecords` | `ids: ["1","2","3"]` という逐次 ID 前提が多数。実 kintone は自動採番で 1 始まりにならない |
 | `クエリのエラーレスポンス / 上限チェック` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いている。実 kintone は deploy 必須。app=1 ハードコード |
 
-### record.test.ts (残り emulator-only 3 ブロック)
+### record.test.ts (残り emulator-only 2 ブロック)
 
 | ブロック | 障壁 |
 |---|---|
-| `アプリのレコードAPI` | 逐次 ID (`result.id === "1"` 等) と `$id = 1` ハードコードが多数 |
 | `required フィールドのバリデーション` | `USER_SELECT` に `{ code: "u1" }` というダミーユーザーコード → 実機には存在しないのでエラー |
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
 | `ルックアップ（LOOKUP）` / `ルックアップ: relatedKeyField が RECORD_NUMBER` | 2 つのアプリ + ルックアップ設定が必要。実機では addFormFields 後 deployApp、かつ relatedApp 指定が必要 |
@@ -90,8 +91,7 @@
 ## 次フェーズの優先順位案
 
 **中**:
-1. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy）
-2. `records.test.ts` > `一括 addRecords / updateRecords`（ID assertions の書き換え）
+1. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy 必要）
 
 **低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
 - `auth.test.ts`（エミュ固有の /setup/auth.json）
