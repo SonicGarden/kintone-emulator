@@ -327,6 +327,89 @@ describeDualMode("required フィールドのバリデーション", () => {
   });
 });
 
+// required がスカラー (.value) / 配列 (.values) として扱われる型を網羅的に検証
+// 注: RADIO_BUTTON は実機で required が発動しない（未送信でも null 保存される）ため対象外
+describeDualMode("required フィールドのバリデーション（各フィールドタイプ）", () => {
+  const SESSION = "record-required-types";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "required types",
+      properties: {
+        req_multi_text: { type: "MULTI_LINE_TEXT", code: "req_multi_text", label: "mt", required: true },
+        req_rich:       { type: "RICH_TEXT",       code: "req_rich",       label: "rt", required: true },
+        req_num:        { type: "NUMBER",          code: "req_num",        label: "n",  required: true },
+        req_date:       { type: "DATE",            code: "req_date",       label: "d",  required: true },
+        req_time:       { type: "TIME",            code: "req_time",       label: "t",  required: true },
+        req_datetime:   { type: "DATETIME",        code: "req_datetime",   label: "dt", required: true },
+        req_drop:       { type: "DROP_DOWN",       code: "req_drop",       label: "dd", required: true,
+                          options: { A: { label: "A", index: "0" } } },
+        req_multi_sel:  { type: "MULTI_SELECT",    code: "req_multi_sel",  label: "ms", required: true,
+                          options: { A: { label: "A", index: "0" } } },
+      },
+    }));
+  });
+
+  test("POST {} で各フィールドに必須エラーが返る（スカラーは .value / 配列は .values 接尾辞）", async () => {
+    await expect(
+      client.record.addRecord({ app: appId, record: {} }),
+    ).rejects.toMatchObject({
+      code: "CB_VA01",
+      errors: {
+        "record.req_multi_text.value": { messages: ["必須です。"] },
+        "record.req_rich.value":       { messages: ["必須です。"] },
+        "record.req_num.value":        { messages: ["必須です。"] },
+        "record.req_date.value":       { messages: ["必須です。"] },
+        "record.req_time.value":       { messages: ["必須です。"] },
+        "record.req_datetime.value":   { messages: ["必須です。"] },
+        "record.req_drop.value":       { messages: ["必須です。"] },
+        "record.req_multi_sel.values": { messages: ["必須です。"] },
+      },
+    });
+  });
+
+  test("全 required を埋めれば成功", async () => {
+    const result = await client.record.addRecord({
+      app: appId,
+      record: {
+        req_multi_text: { value: "x" },
+        req_rich:       { value: "x" },
+        req_num:        { value: "1" },
+        req_date:       { value: "2026-01-01" },
+        req_time:       { value: "12:00" },
+        req_datetime:   { value: "2026-01-01T12:00:00Z" },
+        req_drop:       { value: "A" },
+        req_multi_sel:  { value: ["A"] },
+      },
+    });
+    expect(result.id).toBeTruthy();
+  });
+
+  test("MULTI_SELECT に空配列を渡すと 400（errors キーは .values 接尾辞）", async () => {
+    await expect(
+      client.record.addRecord({
+        app: appId,
+        record: {
+          req_multi_text: { value: "x" },
+          req_rich:       { value: "x" },
+          req_num:        { value: "1" },
+          req_date:       { value: "2026-01-01" },
+          req_time:       { value: "12:00" },
+          req_datetime:   { value: "2026-01-01T12:00:00Z" },
+          req_drop:       { value: "A" },
+          req_multi_sel:  { value: [] },
+        },
+      }),
+    ).rejects.toMatchObject({
+      errors: { "record.req_multi_sel.values": { messages: ["必須です。"] } },
+    });
+  });
+});
+
 describeDualMode("unique フィールドのバリデーション", () => {
   const SESSION = "record-unique-validation";
   let client: KintoneRestAPIClient;

@@ -225,7 +225,7 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
 
 | 設定 | タイプ | キー接尾辞 |
 |---|---|---|
-| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
+| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `DROP_DOWN` | `.value` |
 | required（配列値） | `CHECK_BOX` / `MULTI_SELECT` / `FILE` | `.values` |
 | required（ユーザー系） | `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` | `.values.value` |
 | `options` 違反（スカラー） | `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
@@ -249,6 +249,8 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
   - `IF(0=1, "ok", "")` のように **常に空文字を返す式** の CALC に `required: true` を付けても、レコード作成は 200 成功し、`calc.value = ""` で保存される
   - 未入力の NUMBER を参照する式（結果 `"0"`）でも当然 200 成功
   - 実機検証: app=10 に `req_calc` を `expression: "IF(0=1, \"ok\", \"\")"`, `required: true` で追加 → `POST /k/v1/record.json` `{record: {}}` が 200、`value: ""` で保存
+
+- **`RADIO_BUTTON`**: `required: true` を受け付けるが、レコード追加時の検証では発動しない。未送信でフィールドを `null` として保存して 200 を返す。実機検証: app=10 に `req_radio` を `options: {A}`, `required: true` で追加 → `POST` で `req_radio` を送らずとも record 作成成功、`req_radio = null` で保存される。dualMode の required テストでも RADIO_BUTTON は検証対象から除外している
 
 ### 完全に required 検証対象外のフィールドタイプ
 
