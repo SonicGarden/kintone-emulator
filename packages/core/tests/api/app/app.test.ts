@@ -205,10 +205,20 @@ describe("アプリ情報取得API", () => {
     expect(result.modifiedAt).toBeDefined();
   });
 
-  test("存在しないアプリを取得すると404が返る", async () => {
-    // KintoneRestAPIClient は 4xx でエラーをthrowするため、ステータスコードを直接検証するために fetch を使用する
+  test("存在しないアプリを取得すると GAIA_AP01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app.json?id=99999`);
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_AP01");
+    expect(json.message).toBe("指定したアプリ（id: 99999）が見つかりません。削除されている可能性があります。");
+  });
+
+  test("id パラメーター欠落で CB_VA01 が返る", async () => {
+    const response = await fetch(`${BASE_URL}/k/v1/app.json`);
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ id: { messages: ["必須です。"] } });
   });
 
   test("複数アプリを一覧取得できる", async () => {

@@ -1,0 +1,80 @@
+# https://github.com/shunichi/devcontainer-gen
+project:
+  name: kintone-emulator
+container:
+  timezone: Asia/Tokyo
+  firewall_mode: restrict
+  editor: code
+languages:
+  node:
+    version: "22"
+    package_manager: pnpm
+    pnpm_version: 10.30.2
+tools:
+  git_delta: 0.18.2
+  zsh_in_docker: 1.2.0
+vscode:
+  extensions:
+    - eamodio.gitlens
+    - anthropic.claude-code
+    -
+  settings:
+    terminal.integrated.defaultProfile.linux: zsh
+    debug.javascript.autoAttachFilter: disabled
+mounts:
+  - name: pnpm-store
+    target: /workspace/.pnpm-store
+  - name: node-modules
+    target: /workspace/node_modules
+  - name: packages-cli-node-modules
+    target: /workspace/packages/cli/node_modules
+  - name: packages-core-node-modules
+    target: /workspace/packages/core/node_modules
+  - name: packages-server-node-modules
+    target: /workspace/packages/server/node_modules
+allowed_domains:
+  - group: npm
+    domains:
+      - npmjs.org
+      - npmjs.com
+  - group: GitHub
+    domains:
+      - github.com
+      - githubusercontent.com
+      - githubassets.com
+  - group: Claude Code
+    domains:
+      - anthropic.com
+      - claude.com
+      - claude.ai
+      - statsig.com
+  - group: GitHub Copilot
+    domains:
+      - githubcopilot.com
+  - group: VS Code 拡張機能
+    domains:
+      - marketplace.visualstudio.com
+      - vscode-cdn.net
+      - vsassets.io
+      - vscode.blob.core.windows.net
+      - update.code.visualstudio.com
+      - azure.cn
+  - group: JSON スキーマ
+    domains:
+      - schemastore.org
+  - group: TLS 証明書失効確認
+    domains:
+      - digicert.com
+      - microsoft.com
+  - group: kintone
+    domains:
+      - cybozu.com
+      - kintone.com
+      - cybozu.dev
+  - group: Documents
+    domains:
+      - vitest.dev
+container_env:
+  NODE_OPTIONS: "--max-old-space-size=4096 --dns-result-order=ipv4first"
+lifecycle:
+  post_create: pnpm install

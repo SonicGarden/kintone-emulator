@@ -1,9 +1,10 @@
 import { insertApp } from "../db/apps";
 import { dbSession } from "../db/client";
-import { insertFields } from "../db/fields";
+import { findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
 import type { HandlerArgs } from "./types";
+import { applyDefaults } from "./validate";
 
 const toPositiveInt = (value: unknown): number | undefined => {
   if (value == null) return undefined;
@@ -33,10 +34,12 @@ export const post = async ({ request, params }: HandlerArgs) => {
 
       const recordIds: string[] = [];
       if (Array.isArray(body.records)) {
+        const fieldRows = findFields(db, app.id);
         for (const record of body.records) {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
-          const insertedRecord = insertRecord(db, app.id.toString(), recordBody, recordId);
+          const withDefaults = applyDefaults(fieldRows, recordBody);
+          const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
           recordIds.push(insertedRecord.id.toString());
         }

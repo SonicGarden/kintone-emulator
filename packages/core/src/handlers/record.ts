@@ -1,8 +1,10 @@
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 import { dbSession } from "../db/client";
-import { findFieldTypes } from "../db/fields";
+import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
+import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import type { HandlerArgs } from "./types";
+import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -12,19 +14,25 @@ export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
   const app = url.searchParams.get('app');
+  const id = url.searchParams.get('id');
+  const locale = detectLocale(request.headers.get("accept-language"));
 
-  const row = findRecord(db, app, url.searchParams.get('id'));
+  const m = errorMessages(locale);
+  if (!app || !id) {
+    const missing: { [key: string]: { messages: string[] } } = {};
+    if (!app) missing.app = { messages: [m.requiredField] };
+    if (!id)  missing.id  = { messages: [m.requiredField] };
+    return errorInvalidInput(missing, locale);
+  }
+
+  const row = findRecord(db, app, id);
   if (!row) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(id, locale);
   }
 
   const body: Record = JSON.parse(row.body);
-  const fieldTypes = findFieldTypes(db, app!);
-  for (const field of fieldTypes) {
-    if (body[field.code]) {
-      body[field.code]!.type = field.type;
-    }
-  }
+  const fieldRows = findFields(db, app);
+  attachFieldTypes(body, fieldRows);
   body['$id'] = { value: row.id.toString(), type: 'RECORD_NUMBER' };
   body['$revision'] = { value: row.revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
@@ -33,7 +41,15 @@ export const get = ({ request, params }: HandlerArgs) => {
 export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
-  const inserted = insertRecord(db, body.app, body.record);
+
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const fieldRows = findFields(db, body.app);
+  const withDefaults = applyDefaults(fieldRows, body.record ?? {});
+  const record = normalizeNumbers(fieldRows, withDefaults);
+  const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
+  if (errors) return validationErrorResponse(errors, locale);
+
+  const inserted = insertRecord(db, body.app, record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
@@ -62,13 +78,28 @@ export const put = async ({ request, params }: HandlerArgs) => {
   }
 
   if (!target) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(body.updateKey ? body.updateKey.value : body.id, detectLocale(request.headers.get("accept-language")));
   }
 
-  const mergedRecord = { ...JSON.parse(target.body), ...body.record };
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const fieldRows = findFields(db, body.app);
+  const existingBody = JSON.parse(target.body);
+  // SUBTABLE 行は id マッチで既存とマージ、id 無しは新規採番、送信配列にない既存行は削除
+  const incomingRecord = mergeSubtableRows(fieldRows, existingBody, body.record ?? {});
+  const beforeNormalize = { ...existingBody, ...incomingRecord };
+  const mergedRecord = normalizeNumbers(fieldRows, beforeNormalize);
+
+  const errors = validateRecord(fieldRows, mergedRecord, {
+    db,
+    appId: body.app,
+    excludeId: target.id,
+    locale,
+  });
+  if (errors) return validationErrorResponse(errors, locale);
+
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
-    return Response.json({ message: 'Record not found.' }, { status: 404 });
+    return errorNotFoundRecord(target.id, locale);
   }
   return Response.json({
     id: updated.id.toString(),
