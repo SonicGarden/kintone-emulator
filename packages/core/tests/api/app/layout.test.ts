@@ -1,13 +1,14 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("layout-test-session");
 });
 
-describe("フォームレイアウト取得API", () => {
+describeEmulatorOnly("フォームレイアウト取得API", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });

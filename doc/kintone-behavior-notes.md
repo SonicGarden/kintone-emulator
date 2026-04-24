@@ -191,14 +191,34 @@ GET .../comments.json?...&order=wrong  (en)
 }
 ```
 
-### ロケール切り替え（`Accept-Language` ヘッダー）
+### ロケール切り替え（ユーザー言語設定 + `Accept-Language` ヘッダー）
 
-| リクエスト | message | messages |
+**実機の言語決定ロジック**: 認証ユーザーの「表示言語」設定が優先される。設定が「Webブラウザーの設定に従う」の場合のみ `Accept-Language` ヘッダーで決定する。
+
+| ユーザーの表示言語設定 | Accept-Language ヘッダー | 実機 |
 |---|---|---|
-| `Accept-Language: ja` | `入力内容が正しくありません。` | 日本語 |
-| `Accept-Language: en` | `Missing or invalid input.` | 英語 |
-| `Accept-Language: zh` | `输入有误。` | 中国語（エミュレーターでは実装していない） |
-| ヘッダー無し | `入力内容が正しくありません。` | 日本語（デフォルト） |
+| 「Webブラウザーの設定に従う」 | なし | ja（組織デフォルト） |
+| | `ja` | ja |
+| | `en` / `en-US` | en |
+| | `en,ja;q=0.9` | en（q 値評価） |
+| | `zh` | zh（中国語） |
+| 「English (US)」明示 | なし | en |
+| | `ja` | en（**ヘッダー無視**） |
+| | `en` | en |
+
+メッセージ例:
+
+| locale | `CB_VA01` の message | `必須` の messages |
+|---|---|---|
+| ja | `入力内容が正しくありません。` | `必須です。` |
+| en | `Missing or invalid input.` | `Required.` |
+| zh | `输入有误。` | `此为必填项。`（エミュレーターは未実装） |
+
+### エミュレーター実装との差分
+
+エミュレーターは認証ユーザーの言語設定を保持していないため、**全 API コールで `Accept-Language` ヘッダーから locale を決定する**。
+- ユーザー設定が「ブラウザに従う」のユーザーに対しては、実機挙動と一致
+- 明示的な言語設定（例: `English (US)`）を持つユーザーに対しては、実機は `Accept-Language` を無視するが、エミュはヘッダーを見るため乖離。必要なら `/setup/auth.json` 時にユーザー言語設定を保持させる拡張が必要（現状未実装）
 
 #### 生レスポンス（zh サンプル）
 
@@ -225,7 +245,7 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
 
 | 設定 | タイプ | キー接尾辞 |
 |---|---|---|
-| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `RADIO_BUTTON` / `DROP_DOWN` / `CALC` | `.value` |
+| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `DROP_DOWN` | `.value` |
 | required（配列値） | `CHECK_BOX` / `MULTI_SELECT` / `FILE` | `.values` |
 | required（ユーザー系） | `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` | `.values.value` |
 | `options` 違反（スカラー） | `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
@@ -240,9 +260,25 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
 
 - 未送信 / `null` / `""` / `[]` のいずれでも必須エラー
 - PUT はマージ後のレコードに対して検証（既存値が埋まっていて、差分更新が別フィールドだけなら成功）
-- `SUBTABLE` / `GROUP` / `LABEL` / `SPACER` / `HR` / `REFERENCE_TABLE` / `CATEGORY` / `STATUS` / `STATUS_ASSIGNEE` / `CREATED_TIME` / `UPDATED_TIME` / `CREATOR` / `MODIFIER` / `CALC` / `RECORD_NUMBER` / `__REVISION__` は required 検証の対象外
 - **`defaultValue` が設定されている場合、未送信でも補完されるため required エラーにならない**（§7 参照）
 - SUBTABLE 内の入れ子 required は別のキー形式（今回未実装 / 未確認）
+
+### `required: true` を受け付けるが検証されないフィールドタイプ
+
+- **`CALC`**: `required: true` を `addFormFields` API は受け付け、`getFormFields`（preview / live）でも `required: true` として返る。しかし**レコード検証では発動しない**。例:
+  - `IF(0=1, "ok", "")` のように **常に空文字を返す式** の CALC に `required: true` を付けても、レコード作成は 200 成功し、`calc.value = ""` で保存される
+  - 未入力の NUMBER を参照する式（結果 `"0"`）でも当然 200 成功
+  - 実機検証: app=10 に `req_calc` を `expression: "IF(0=1, \"ok\", \"\")"`, `required: true` で追加 → `POST /k/v1/record.json` `{record: {}}` が 200、`value: ""` で保存
+
+- **`RADIO_BUTTON`**: `required: true` を受け付けるが、レコード追加時の検証では発動しない。未送信でフィールドを `null` として保存して 200 を返す。実機検証: app=10 に `req_radio` を `options: {A}`, `required: true` で追加 → `POST` で `req_radio` を送らずとも record 作成成功、`req_radio = null` で保存される。dualMode の required テストでも RADIO_BUTTON は検証対象から除外している
+
+### 完全に required 検証対象外のフィールドタイプ
+
+`SUBTABLE` / `GROUP` / `LABEL` / `SPACER` / `HR` / `REFERENCE_TABLE` / `CATEGORY` / `STATUS` / `STATUS_ASSIGNEE` / `CREATED_TIME` / `UPDATED_TIME` / `CREATOR` / `MODIFIER` / `RECORD_NUMBER` / `__REVISION__`
+
+- レイアウト系（LABEL/SPACER/HR/GROUP/REFERENCE_TABLE）はそもそも値を持たない
+- システムフィールド（CATEGORY/STATUS/作業者/作成日時/更新日時/作成者/更新者/レコード番号/リビジョン）は API 経由で値を設定できないため required が無意味
+- SUBTABLE 自体は required: true を持てない（内部フィールドには付けられる）
 
 ### messages
 
@@ -346,11 +382,23 @@ await createApp(BASE_URL, {
 
 ## 3. unique
 
+### `unique: true` を保持できるフィールドタイプ（5 種のみ）
+
+| タイプ | 設定可 |
+|---|---|
+| `SINGLE_LINE_TEXT` | ✓ |
+| `NUMBER` | ✓ |
+| `LINK` | ✓ |
+| `DATE` | ✓ |
+| `DATETIME` | ✓ |
+| 上記以外（`MULTI_LINE_TEXT` / `RICH_TEXT` / `TIME` / `CHECK_BOX` / `RADIO_BUTTON` / `DROP_DOWN` / `MULTI_SELECT` / `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` / `FILE` / `CALC`） | ✗ |
+
+実機の UI（フォーム設定画面）では 5 種のみ「重複を禁止する」チェックボックスが表示される。`addFormFields` API は他タイプに `unique: true` を送っても **200 を返すが、`getFormFields` で取得すると `unique` プロパティは削除されている（silently drop）**。実機検証: app=10 に 17 種全部試すと、上記 5 種のみ preview で `unique: true` が保持された。
+
 ### 挙動
 
 - `code: CB_VA01`（`GAIA_RE02` ではない）
 - 空文字 `""` は重複扱いされない（複数レコードで `""` OK）
-- 配列値のフィールドは `unique` 設定自体できない（CHECK_BOX / USER_SELECT 等）
 - PUT は自レコード自身を除外して判定（同じ値に上書きは通る。他レコードと重複する値への更新は 400）
 
 ### messages

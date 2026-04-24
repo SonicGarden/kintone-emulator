@@ -275,19 +275,22 @@ const validateRequired = (fields: ParsedField[], record: RecordInput, errors: Va
   }
 };
 
-const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "LINK"]);
+// MULTI_LINE_TEXT は実機の設定画面でも maxLength / minLength を指定できず、
+// API レベルでも検証されない。ここからは除外する
+const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "LINK"]);
 
 const validateLengths = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages, prefix: string) => {
   for (const { code, def } of fields) {
     if (!LENGTH_TYPES.has(def.type)) continue;
-    const v = record[code]?.value;
-    if (typeof v !== "string" || v === "") continue;
+    const raw = record[code]?.value;
+    const strValue = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
     const max = def.maxLength != null && def.maxLength !== "" ? Number(def.maxLength) : null;
     const min = def.minLength != null && def.minLength !== "" ? Number(def.minLength) : null;
-    if (max != null && v.length > max) {
+    // 実機準拠: minLength は未送信 / 空文字でも検証する。maxLength は空のときはスキップ
+    if (strValue !== "" && max != null && strValue.length > max) {
       addError(errors, `${prefix}.${code}.value`, m.maxLength(max + 1));
     }
-    if (min != null && v.length < min) {
+    if (min != null && strValue.length < min) {
       addError(errors, `${prefix}.${code}.value`, m.minLength(min - 1));
     }
   }
@@ -353,10 +356,13 @@ const validateUnique = (
   m: Messages,
   ctx: ValidateContext
 ) => {
-  // unique は top-level のみ（SUBTABLE 内では実 kintone でも unique 設定不可）
+  // unique は top-level かつ、実機が unique 属性を保持する 5 タイプに限定:
+  //   SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME
+  // 実機の UI / addFormFields API では他タイプに unique: true を送っても
+  // silently drop される（加えて TIME / CALC / LOOKUP は UI からも設定不可）
   for (const { code, def } of fields) {
     if (!def.unique) continue;
-    if (VALUES_KEY_TYPES[def.type]) continue;
+    if (!UNIQUE_TYPES.has(def.type)) continue;
     const v = record[code]?.value;
     if (typeof v !== "string" || v === "") continue;
     const rows = findRecordsByKey(ctx.db, ctx.appId, code, v);
@@ -366,6 +372,14 @@ const validateUnique = (
     }
   }
 };
+
+const UNIQUE_TYPES = new Set([
+  "SINGLE_LINE_TEXT",
+  "NUMBER",
+  "LINK",
+  "DATE",
+  "DATETIME",
+]);
 
 // SUBTABLE 各行の内部フィールドに対して required / 長さ / 範囲 / options を再帰検証
 const validateSubtables = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages) => {

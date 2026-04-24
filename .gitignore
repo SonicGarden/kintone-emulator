@@ -2,6 +2,8 @@ node_modules
 /.cache
 /tmp
 .env
+.env.*
+!.env.*.sample
 
 # build output
 /packages/server/build
@@ -25,3 +27,4 @@ node_modules
 
 .devcontainer/.ssh_authorized_keys
 .devcontainer/.tmux.conf
+.claude/

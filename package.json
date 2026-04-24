@@ -12,6 +12,7 @@
     "test": "pnpm --filter @sonicgarden/kintone-emulator test",
     "test:e2e": "pnpm --filter @sonicgarden/kintone-emulator-server test:e2e",
     "test:watch": "pnpm --filter @sonicgarden/kintone-emulator test:watch",
+    "test:real-kintone": "pnpm --filter @sonicgarden/kintone-emulator exec vitest run --mode real-kintone",
     "typecheck": "pnpm -r typecheck",
     "pack": "pnpm --filter @sonicgarden/kintone-emulator pack --pack-destination ./tmp",
     "cli": "node packages/cli/dist/cli.js"
@@ -26,8 +27,8 @@
     "tsup": "^8.5.1",
     "tsx": "^4.19.2",
     "typescript": "^5.1.6",
-    "vite-tsconfig-paths": "^4.2.1",
-    "vitest": "^2.1.8"
+    "vite-tsconfig-paths": "^4.3.2",
+    "vitest": "^2.1.9"
   },
   "engines": {
     "node": ">=20.0.0"

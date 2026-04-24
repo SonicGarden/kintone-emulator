@@ -7,10 +7,24 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./test-support": {
+      "types": "./dist/test-support/index.d.ts",
+      "import": "./dist/test-support/index.js"
+    },
+    "./test-support/vitest": {
+      "types": "./dist/test-support/vitest.d.ts",
+      "import": "./dist/test-support/vitest.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
     }
+  },
+  "peerDependencies": {
+    "@kintone/rest-api-client": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@kintone/rest-api-client": { "optional": true }
   },
   "files": [
     "dist"
@@ -25,11 +39,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dedent": "^1.5.3",
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.6.2",
+    "dedent": "^1.5.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "vite": "^5.4.11"
   }
 }
