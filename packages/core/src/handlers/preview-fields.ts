@@ -1,11 +1,26 @@
+import { validateFieldsForInsert } from "../calc/field-validation";
 import { dbSession } from "../db/client";
-import { insertFields, deleteFields } from "../db/fields";
+import { deleteFields, findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
+import { errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 export const post = async ({ request, params }: HandlerArgs) => {
+  const locale = detectLocale(request.headers.get("accept-language"));
   const body = await request.json();
-  insertFields(dbSession(params.session), body.app, body.properties as FieldProperties);
+  const db = dbSession(params.session);
+
+  const existing = findFields(db, body.app);
+  const issue = validateFieldsForInsert(existing, body.properties as FieldProperties);
+  if (issue) {
+    if (issue.kind === "format_enum") {
+      return errorInvalidCalcFormat(issue.key, locale);
+    }
+    return errorInvalidFormula(issue.fieldLabel, issue.detailMessage, locale);
+  }
+
+  insertFields(db, body.app, body.properties as FieldProperties);
   return Response.json({ revision: "1" });
 };
 

@@ -77,6 +77,28 @@ export const errorNotFoundComment = (locale: Locale = "ja") =>
     { status: 400 }
   );
 
+// 計算式バリデーションエラー（deploy 時相当）。実機は:
+//   [400] [GAIA_IL01]
+//   message: "フィールド「<label>」の計算式が正しくありません。(エラーの内容：<detail>)"
+// errors オブジェクトは付かない。
+export const errorInvalidFormula = (
+  fieldLabel: string,
+  detailMessage: string,
+  locale: Locale = "ja",
+) => {
+  const message = locale === "ja"
+    ? `フィールド「${fieldLabel}」の計算式が正しくありません。(エラーの内容：${detailMessage})`
+    : `The formula in the field '${fieldLabel}' is invalid. (Reason: ${detailMessage})`;
+  return Response.json(
+    { code: "GAIA_IL01", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
+// CALC の format が enum にない場合のエラー（addFormFields 相当）。
+export const errorInvalidCalcFormat = (key: string, locale: Locale = "ja") =>
+  errorInvalidInput({ [key]: { messages: [MESSAGES[locale].enumValue] } }, locale);
+
 // ルックアップのキー不一致（HTTP 400、errors オブジェクトは付かない）
 export const errorLookupNotFound = (fieldCode: string, value: string, locale: Locale = "ja") => {
   const message = locale === "ja"
