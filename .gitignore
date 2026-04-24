@@ -25,3 +25,4 @@ node_modules
 
 .devcontainer/.ssh_authorized_keys
 .devcontainer/.tmux.conf
+.claude/

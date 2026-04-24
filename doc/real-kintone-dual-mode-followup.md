@@ -6,8 +6,22 @@
 
 - `records.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` (6 tests)
 - `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
+- `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
+- `record.test.ts` > `maxLength / minLength バリデーション` (2 tests)
+- `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
+- `record.test.ts` > `options 整合バリデーション` (6 tests)
+- `record.test.ts` > `defaultValue / defaultNowValue の自動補完` (8 tests)
+- `record.test.ts` > `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` (6 tests)
+- `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
 
-実 kintone 環境で 9/9 pass 済み。
+合計 43 tests を実 kintone 環境で検証済み（全 pass）。
+
+### 実機差分を発見して emulator-only に退避した項目
+
+- **`record.test.ts` > `maxLength / minLength バリデーション（実機差分あり）`** (emulator-only)
+  - 空文字は minLength 検証をスキップ → 実機では NG の可能性（要追加調査）
+  - LINK に短い値を入れると minLength エラーに加えて「URL の形式が正しくありません」エラーも同時に返る → 実機のみの挙動
+  - MULTI_LINE_TEXT の maxLength: 実機で独自の状態エラーが出て失敗（要追加調査）
 
 ## 未移行（describeEmulatorOnly でタグ付け、実 kintone では skip）
 
@@ -19,21 +33,14 @@
 | `一括 addRecords / updateRecords` | `ids: ["1","2","3"]` という逐次 ID 前提が多数。実 kintone は自動採番で 1 始まりにならない |
 | `クエリのエラーレスポンス / 上限チェック` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いている。実 kintone は deploy 必須。app=1 ハードコード |
 
-### record.test.ts (14 ブロック、94 tests、全て emulator-only)
+### record.test.ts (残り emulator-only 5 ブロック)
 
-共通の障壁: `addFormFields({app:1})` + raw fetch でのエラー検証。個別の追加課題:
-
-| ブロック | 追加障壁 |
+| ブロック | 障壁 |
 |---|---|
-| `アプリのレコードAPI` | 特になし。createTestApp 化で移行可能 |
+| `アプリのレコードAPI` | 逐次 ID (`result.id === "1"` 等) と `$id = 1` ハードコードが多数 |
 | `required フィールドのバリデーション` | `USER_SELECT` に `{ code: "u1" }` というダミーユーザーコード → 実機には存在しないのでエラー |
-| `unique / maxLength / minLength / maxValue / minValue` | createTestApp 化で移行可能 |
-| `options 整合バリデーション` | createTestApp 化で移行可能 |
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
-| `defaultValue / defaultNowValue の自動補完` | 実機の defaultValue 動作を検証する価値あり → 移行候補 |
 | `SUBTABLE 対応` / `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）` | 実機の SUBTABLE 行 id 採番が実機独自（数値連番）で、エミュの hex と不一致。テスト assertion の書き換え必要 |
-| `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` | createTestApp 化で移行可能 |
-| `top-level NUMBER の正規化` | createTestApp 化で移行可能 |
 | `ルックアップ（LOOKUP）` / `ルックアップ: relatedKeyField が RECORD_NUMBER` | 2 つのアプリ + ルックアップ設定が必要。実機では addFormFields 後 deployApp、かつ relatedApp 指定が必要 |
 
 ### comment.test.ts
@@ -73,19 +80,17 @@
 
 ## 次フェーズの優先順位案
 
-**高**（実機互換性の確認価値が大きく、移行コストが低い）:
-1. `record.test.ts` > `unique / maxLength / maxValue / options` バリデーション系
-2. `record.test.ts` > `defaultValue / defaultNowValue`
-3. `record.test.ts` > `SUBTABLE 内 NUMBER / top-level NUMBER 正規化`
-4. `records.test.ts` > `アプリのレコード一覧のAPI`（`createTestApp` + recordIds 置換で可）
-
 **中**:
-5. `record.test.ts` > SUBTABLE CRUD 系（行 id の書き換え必要）
-6. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy）
-7. `records.test.ts` > `一括 addRecords / updateRecords`（ID assertions の書き換え）
+1. `record.test.ts` > SUBTABLE CRUD 系（行 id の書き換え必要）
+2. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy）
+3. `records.test.ts` > `一括 addRecords / updateRecords`（ID assertions の書き換え）
+4. `records.test.ts` > `アプリのレコード一覧のAPI`（`createTestApp` + recordIds 置換で可、$id アサーション書き換え）
 
 **低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
 - `auth.test.ts`（エミュ固有の /setup/auth.json）
 - `app.test.ts`（/setup/app.json 由来の挙動）
 - `form/layout/status.test.ts` 各種（revision / layout / status の setup 独自挙動）
-- `clエラーレスポンス上限チェック`（/k/v1/preview/... raw fetch）
+- `クエリのエラーレスポンス / 上限チェック`（/k/v1/preview/... raw fetch）
+- `record.test.ts` > `アプリのレコードAPI`（逐次 ID 依存）
+- `record.test.ts` > `required フィールドのバリデーション`（ダミー USER_SELECT コード）
+- `record.test.ts` > `Accept-Language によるメッセージ切り替え`（エミュ固有エラー文言）
