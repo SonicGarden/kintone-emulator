@@ -129,39 +129,37 @@ pnpm test:e2e
 
 ### 実 kintone に対してテストを流す
 
-`describeDualMode` でマークされたテストブロックだけを実 kintone 環境に対して実行できます（`describeEmulatorOnly` のブロックは skip）。エミュレーターの挙動が実機と一致しているかの検証用。
+同じテストコードをエミュレーターと実 kintone の両方で走らせる仕組みを `@sonicgarden/kintone-emulator/test-support` で提供しています。`describeDualMode` でマークされたブロックだけが実 kintone 環境で実行され、`describeEmulatorOnly` のブロックは skip されます（エミュレーターの挙動が実機と一致しているか検証するのに使える）。
 
-#### セットアップ
+#### このリポジトリ内で使う
 
-1. `packages/core/.env.real-kintone.sample` をコピーして `packages/core/.env.real-kintone` を作る（`.gitignore` 済み）:
+1. `packages/core/.env.real-kintone.sample` をコピーして `packages/core/.env.real-kintone` を作る（`.env.*` は `.gitignore` 済み、`.env.*.sample` だけ tracked）:
    ```sh
    cp packages/core/.env.real-kintone.sample packages/core/.env.real-kintone
    ```
-2. 以下の環境変数を設定:
+2. 以下の環境変数を設定（`VITE_` プレフィックス必須、vite のデフォルト挙動を利用しているため）:
 
    | 変数 | 例 | 用途 |
    |---|---|---|
-   | `KINTONE_TEST_DOMAIN` | `my-tenant` | `https://<domain>.cybozu.com` のサブドメイン |
-   | `KINTONE_TEST_USER` | `foo@example.com` | アプリ管理権限を持つユーザー |
-   | `KINTONE_TEST_PASSWORD` | `...` | パスワード |
-   | `KINTONE_TEST_APP_IDS` | `9,10,11` | 事前に作成しておくテスト用アプリ ID のプール |
+   | `VITE_KINTONE_TEST_DOMAIN` | `my-tenant` | `https://<domain>.cybozu.com` のサブドメイン |
+   | `VITE_KINTONE_TEST_USER` | `foo@example.com` | アプリ管理権限を持つユーザー |
+   | `VITE_KINTONE_TEST_PASSWORD` | `...` | パスワード |
+   | `VITE_KINTONE_TEST_APP_IDS` | `9,10,11` | 事前に作成しておくテスト用アプリ ID のプール |
 
-   `KINTONE_TEST_APP_IDS` は「**1 つのテスト内で `createTestApp` が呼ばれる最大回数**」を賄える個数が必要です（ルックアップ系テストでは 2 アプリ使用）。各テスト前にアプリ ID の割り当ては先頭に戻るため、テスト間では使い回しが効きます。プール内のアプリは最低限何か 1 つフィールドが作成された状態で、削除してよいフィールド・レコードを含んでいれば十分です。
+   `VITE_KINTONE_TEST_APP_IDS` は「**1 つのテスト内で `createTestApp` が呼ばれる最大回数**」を賄える個数が必要です（ルックアップ系テストでは 2 アプリ使用）。各テスト前にアプリ ID の割り当ては先頭に戻るため、テスト間では使い回しが効きます。プール内のアプリは最低限何か 1 つフィールドが作成された状態で、削除してよいフィールド・レコードを含んでいれば十分です。
 
-#### 実行
+3. 実行:
+   ```sh
+   pnpm test:real-kintone                                    # 全 dualMode テスト
+   pnpm test:real-kintone -- -t "SUBTABLE"                   # テスト名フィルタ
+   pnpm test:real-kintone tests/api/record/record.test.ts    # 特定ファイル
+   ```
 
-```sh
-# 全 dualMode テスト
-pnpm test:real-kintone
+   内部的には `vitest --mode real-kintone` が走り、`.env.real-kintone` が vite のデフォルト `.env.<mode>` 機構で `import.meta.env` にロードされます（追加の npm パッケージは不要）。フィールド定義が前回と同じなら deploy をスキップしてキャッシュするため、クエリ系テストは 2 回目以降高速化されます（初回だけ 10 秒前後）。
 
-# テスト名フィルタ（vitest の -t を追加引数で渡す）
-pnpm test:real-kintone -- -t "SUBTABLE"
+#### 外部プロジェクトから使う
 
-# 特定ファイル
-pnpm test:real-kintone tests/api/record/record.test.ts
-```
-
-内部的には `vitest --mode real-kintone` が走り、`packages/core/.env.real-kintone` が vite の `loadEnv()` 経由で process.env に注入されます（追加の npm パッケージは不要）。フィールド定義が前回のテストと同じ場合は deploy をスキップしてキャッシュするので、クエリ系のテストは 2 回目以降高速化されます（初回だけ 10 秒前後）。
+`@sonicgarden/kintone-emulator/test-support` を import すれば、他のプロジェクトでも同じ dualMode 切替が使えます。vitest 非依存で、jest / node:test 等でも動作します。詳細・API 一覧・セットアップ手順は [`doc/test-support.md`](doc/test-support.md) 参照。
 
 ## セッションの使い方
 

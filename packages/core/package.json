@@ -7,10 +7,24 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./test-support": {
+      "types": "./dist/test-support/index.d.ts",
+      "import": "./dist/test-support/index.js"
+    },
+    "./test-support/vitest": {
+      "types": "./dist/test-support/vitest.d.ts",
+      "import": "./dist/test-support/vitest.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
     }
+  },
+  "peerDependencies": {
+    "@kintone/rest-api-client": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@kintone/rest-api-client": { "optional": true }
   },
   "files": [
     "dist"
