@@ -468,14 +468,25 @@ describeDualMode("maxLength / minLength バリデーション", () => {
       errors: { "record.text.value": { messages: ["1文字より長くなければなりません。"] } },
     });
   });
+
+  test("空文字は minLength 検証に引っかかる（実機準拠）", async () => {
+    await expect(
+      client.record.addRecord({ app: appId, record: { text: { value: "" } } }),
+    ).rejects.toMatchObject({
+      errors: { "record.text.value": { messages: ["1文字より長くなければなりません。"] } },
+    });
+  });
+
+  test("範囲内なら成功", async () => {
+    const ok = await client.record.addRecord({ app: appId, record: { text: { value: "abc" } } });
+    expect(ok.id).toBeTruthy();
+  });
 });
 
-// TODO: dualMode 化は実機との挙動差分の確認が必要
-// - 空文字は minLength 検証をスキップするか（実機は unclear）
-// - LINK minLength と同時に URL 形式エラーが出る
-// - MULTI_LINE_TEXT の maxLength 検証の詳細
-describeEmulatorOnly("maxLength / minLength バリデーション（実機差分あり）", () => {
-  const SESSION = "record-length-validation-edge";
+// 実機は MULTI_LINE_TEXT の maxLength を API レベルで検証しない（UI 上の制限）。
+// エミュは保守的に拒否するため差分が出る → emulator のみ
+describeEmulatorOnly("MULTI_LINE_TEXT の maxLength（実機は未検証）", () => {
+  const SESSION = "record-multiline-length";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
   let appId: number;
@@ -485,36 +496,50 @@ describeEmulatorOnly("maxLength / minLength バリデーション（実機差分
     await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
     appId = await createApp(BASE_URL, {
-      name: "length テスト edge",
+      name: "multi length",
       properties: {
-        text:  { type: "SINGLE_LINE_TEXT", code: "text",  label: "text",  maxLength: "5", minLength: "2" },
-        multi: { type: "MULTI_LINE_TEXT",  code: "multi", label: "multi", maxLength: "10" },
-        link:  { type: "LINK",              code: "link",  label: "link",  minLength: "3", protocol: "WEB" },
+        multi: { type: "MULTI_LINE_TEXT", code: "multi", label: "multi", maxLength: "10" },
       },
     });
   });
   afterEach(async () => { await finalizeSession(BASE_URL); });
 
-  test("空文字は minLength エラーにならない（emulator）", async () => {
-    const r2 = await client.record.addRecord({ app: appId, record: { text: { value: "" } } });
-    expect(r2.id).toBeTruthy();
-  });
-
-  test("範囲内なら成功 / MULTI_LINE_TEXT の maxLength も効く", async () => {
-    const ok = await client.record.addRecord({ app: appId, record: { text: { value: "abc" } } });
-    expect(ok.id).toBeTruthy();
+  test("maxLength 超過で 400（emulator のみ）", async () => {
     await expect(
       client.record.addRecord({ app: appId, record: { multi: { value: "12345678901" } } }),
     ).rejects.toMatchObject({
       errors: { "record.multi.value": { messages: ["11文字より短くなければなりません。"] } },
     });
   });
+});
 
-  test("LINK の minLength も効く（emulator は URL 形式エラーなし）", async () => {
+describeDualMode("LINK の minLength", () => {
+  const SESSION = "record-link-length";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "link length",
+      properties: {
+        link: { type: "LINK", code: "link", label: "link", minLength: "3", protocol: "WEB" },
+      },
+    }));
+  });
+
+  test("短い値で minLength エラー（実機は URL 形式エラーも同時に返す）", async () => {
+    // 実機: `"2文字より..."` + `"URLの形式が正しくありません..."` の 2 つが messages に入る。
+    // emulator: minLength エラーのみ。どちらでも minLength エラーが含まれることを確認
     await expect(
       client.record.addRecord({ app: appId, record: { link: { value: "ab" } } }),
     ).rejects.toMatchObject({
-      errors: { "record.link.value": { messages: ["2文字より長くなければなりません。"] } },
+      errors: {
+        "record.link.value": {
+          messages: expect.arrayContaining(["2文字より長くなければなりません。"]),
+        },
+      },
     });
   });
 });

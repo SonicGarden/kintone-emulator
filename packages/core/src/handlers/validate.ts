@@ -280,14 +280,15 @@ const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "LINK"]);
 const validateLengths = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages, prefix: string) => {
   for (const { code, def } of fields) {
     if (!LENGTH_TYPES.has(def.type)) continue;
-    const v = record[code]?.value;
-    if (typeof v !== "string" || v === "") continue;
+    const raw = record[code]?.value;
+    const strValue = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
     const max = def.maxLength != null && def.maxLength !== "" ? Number(def.maxLength) : null;
     const min = def.minLength != null && def.minLength !== "" ? Number(def.minLength) : null;
-    if (max != null && v.length > max) {
+    // 実機準拠: minLength は未送信 / 空文字でも検証する。maxLength は空のときはスキップ
+    if (strValue !== "" && max != null && strValue.length > max) {
       addError(errors, `${prefix}.${code}.value`, m.maxLength(max + 1));
     }
-    if (min != null && v.length < min) {
+    if (min != null && strValue.length < min) {
       addError(errors, `${prefix}.${code}.value`, m.minLength(min - 1));
     }
   }

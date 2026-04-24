@@ -11,7 +11,8 @@
 - `records.test.ts` > `一括 addRecords / updateRecords` (11 tests; Accept-Language en / app 欠落 raw fetch の 2 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `アプリのレコードAPI` (3 tests; 逐次 ID / Accept-Language / /setup/app.json の 6 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
-- `record.test.ts` > `maxLength / minLength バリデーション` (2 tests)
+- `record.test.ts` > `maxLength / minLength バリデーション` (4 tests; 空文字の minLength 検証も実機準拠)
+- `record.test.ts` > `LINK の minLength` (1 test; 実機は URL 形式エラーも併せて返すため arrayContaining で検証)
 - `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
 - `record.test.ts` > `options 整合バリデーション` (6 tests)
 - `record.test.ts` > `defaultValue / defaultNowValue の自動補完` (8 tests)
@@ -28,12 +29,11 @@
 
 （行を足し算するとダブっている 6 件があるのは同ブロック内の個別 test を重複記述したため。実機実行の実数は 114）
 
-### 実機差分を発見して emulator-only に退避した項目
+### 実機差分の調査結果と対応
 
-- **`record.test.ts` > `maxLength / minLength バリデーション（実機差分あり）`** (emulator-only)
-  - 空文字は minLength 検証をスキップ → 実機では NG の可能性（要追加調査）
-  - LINK に短い値を入れると minLength エラーに加えて「URL の形式が正しくありません」エラーも同時に返る → 実機のみの挙動
-  - MULTI_LINE_TEXT の maxLength: 実機で独自の状態エラーが出て失敗（要追加調査）
+- **空文字 / 未送信フィールドの minLength**: 実機は `""` でも未送信でも minLength を検証して 400 を返す。エミュは元々スキップしていたが実機準拠に修正（`packages/core/src/handlers/validate.ts`）→ dualMode に統合
+- **LINK の minLength**: 実機は `"2文字より長く..."` に加えて `"URL の形式が正しくありません..."` を同じ messages 配列に返す。dualMode テストでは `expect.arrayContaining` で両モードが通るように書いた
+- **MULTI_LINE_TEXT の maxLength**: 実機は API レベルで maxLength を検証しない（UI 上の制限のみ）。エミュは保守的に拒否するため差分あり → `emulator-only` の別ブロックに退避
 
 - **`records.test.ts` > クエリの文字列リテラル**: 実機は double-quote のみ許容。`test = 'test'` は CB_VA01。エミュは single / double どちらも受け付ける → dualMode テストは double-quote に統一
 - **`records.test.ts` > `getRecords` の `totalCount`**: 実機は `?totalCount=true` 指定時のみ件数を返す（デフォルト null）。エミュは常に件数を返す → テストは `records.length` で代用
