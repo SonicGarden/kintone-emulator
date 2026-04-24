@@ -10,6 +10,7 @@
 - `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
 - `records.test.ts` > `一括 addRecords / updateRecords` (11 tests; Accept-Language en / app 欠落 raw fetch の 2 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `アプリのレコードAPI` (3 tests; 逐次 ID / Accept-Language / /setup/app.json の 6 件は emulatorOnly の別ブロック)
+- `record.test.ts` > `required フィールドのバリデーション` (7 tests; `USER_SELECT` を含む検証はダミーユーザーコード問題で除外し、SINGLE_LINE_TEXT と CHECK_BOX だけで検証)
 - `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
 - `record.test.ts` > `maxLength / minLength バリデーション` (4 tests; 空文字の minLength 検証も実機準拠)
 - `record.test.ts` > `LINK の minLength` (1 test; 実機は URL 形式エラーも併せて返すため arrayContaining で検証)
@@ -57,11 +58,10 @@
 | `一括 addRecords / updateRecords` | `ids: ["1","2","3"]` という逐次 ID 前提が多数。実 kintone は自動採番で 1 始まりにならない |
 | `クエリのエラーレスポンス / 上限チェック` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いている。実 kintone は deploy 必須。app=1 ハードコード |
 
-### record.test.ts (残り emulator-only 2 ブロック)
+### record.test.ts (残り emulator-only 1 ブロック)
 
 | ブロック | 障壁 |
 |---|---|
-| `required フィールドのバリデーション` | `USER_SELECT` に `{ code: "u1" }` というダミーユーザーコード → 実機には存在しないのでエラー |
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
 
 ### comment.test.ts
@@ -101,17 +101,11 @@
 
 ## 次フェーズの優先順位案
 
-**低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
-- `record.test.ts` > `required フィールドのバリデーション`（ダミー USER_SELECT コード）
-- `record.test.ts` > `Accept-Language によるメッセージ切り替え`（エミュ固有エラー文言）
+record.test.ts / records.test.ts / comment.test.ts の実機互換な describe ブロックはすべて移行完了。残りはエミュ専用機能のテスト:
 
-record.test.ts / records.test.ts の実機互換な describe ブロックはほぼ全て移行完了。残りは認証、アプリ作成、フォーム管理、file 等のエミュ専用機能テスト。
-
-**低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
 - `auth.test.ts`（エミュ固有の /setup/auth.json）
 - `app.test.ts`（/setup/app.json 由来の挙動）
 - `form/layout/status.test.ts` 各種（revision / layout / status の setup 独自挙動）
-- `クエリのエラーレスポンス / 上限チェック`（/k/v1/preview/... raw fetch）
-- `record.test.ts` > `アプリのレコードAPI`（逐次 ID 依存）
-- `record.test.ts` > `required フィールドのバリデーション`（ダミー USER_SELECT コード）
+- `file.test.ts`（`/k/v1/file.json` のアップロード API 自体は実機でも動くが優先度低）
+- `record.test.ts` > `アプリのレコードAPI (emulator 固有)`（逐次 ID 依存）
 - `record.test.ts` > `Accept-Language によるメッセージ切り替え`（エミュ固有エラー文言）
