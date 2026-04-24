@@ -268,7 +268,7 @@ npx --package @sonicgarden/kintone-emulator-cli sg-kintone export-app \
 - **SUBTABLE 内フィールドの `unique`** — 実機でもサブテーブル内に `unique` は設定できないが、意図的に設定された場合エミュレーターは検証しない
 - **行ごとのエラーキー接頭辞** — バリデーションエラーのキー接頭辞は実機準拠だが、**サブテーブル内の USER_SELECT / ORGANIZATION_SELECT / GROUP_SELECT の `.values.value` 形式**は実機と差がある可能性（未検証）
 - **`SUBTABLE` 内の `DATE` / `DATETIME` / `TIME` の形式検証** — 形式違反のチェックは未実装
-- **`records.json` / `record/comment.json` DELETE 時の `app` / `record` 存在チェック** — 実機は存在しない app / record に対して `GAIA_AP01` / `GAIA_RE01` を返すが、エミュレーターは素通しで 200 を返す
+- **`record/comment.json` DELETE 時の `app` / `record` 存在チェック** — 実機は存在しない app / record に対して `GAIA_AP01` / `GAIA_RE01` を返すが、エミュレーターは素通しで 200 を返す（`records.json` DELETE は実機準拠で GAIA_RE01 を返す）
 
 ### 検索クエリ（`/k/v1/records.json` GET）
 

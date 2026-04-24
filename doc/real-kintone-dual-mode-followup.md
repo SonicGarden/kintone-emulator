@@ -4,7 +4,8 @@
 
 ## 完了済み（describeDualMode）
 
-- `records.test.ts` > `アプリのレコード一覧のAPI` (13 tests; 削除の存在しない ID テスト 1 件は testEmulatorOnly)
+- `records.test.ts` > `アプリのレコード一覧のAPI` (14 tests; 削除の存在しない ID は実機準拠で GAIA_RE01 に修正済み)
+- `records.test.ts` > `一括 addRecords / updateRecords` (11 tests)
 - `records.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` (6 tests)
 - `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
 - `records.test.ts` > `一括 addRecords / updateRecords` (11 tests; Accept-Language en / app 欠落 raw fetch の 2 件は emulatorOnly の別ブロック)
@@ -23,7 +24,9 @@
 - `records.test.ts` > `クエリのエラーレスポンス / 上限チェック` (8 tests; CB_VA01 / GAIA_QU01 / GAIA_QU02 / GAIA_IQ11 / GAIA_IQ07 / GAIA_IQ03 / GAIA_IQ10 すべて実機と一致)
 - `comment.test.ts` > `アプリのレコードコメントAPI` (9 tests; mentions 2 件は testEmulatorOnly)
 
-合計 120 tests を実 kintone 環境で検証済み（全 pass）。
+合計 **114 tests** を実 kintone 環境で検証済み（combined run / 全 pass / 524 秒）。
+
+（行を足し算するとダブっている 6 件があるのは同ブロック内の個別 test を重複記述したため。実機実行の実数は 114）
 
 ### 実機差分を発見して emulator-only に退避した項目
 
@@ -39,6 +42,10 @@
 - **`record.test.ts` > SUBTABLE PUT の行 id 単位マージ**: 実機は PUT で SUBTABLE 全体を置き換え、エミュは行 id 単位で内部フィールドをマージ。該当 2 テストを `testEmulatorOnly` 化
 - **アプリ作成時のフィールドコード衝突**: 実機は `ステータス` (STATUS システムフィールド) / `カテゴリー` / `作業者` 等のコードを予約。ユーザーが同じコードで DROP_DOWN 等を作ろうとすると CB_VA01 → dualMode テストで使う時はリネーム必須
 - **コメントテキストの末尾空白付加**: 実機は `addRecordComment({comment: {text: "コメント2"}})` に対して `getRecordComments` の返却 text を `"コメント2 "` のように末尾空白付きで返す。エミュは入力値そのまま。dualMode テストでは `.trim()` で正規化して比較
+
+### `real-kintone.ts` で見つかった実装バグ
+
+- **フィールド定義ハッシュがネストを無視していた**: `JSON.stringify(obj, Object.keys(obj).sort())` の replacer array は全階層に作用し、ネストされたオブジェクトのプロパティを落として `{"items":{},"top_title":{}}` のような骨格だけになっていた。結果、トップレベルキーが同じだがネストスキーマが違う 2 ブロック（例: SUBTABLE 対応 → SUBTABLE 行 PUT）でハッシュが誤一致し、deploy がスキップされて前ブロックの schema が残っていた。`sortKeysDeep` で再帰ソート + フル stringify に変更して修正済み
 
 ## 未移行（describeEmulatorOnly でタグ付け、実 kintone では skip）
 

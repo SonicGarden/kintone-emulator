@@ -190,6 +190,19 @@ const RECORD_SYSTEM_FIELD_TYPES = new Set([
 // ハッシュが変わっていない場合は deploy をスキップできる
 const lastSetupFieldsHashByAppId = new Map<number, string>();
 
+/** オブジェクトのキーを再帰的にソートして決定的な JSON 表現を得るためのヘルパー */
+const sortKeysDeep = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value as object).sort()) {
+      out[k] = sortKeysDeep((value as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return value;
+};
+
 const setupRealKintoneApp = async (
   params: CreateTestAppParams,
 ): Promise<CreateTestAppResult> => {
@@ -202,7 +215,10 @@ const setupRealKintoneApp = async (
   // 2. フィールド定義が前回と完全一致する場合は skip
   if (params.properties) {
     const fieldsToAdd = filterAddableFields(params.properties);
-    const fieldsHash = JSON.stringify(fieldsToAdd, Object.keys(fieldsToAdd).sort());
+    // ネストまで含めてキーをソートして文字列化することで、キー順の揺れと
+    // 階層を超えたハッシュ衝突を両方避ける（replacer array を使うと
+    // nested object のプロパティが全部削ぎ落とされるため、それは使わない）
+    const fieldsHash = JSON.stringify(sortKeysDeep(fieldsToAdd));
     if (fieldsHash !== lastSetupFieldsHashByAppId.get(appId)) {
       await deleteAllFields(client, appId);
       if (Object.keys(fieldsToAdd).length > 0) {

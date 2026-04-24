@@ -1028,8 +1028,7 @@ describeDualMode("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", (
     expect((record.items!.value as Array<unknown>)).toHaveLength(3);
   });
 
-  // 実機の PUT は SUBTABLE 全体を置き換えるセマンティクス。エミュは行 id 単位でフィールドをマージする独自挙動 → emulator のみ
-  testEmulatorOnly("既存行 id を指定した PUT は内部フィールドをマージ（送らないフィールドは保持）", async () => {
+  test("既存行 id を指定した PUT は内部フィールドをマージ（送らないフィールドは保持）", async () => {
     const { id, rowIds } = await seed();
     // id=rowIds[0] の qty だけ更新、name は送らない → name は保持される
     await client.record.updateRecord({
@@ -1082,8 +1081,7 @@ describeDualMode("SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）", (
     expect(rows[2]!.value.name).toMatchObject({ value: "new_b" });
   });
 
-  // 実機は存在しない行 id を 400 で拒否する。エミュは新規行として扱う独自挙動 → emulator のみ
-  testEmulatorOnly("存在しない行 id を指定すると新規行として新しい id が振られる", async () => {
+  test("存在しない行 id を指定すると新規行として新しい id が振られる", async () => {
     const { id, rowIds } = await seed();
     await client.record.updateRecord({
       app: appId, id, record: { items: { value: [

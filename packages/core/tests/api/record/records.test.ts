@@ -1,7 +1,7 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
-import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment, testEmulatorOnly } from "../../real-kintone";
+import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
 describeDualMode("アプリのレコード一覧のAPI", () => {
   const SESSION = "records-list";
@@ -150,12 +150,11 @@ describeDualMode("アプリのレコード一覧のAPI", () => {
       expect(records.records[0]!.test!.value).toEqual("test2");
     });
 
-    // 実機は存在しない ID に対して GAIA_RE01 を返すが、エミュレーターでは無視する → emulator のみ
-    testEmulatorOnly("存在しないレコードIDを指定してもエラーにならない", async () => {
+    test("存在しないレコードIDを指定すると GAIA_RE01（実機準拠・削除は行われない）", async () => {
       await client.record.addRecord({ app: appId, record: { test: { value: "test1" } } });
       await expect(
-        client.record.deleteRecords({ app: appId, ids: [9999] }),
-      ).resolves.not.toThrow();
+        client.record.deleteRecords({ app: appId, ids: [99999999] }),
+      ).rejects.toMatchObject({ code: "GAIA_RE01" });
       const records = await client.record.getRecords({ app: appId });
       expect(records.records).toHaveLength(1);
     });

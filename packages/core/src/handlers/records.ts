@@ -388,6 +388,10 @@ export const del = ({ request, params }: HandlerArgs) => {
     return errorInvalidInput(missing, locale);
   }
 
+  // 実機準拠: 指定 ID に存在しないものが含まれていたら GAIA_RE01 で拒否し、削除は一切行わない
+  for (const id of ids) {
+    if (!findRecord(db, app, id)) return errorNotFoundRecord(id, locale);
+  }
   deleteRecords(db, app, ids);
   return Response.json({});
 };
