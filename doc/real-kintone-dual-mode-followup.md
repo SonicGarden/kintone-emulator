@@ -33,7 +33,7 @@
 
 - **空文字 / 未送信フィールドの minLength**: 実機は `""` でも未送信でも minLength を検証して 400 を返す。エミュは元々スキップしていたが実機準拠に修正（`packages/core/src/handlers/validate.ts`）→ dualMode に統合
 - **LINK の minLength**: 実機は `"2文字より長く..."` に加えて `"URL の形式が正しくありません..."` を同じ messages 配列に返す。dualMode テストでは `expect.arrayContaining` で両モードが通るように書いた
-- **MULTI_LINE_TEXT の maxLength**: 実機は API レベルで maxLength を検証しない（UI 上の制限のみ）。エミュは保守的に拒否するため差分あり → `emulator-only` の別ブロックに退避
+- **MULTI_LINE_TEXT の maxLength / minLength**: 実機は設定画面でも指定できない（そもそも maxLength / minLength 属性を持たないフィールド型）ため、エミュ側でも `validateLengths` の対象型から除外して API レベルの検証を廃止
 
 - **`records.test.ts` > クエリの文字列リテラル**: 実機は double-quote のみ許容。`test = 'test'` は CB_VA01。エミュは single / double どちらも受け付ける → dualMode テストは double-quote に統一
 - **`records.test.ts` > `getRecords` の `totalCount`**: 実機は `?totalCount=true` 指定時のみ件数を返す（デフォルト null）。エミュは常に件数を返す → テストは `records.length` で代用

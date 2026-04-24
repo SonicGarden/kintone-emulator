@@ -483,36 +483,6 @@ describeDualMode("maxLength / minLength バリデーション", () => {
   });
 });
 
-// 実機は MULTI_LINE_TEXT の maxLength を API レベルで検証しない（UI 上の制限）。
-// エミュは保守的に拒否するため差分が出る → emulator のみ
-describeEmulatorOnly("MULTI_LINE_TEXT の maxLength（実機は未検証）", () => {
-  const SESSION = "record-multiline-length";
-  let BASE_URL: string;
-  let client: KintoneRestAPIClient;
-  let appId: number;
-
-  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
-  beforeEach(async () => {
-    await initializeSession(BASE_URL);
-    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    appId = await createApp(BASE_URL, {
-      name: "multi length",
-      properties: {
-        multi: { type: "MULTI_LINE_TEXT", code: "multi", label: "multi", maxLength: "10" },
-      },
-    });
-  });
-  afterEach(async () => { await finalizeSession(BASE_URL); });
-
-  test("maxLength 超過で 400（emulator のみ）", async () => {
-    await expect(
-      client.record.addRecord({ app: appId, record: { multi: { value: "12345678901" } } }),
-    ).rejects.toMatchObject({
-      errors: { "record.multi.value": { messages: ["11文字より短くなければなりません。"] } },
-    });
-  });
-});
-
 describeDualMode("LINK の minLength", () => {
   const SESSION = "record-link-length";
   let client: KintoneRestAPIClient;

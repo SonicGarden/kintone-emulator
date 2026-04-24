@@ -275,7 +275,9 @@ const validateRequired = (fields: ParsedField[], record: RecordInput, errors: Va
   }
 };
 
-const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "LINK"]);
+// MULTI_LINE_TEXT は実機の設定画面でも maxLength / minLength を指定できず、
+// API レベルでも検証されない。ここからは除外する
+const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "LINK"]);
 
 const validateLengths = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages, prefix: string) => {
   for (const { code, def } of fields) {
