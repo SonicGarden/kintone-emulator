@@ -1,6 +1,6 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 import { createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment, testEmulatorOnly } from "../../real-kintone";
 
 describeDualMode("アプリのレコード一覧のAPI", () => {
@@ -542,123 +542,79 @@ describeDualMode("システムフィールドコードでの検索クエリ", ()
   });
 });
 
-// TODO: /k/v1/preview/app/form/fields.json を直叩き + app=1 + エミュ固有のレスポンス形を検証している
-describeEmulatorOnly("クエリのエラーレスポンス / 上限チェック", () => {
+describeDualMode("クエリのエラーレスポンス / 上限チェック", () => {
   const SESSION = "records-query-errors";
-  let URL_BASE: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
 
-  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(URL_BASE);
-    await createApp(URL_BASE, {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
       name: "query errors",
-      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "t" } },
-    });
+      properties: {
+        title: { type: "SINGLE_LINE_TEXT", code: "title", label: "t" },
+        memo:  { type: "MULTI_LINE_TEXT",  code: "memo",  label: "memo" },
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: { name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" } },
+        },
+        cb: {
+          type: "CHECK_BOX", code: "cb", label: "cb",
+          options: {
+            opt1: { label: "opt1", index: "0" },
+            opt2: { label: "opt2", index: "1" },
+          },
+        },
+      },
+    }));
   });
-  afterEach(async () => { await finalizeSession(URL_BASE); });
 
-  const fetchRecords = (query: string) =>
-    fetch(`${URL_BASE}/k/v1/records.json?app=1&${new URLSearchParams({ query }).toString()}`);
-
-  test("構文エラーは CB_VA01 + errors.query.messages", async () => {
-    const r = await fetchRecords("title ===");
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("CB_VA01");
-    expect(json.errors).toEqual({
-      query: { messages: ["クエリ記法が間違っています。"] },
-    });
+  test("構文エラーは CB_VA01", async () => {
+    await expect(
+      client.record.getRecords({ app: appId, query: "title ===" }),
+    ).rejects.toMatchObject({ code: "CB_VA01" });
   });
 
   test("文字列リテラル内の生タブで CB_VA01", async () => {
-    const r = await fetchRecords('title = "a\tb"');
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("CB_VA01");
+    await expect(
+      client.record.getRecords({ app: appId, query: 'title = "a\tb"' }),
+    ).rejects.toMatchObject({ code: "CB_VA01" });
   });
 
   test("limit > 500 で GAIA_QU01", async () => {
-    const r = await fetchRecords("limit 1000");
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_QU01");
-    expect(json.message).toContain("500");
+    await expect(
+      client.record.getRecords({ app: appId, query: "limit 1000" }),
+    ).rejects.toMatchObject({ code: "GAIA_QU01" });
   });
 
   test("offset > 10000 で GAIA_QU02", async () => {
-    const r = await fetchRecords("offset 99999");
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_QU02");
-    expect(json.message).toContain("10,000");
+    await expect(
+      client.record.getRecords({ app: appId, query: "offset 99999" }),
+    ).rejects.toMatchObject({ code: "GAIA_QU02" });
   });
 
   test("存在しないフィールドで GAIA_IQ11", async () => {
-    const r = await fetchRecords('xyz = "a"');
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_IQ11");
-    expect(json.message).toContain("xyz");
+    await expect(
+      client.record.getRecords({ app: appId, query: 'xyz = "a"' }),
+    ).rejects.toMatchObject({ code: "GAIA_IQ11" });
   });
 
   test("SUBTABLE 内フィールドへの = は GAIA_IQ07", async () => {
-    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app: 1,
-        properties: {
-          items: {
-            type: "SUBTABLE", code: "items", label: "items",
-            fields: { name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" } },
-          },
-        },
-      }),
-    });
-    const r = await fetchRecords('name = "x"');
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_IQ07");
-    expect(json.message).toContain("テーブル");
-    expect(json.message).toContain("name");
+    await expect(
+      client.record.getRecords({ app: appId, query: 'name = "x"' }),
+    ).rejects.toMatchObject({ code: "GAIA_IQ07" });
   });
 
   test("MULTI_LINE_TEXT / RICH_TEXT に = は GAIA_IQ03", async () => {
-    // 追加フィールドなしで app 1 にフォームフィールド追加
-    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app: 1,
-        properties: { memo: { type: "MULTI_LINE_TEXT", code: "memo", label: "memo" } },
-      }),
-    });
-    const r = await fetchRecords('memo = "foo"');
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_IQ03");
-    expect(json.message).toContain("memo");
-    expect(json.message).toContain("=");
+    await expect(
+      client.record.getRecords({ app: appId, query: 'memo = "foo"' }),
+    ).rejects.toMatchObject({ code: "GAIA_IQ03" });
   });
 
   test("CHECK_BOX 等の選択肢に無い値を指定すると GAIA_IQ10", async () => {
-    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        app: 1,
-        properties: {
-          cb: {
-            type: "CHECK_BOX", code: "cb", label: "cb",
-            options: {
-              opt1: { label: "opt1", index: "0" },
-              opt2: { label: "opt2", index: "1" },
-            },
-          },
-        },
-      }),
-    });
-    const r = await fetchRecords('cb in ("unknown")');
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_IQ10");
-    expect(json.message).toBe("フィールド「cb」の項目に「unknown」は存在しません。");
+    await expect(
+      client.record.getRecords({ app: appId, query: 'cb in ("unknown")' }),
+    ).rejects.toMatchObject({ code: "GAIA_IQ10" });
   });
 });

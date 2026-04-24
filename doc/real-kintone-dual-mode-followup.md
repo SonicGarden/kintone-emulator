@@ -20,8 +20,9 @@
 - `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
 - `record.test.ts` > `ルックアップ（LOOKUP）` (11 tests; 応答メッセージ / Accept-Language の 2 件は emulatorOnly の別ブロック)
 - `record.test.ts` > `ルックアップ: relatedKeyField が RECORD_NUMBER` (3 tests)
+- `records.test.ts` > `クエリのエラーレスポンス / 上限チェック` (8 tests; CB_VA01 / GAIA_QU01 / GAIA_QU02 / GAIA_IQ11 / GAIA_IQ07 / GAIA_IQ03 / GAIA_IQ10 すべて実機と一致)
 
-合計 103 tests を実 kintone 環境で検証済み（全 pass）。
+合計 111 tests を実 kintone 環境で検証済み（全 pass）。
 
 ### 実機差分を発見して emulator-only に退避した項目
 
