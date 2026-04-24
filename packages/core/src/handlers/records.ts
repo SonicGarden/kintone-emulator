@@ -1,3 +1,4 @@
+import { computeCalcFields } from "../calc/compute";
 import { all, dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import type { FieldRow } from "../db/fields";
@@ -254,6 +255,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
       const ids: string[] = [];
       const revisions: string[] = [];
       for (const rec of prep.prepared) {
+        computeCalcFields(fieldRows, rec);
         const inserted = insertRecord(db, body.app, rec);
         if (!inserted) throw new Error("insert failed");
         ids.push(inserted.id.toString());
@@ -351,6 +353,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
     const result = db.transaction(() => {
       const updated: Array<{ id: string; revision: string }> = [];
       for (const { targetId, merged } of prep.prepared) {
+        computeCalcFields(fieldRows, merged);
         const u = updateRecord(db, body.app, String(targetId), merged);
         if (!u) throw new Error("update failed");
         updated.push({ id: u.id.toString(), revision: u.revision.toString() });

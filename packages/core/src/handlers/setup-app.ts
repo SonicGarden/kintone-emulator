@@ -1,3 +1,4 @@
+import { computeCalcFields } from "../calc/compute";
 import { validateFieldsForInsert } from "../calc/field-validation";
 import { insertApp } from "../db/apps";
 import { dbSession } from "../db/client";
@@ -76,6 +77,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
           const withDefaults = applyDefaults(fieldRows, recordBody);
+          computeCalcFields(fieldRows, withDefaults);
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
           recordIds.push(insertedRecord.id.toString());
