@@ -362,11 +362,23 @@ await createApp(BASE_URL, {
 
 ## 3. unique
 
+### `unique: true` を保持できるフィールドタイプ（5 種のみ）
+
+| タイプ | 設定可 |
+|---|---|
+| `SINGLE_LINE_TEXT` | ✓ |
+| `NUMBER` | ✓ |
+| `LINK` | ✓ |
+| `DATE` | ✓ |
+| `DATETIME` | ✓ |
+| 上記以外（`MULTI_LINE_TEXT` / `RICH_TEXT` / `TIME` / `CHECK_BOX` / `RADIO_BUTTON` / `DROP_DOWN` / `MULTI_SELECT` / `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` / `FILE` / `CALC`） | ✗ |
+
+実機の UI（フォーム設定画面）では 5 種のみ「重複を禁止する」チェックボックスが表示される。`addFormFields` API は他タイプに `unique: true` を送っても **200 を返すが、`getFormFields` で取得すると `unique` プロパティは削除されている（silently drop）**。実機検証: app=10 に 17 種全部試すと、上記 5 種のみ preview で `unique: true` が保持された。
+
 ### 挙動
 
 - `code: CB_VA01`（`GAIA_RE02` ではない）
 - 空文字 `""` は重複扱いされない（複数レコードで `""` OK）
-- 配列値のフィールドは `unique` 設定自体できない（CHECK_BOX / USER_SELECT 等）
 - PUT は自レコード自身を除外して判定（同じ値に上書きは通る。他レコードと重複する値への更新は 400）
 
 ### messages

@@ -356,10 +356,13 @@ const validateUnique = (
   m: Messages,
   ctx: ValidateContext
 ) => {
-  // unique は top-level のみ（SUBTABLE 内では実 kintone でも unique 設定不可）
+  // unique は top-level かつ、実機が unique 属性を保持する 5 タイプに限定:
+  //   SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME
+  // 実機の UI / addFormFields API では他タイプに unique: true を送っても
+  // silently drop される（加えて TIME / CALC / LOOKUP は UI からも設定不可）
   for (const { code, def } of fields) {
     if (!def.unique) continue;
-    if (VALUES_KEY_TYPES[def.type]) continue;
+    if (!UNIQUE_TYPES.has(def.type)) continue;
     const v = record[code]?.value;
     if (typeof v !== "string" || v === "") continue;
     const rows = findRecordsByKey(ctx.db, ctx.appId, code, v);
@@ -369,6 +372,14 @@ const validateUnique = (
     }
   }
 };
+
+const UNIQUE_TYPES = new Set([
+  "SINGLE_LINE_TEXT",
+  "NUMBER",
+  "LINK",
+  "DATE",
+  "DATETIME",
+]);
 
 // SUBTABLE 各行の内部フィールドに対して required / 長さ / 範囲 / options を再帰検証
 const validateSubtables = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages) => {

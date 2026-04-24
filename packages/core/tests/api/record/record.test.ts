@@ -462,6 +462,87 @@ describeDualMode("unique フィールドのバリデーション", () => {
   });
 });
 
+// 実機で unique: true を保持するタイプは SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME のみ。
+// 他タイプ (MULTI_LINE_TEXT / RICH_TEXT / TIME / RADIO_BUTTON / DROP_DOWN / CALC など) に
+// unique: true を送っても API は 200 だが silently drop される → 重複しても検証されない
+describeDualMode("unique 検証対象のフィールドタイプ", () => {
+  const SESSION = "record-unique-types";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "unique types",
+      properties: {
+        u_text:      { type: "SINGLE_LINE_TEXT", code: "u_text",     label: "t",  unique: true },
+        u_num:       { type: "NUMBER",           code: "u_num",      label: "n",  unique: true },
+        u_link:      { type: "LINK",             code: "u_link",     label: "l",  unique: true, protocol: "WEB" },
+        u_date:      { type: "DATE",             code: "u_date",     label: "d",  unique: true },
+        u_datetime:  { type: "DATETIME",         code: "u_datetime", label: "dt", unique: true },
+        // 実機では unique が silently drop されるため、重複してもエラーにならないことを検証
+        nu_time:     { type: "TIME",             code: "nu_time",    label: "t",  unique: true },
+        nu_multi:    { type: "MULTI_LINE_TEXT",  code: "nu_multi",   label: "m",  unique: true },
+      },
+    }));
+  });
+
+  test("SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME は重複で 400", async () => {
+    const firstRecord = {
+      u_text:     { value: "a" },
+      u_num:      { value: "1" },
+      u_link:     { value: "https://example.com/a" },
+      u_date:     { value: "2026-01-01" },
+      u_datetime: { value: "2026-01-01T00:00:00Z" },
+    };
+    await client.record.addRecord({ app: appId, record: firstRecord });
+
+    // 各フィールドを 1 つずつ重複させてエラーが返ることを確認
+    const cases: Array<[keyof typeof firstRecord, Record<string, { value: unknown }>]> = [
+      ["u_text",     { u_text: { value: "a" },                   u_num: { value: "2" }, u_link: { value: "https://example.com/b" }, u_date: { value: "2026-01-02" }, u_datetime: { value: "2026-01-02T00:00:00Z" } }],
+      ["u_num",      { u_text: { value: "b" },                   u_num: { value: "1" }, u_link: { value: "https://example.com/b" }, u_date: { value: "2026-01-02" }, u_datetime: { value: "2026-01-02T00:00:00Z" } }],
+      ["u_link",     { u_text: { value: "c" },                   u_num: { value: "3" }, u_link: { value: "https://example.com/a" }, u_date: { value: "2026-01-03" }, u_datetime: { value: "2026-01-03T00:00:00Z" } }],
+      ["u_date",     { u_text: { value: "d" },                   u_num: { value: "4" }, u_link: { value: "https://example.com/c" }, u_date: { value: "2026-01-01" }, u_datetime: { value: "2026-01-04T00:00:00Z" } }],
+      ["u_datetime", { u_text: { value: "e" },                   u_num: { value: "5" }, u_link: { value: "https://example.com/d" }, u_date: { value: "2026-01-05" }, u_datetime: { value: "2026-01-01T00:00:00Z" } }],
+    ];
+    for (const [dupField, record] of cases) {
+      await expect(
+        client.record.addRecord({ app: appId, record }),
+      ).rejects.toMatchObject({
+        errors: { [`record.${dupField}.value`]: { messages: ["値がほかのレコードと重複しています。"] } },
+      });
+    }
+  });
+
+  test("TIME / MULTI_LINE_TEXT は unique: true を送っても実機では検証されない（silently drop）", async () => {
+    const base = {
+      u_text:     { value: "x1" },
+      u_num:      { value: "10" },
+      u_link:     { value: "https://example.com/x1" },
+      u_date:     { value: "2026-02-01" },
+      u_datetime: { value: "2026-02-01T00:00:00Z" },
+      nu_time:    { value: "12:00" },
+      nu_multi:   { value: "same text" },
+    };
+    await client.record.addRecord({ app: appId, record: base });
+    // TIME / MULTI_LINE_TEXT を同じ値で 2 件目作成 → 成功するはず
+    const second = await client.record.addRecord({
+      app: appId,
+      record: {
+        u_text:     { value: "x2" },
+        u_num:      { value: "20" },
+        u_link:     { value: "https://example.com/x2" },
+        u_date:     { value: "2026-02-02" },
+        u_datetime: { value: "2026-02-02T00:00:00Z" },
+        nu_time:    { value: "12:00" },     // 同じ値
+        nu_multi:   { value: "same text" },  // 同じ値
+      },
+    });
+    expect(second.id).toBeTruthy();
+  });
+});
+
 describeDualMode("maxLength / minLength バリデーション", () => {
   const SESSION = "record-length-validation";
   let client: KintoneRestAPIClient;

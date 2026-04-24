@@ -13,6 +13,7 @@
 - `record.test.ts` > `required フィールドのバリデーション` (7 tests; `USER_SELECT` を含む検証はダミーユーザーコード問題で除外し、SINGLE_LINE_TEXT と CHECK_BOX で検証)
 - `record.test.ts` > `required フィールドのバリデーション（各フィールドタイプ）` (3 tests; MULTI_LINE_TEXT / RICH_TEXT / NUMBER / DATE / TIME / DATETIME / DROP_DOWN / MULTI_SELECT の required 検証を網羅。`.value` と `.values` の 2 つの errors キー接尾辞をカバー。RADIO_BUTTON は実機で required が発動しないため除外)
 - `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
+- `record.test.ts` > `unique 検証対象のフィールドタイプ` (2 tests; SINGLE_LINE_TEXT/NUMBER/LINK/DATE/DATETIME の 5 タイプ unique 発動を網羅、他タイプは silently drop されて発動しないことを確認)
 - `record.test.ts` > `maxLength / minLength バリデーション` (4 tests; 空文字の minLength 検証も実機準拠)
 - `record.test.ts` > `LINK の minLength` (1 test; 実機は URL 形式エラーも併せて返すため arrayContaining で検証)
 - `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
