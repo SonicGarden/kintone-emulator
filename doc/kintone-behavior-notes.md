@@ -225,7 +225,7 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
 
 | 設定 | タイプ | キー接尾辞 |
 |---|---|---|
-| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `RADIO_BUTTON` / `DROP_DOWN` / `CALC` | `.value` |
+| required（スカラー値） | `SINGLE_LINE_TEXT` / `MULTI_LINE_TEXT` / `RICH_TEXT` / `LINK` / `NUMBER` / `DATE` / `TIME` / `DATETIME` / `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
 | required（配列値） | `CHECK_BOX` / `MULTI_SELECT` / `FILE` | `.values` |
 | required（ユーザー系） | `USER_SELECT` / `ORGANIZATION_SELECT` / `GROUP_SELECT` | `.values.value` |
 | `options` 違反（スカラー） | `RADIO_BUTTON` / `DROP_DOWN` | `.value` |
@@ -240,9 +240,23 @@ POST /k/v1/record.json  body={app:<APP_ID>,record:{}}  (Accept-Language: zh)
 
 - 未送信 / `null` / `""` / `[]` のいずれでも必須エラー
 - PUT はマージ後のレコードに対して検証（既存値が埋まっていて、差分更新が別フィールドだけなら成功）
-- `SUBTABLE` / `GROUP` / `LABEL` / `SPACER` / `HR` / `REFERENCE_TABLE` / `CATEGORY` / `STATUS` / `STATUS_ASSIGNEE` / `CREATED_TIME` / `UPDATED_TIME` / `CREATOR` / `MODIFIER` / `CALC` / `RECORD_NUMBER` / `__REVISION__` は required 検証の対象外
 - **`defaultValue` が設定されている場合、未送信でも補完されるため required エラーにならない**（§7 参照）
 - SUBTABLE 内の入れ子 required は別のキー形式（今回未実装 / 未確認）
+
+### `required: true` を受け付けるが検証されないフィールドタイプ
+
+- **`CALC`**: `required: true` を `addFormFields` API は受け付け、`getFormFields`（preview / live）でも `required: true` として返る。しかし**レコード検証では発動しない**。例:
+  - `IF(0=1, "ok", "")` のように **常に空文字を返す式** の CALC に `required: true` を付けても、レコード作成は 200 成功し、`calc.value = ""` で保存される
+  - 未入力の NUMBER を参照する式（結果 `"0"`）でも当然 200 成功
+  - 実機検証: app=10 に `req_calc` を `expression: "IF(0=1, \"ok\", \"\")"`, `required: true` で追加 → `POST /k/v1/record.json` `{record: {}}` が 200、`value: ""` で保存
+
+### 完全に required 検証対象外のフィールドタイプ
+
+`SUBTABLE` / `GROUP` / `LABEL` / `SPACER` / `HR` / `REFERENCE_TABLE` / `CATEGORY` / `STATUS` / `STATUS_ASSIGNEE` / `CREATED_TIME` / `UPDATED_TIME` / `CREATOR` / `MODIFIER` / `RECORD_NUMBER` / `__REVISION__`
+
+- レイアウト系（LABEL/SPACER/HR/GROUP/REFERENCE_TABLE）はそもそも値を持たない
+- システムフィールド（CATEGORY/STATUS/作業者/作成日時/更新日時/作成者/更新者/レコード番号/リビジョン）は API 経由で値を設定できないため required が無意味
+- SUBTABLE 自体は required: true を持てない（内部フィールドには付けられる）
 
 ### messages
 
