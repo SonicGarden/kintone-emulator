@@ -20,20 +20,22 @@ describe("アプリのレコード一覧のAPI", () => {
     await client.app.addFormFields({
       app: 1,
       properties: {
-        test: {
-          type: "SINGLE_LINE_TEXT",
-          code: "test",
-          label: "Test",
-        },
-        test2: {
-          type: "SINGLE_LINE_TEXT",
-          code: "test2",
-          label: "Test2",
-        },
-        postedAt: {
-          type: "DATETIME",
-          code: "postedAt",
-          label: "Posted At",
+        test: { type: "SINGLE_LINE_TEXT", code: "test", label: "Test" },
+        test2: { type: "SINGLE_LINE_TEXT", code: "test2", label: "Test2" },
+        postedAt: { type: "DATETIME", code: "postedAt", label: "Posted At" },
+        テスト: { type: "SINGLE_LINE_TEXT", code: "テスト", label: "テスト" },
+        理由: { type: "SINGLE_LINE_TEXT", code: "理由", label: "理由" },
+        理由_new: { type: "SINGLE_LINE_TEXT", code: "理由_new", label: "理由_new" },
+        日時: { type: "DATETIME", code: "日時", label: "日時" },
+        ステータス: {
+          type: "DROP_DOWN",
+          code: "ステータス",
+          label: "ステータス",
+          options: {
+            あ: { label: "あ", index: "0" },
+            い: { label: "い", index: "1" },
+            う: { label: "う", index: "2" },
+          },
         },
       },
     });
@@ -68,8 +70,9 @@ describe("アプリのレコード一覧のAPI", () => {
       app: 1,
     });
     expect(records.totalCount).toEqual("2");
-    expect(records.records[0]!["$id"]!.value).toEqual("1");
-    expect(records.records[0]!.test!.value).toEqual("test");
+    // 実 kintone はデフォルトで $id desc なので id=2 が先頭
+    expect(records.records[0]!["$id"]!.value).toEqual("2");
+    expect(records.records[0]!.test!.value).toEqual("test2");
     expect(records.records[0]!.test!.type).toEqual("SINGLE_LINE_TEXT");
   });
 
@@ -505,6 +508,90 @@ describe("一括 addRecords / updateRecords", () => {
   });
 });
 
+describe("SUBTABLE 内フィールドでの検索クエリ", () => {
+  const SESSION = "records-subtable-query";
+  let URL_BASE: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(URL_BASE);
+    client = new KintoneRestAPIClient({ baseUrl: URL_BASE, auth: { apiToken: "test" } });
+    appId = await createApp(URL_BASE, {
+      name: "subtable query",
+      properties: {
+        top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: {
+            name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" },
+            qty:  { type: "NUMBER", code: "qty", label: "qty" },
+          },
+        },
+      },
+      records: [
+        { top_title: { value: "r1" }, items: { value: [
+          { value: { name: { value: "apple" },  qty: { value: "100" } } },
+          { value: { name: { value: "orange" }, qty: { value: "200" } } },
+        ] } },
+        { top_title: { value: "r2" }, items: { value: [
+          { value: { name: { value: "shared" }, qty: { value: "50" } } },
+        ] } },
+        { top_title: { value: "r3" }, items: { value: [] } },
+      ],
+    });
+  });
+  afterEach(async () => { await finalizeSession(URL_BASE); });
+
+  test("SUBTABLE 内フィールド in で 1 行でもマッチするレコードが返る", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple")',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.top_title!.value).toBe("r1");
+  });
+
+  test("SUBTABLE 内フィールド > で数値比較", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: "qty > 50",
+    });
+    // r1 の行2 (200) がマッチするので r1 だけ
+    expect(records.map((r) => r.top_title!.value).sort()).toEqual(["r1"]);
+  });
+
+  test("同一 SUBTABLE の AND は同一行制約を満たすレコードが返る", async () => {
+    // r1 の行1 に apple/100 が揃っているのでヒット
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple") and qty in ("100")',
+    });
+    expect(records.map((r) => r.top_title!.value)).toEqual(["r1"]);
+  });
+
+  test("同一 SUBTABLE の AND で別行の組み合わせはヒットしない", async () => {
+    // r1 は apple(行1) と 200(行2) を別々の行に持つので、同一行制約によりヒットしない
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name in ("apple") and qty in ("200")',
+    });
+    expect(records).toHaveLength(0);
+  });
+
+  test("not in は全行条件（r1 は shared を含まないので返る、r2 は shared を含むので返らない）", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'name not in ("shared")',
+    });
+    expect(records.map((r) => r.top_title!.value).sort()).toEqual(["r1"]);
+  });
+
+  test("top-level と SUBTABLE の混合クエリ", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'top_title = "r1" and name in ("apple")',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.top_title!.value).toBe("r1");
+  });
+});
+
 describe("システムフィールドコードでの検索クエリ", () => {
   const SESSION = "records-system-fields-query";
   let QUERY_URL: string;
@@ -556,5 +643,125 @@ describe("システムフィールドコードでの検索クエリ", () => {
     });
     expect(records).toHaveLength(1);
     expect((records[0] as Record<string, { value: unknown }>).文字列__1行_!.value).toBe("テスト値");
+  });
+});
+
+describe("クエリのエラーレスポンス / 上限チェック", () => {
+  const SESSION = "records-query-errors";
+  let URL_BASE: string;
+
+  beforeAll(() => { URL_BASE = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(URL_BASE);
+    await createApp(URL_BASE, {
+      name: "query errors",
+      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "t" } },
+    });
+  });
+  afterEach(async () => { await finalizeSession(URL_BASE); });
+
+  const fetchRecords = (query: string) =>
+    fetch(`${URL_BASE}/k/v1/records.json?app=1&${new URLSearchParams({ query }).toString()}`);
+
+  test("構文エラーは CB_VA01 + errors.query.messages", async () => {
+    const r = await fetchRecords("title ===");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({
+      query: { messages: ["クエリ記法が間違っています。"] },
+    });
+  });
+
+  test("文字列リテラル内の生タブで CB_VA01", async () => {
+    const r = await fetchRecords('title = "a\tb"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("CB_VA01");
+  });
+
+  test("limit > 500 で GAIA_QU01", async () => {
+    const r = await fetchRecords("limit 1000");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_QU01");
+    expect(json.message).toContain("500");
+  });
+
+  test("offset > 10000 で GAIA_QU02", async () => {
+    const r = await fetchRecords("offset 99999");
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_QU02");
+    expect(json.message).toContain("10,000");
+  });
+
+  test("存在しないフィールドで GAIA_IQ11", async () => {
+    const r = await fetchRecords('xyz = "a"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ11");
+    expect(json.message).toContain("xyz");
+  });
+
+  test("SUBTABLE 内フィールドへの = は GAIA_IQ07", async () => {
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: {
+          items: {
+            type: "SUBTABLE", code: "items", label: "items",
+            fields: { name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" } },
+          },
+        },
+      }),
+    });
+    const r = await fetchRecords('name = "x"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ07");
+    expect(json.message).toContain("テーブル");
+    expect(json.message).toContain("name");
+  });
+
+  test("MULTI_LINE_TEXT / RICH_TEXT に = は GAIA_IQ03", async () => {
+    // 追加フィールドなしで app 1 にフォームフィールド追加
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: { memo: { type: "MULTI_LINE_TEXT", code: "memo", label: "memo" } },
+      }),
+    });
+    const r = await fetchRecords('memo = "foo"');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ03");
+    expect(json.message).toContain("memo");
+    expect(json.message).toContain("=");
+  });
+
+  test("CHECK_BOX 等の選択肢に無い値を指定すると GAIA_IQ10", async () => {
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: {
+          cb: {
+            type: "CHECK_BOX", code: "cb", label: "cb",
+            options: {
+              opt1: { label: "opt1", index: "0" },
+              opt2: { label: "opt2", index: "1" },
+            },
+          },
+        },
+      }),
+    });
+    const r = await fetchRecords('cb in ("unknown")');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ10");
+    expect(json.message).toBe("フィールド「cb」の項目に「unknown」は存在しません。");
   });
 });
