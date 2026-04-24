@@ -1224,20 +1224,18 @@ describeDualMode("top-level NUMBER の正規化", () => {
   });
 });
 
-describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
+describeDualMode("ルックアップ（LOOKUP）", () => {
   const SESSION = "record-lookup";
-  let BASE_URL: string;
   let client: KintoneRestAPIClient;
   let masterAppId: number;
   let lookupAppId: number;
 
-  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
-    await initializeSession(BASE_URL);
-    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
 
     // 参照元（マスター）アプリ: code (unique) / name / price
-    masterAppId = await createApp(BASE_URL, {
+    ({ appId: masterAppId } = await createTestApp(SESSION, {
       name: "商品マスター",
       properties: {
         code:  { type: "SINGLE_LINE_TEXT", code: "code",  label: "コード", unique: true },
@@ -1249,10 +1247,10 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
         { code: { value: "P002" }, name: { value: "みかん" }, price: { value: "80" } },
         { code: { value: "P003" }, name: { value: "ぶどう" }, price: { value: "300" } },
       ],
-    });
+    }));
 
     // ルックアップ保持アプリ
-    lookupAppId = await createApp(BASE_URL, {
+    ({ appId: lookupAppId } = await createTestApp(SESSION, {
       name: "注文",
       properties: {
         prod_code: {
@@ -1273,18 +1271,8 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
         prod_price: { type: "NUMBER",           code: "prod_price", label: "価格" },
         qty:        { type: "NUMBER",           code: "qty",        label: "数量" },
       },
-    });
+    }));
   });
-  afterEach(async () => { await finalizeSession(BASE_URL); });
-
-  const postRecord = (body: unknown) =>
-    fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-  const putRecord = (body: unknown) =>
-    fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
 
   test("キー一致でコピー先が自動的に埋まる", async () => {
     const { id } = await client.record.addRecord({
@@ -1298,26 +1286,9 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
   });
 
   test("キー不一致で 400 GAIA_LO04", async () => {
-    const r = await postRecord({ app: lookupAppId, record: { prod_code: { value: "P999" } } });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_LO04");
-    expect(json.message).toBe(
-      "フィールド「prod_code」の値「P999」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。"
-    );
-    expect(json.errors).toBeUndefined();
-  });
-
-  test("Accept-Language: en で英語メッセージ", async () => {
-    const r = await fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept-Language": "en" },
-      body: JSON.stringify({ app: lookupAppId, record: { prod_code: { value: "P999" } } }),
-    });
-    const json = await r.json();
-    expect(json.message).toBe(
-      "A value P999 in the field prod_code does not exist in the datasource app for lookup, or you do not have permission to view the app or the field."
-    );
+    await expect(
+      client.record.addRecord({ app: lookupAppId, record: { prod_code: { value: "P999" } } }),
+    ).rejects.toMatchObject({ code: "GAIA_LO04" });
   });
 
   test("コピー先フィールドへの直接送信は無視される（ルックアップ結果で上書き）", async () => {
@@ -1393,12 +1364,9 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
     const { id } = await client.record.addRecord({
       app: lookupAppId, record: { prod_code: { value: "P001" } },
     });
-    const r = await putRecord({
-      app: lookupAppId, id, record: { prod_code: { value: "P999" } },
-    });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_LO04");
+    await expect(
+      client.record.updateRecord({ app: lookupAppId, id, record: { prod_code: { value: "P999" } } }),
+    ).rejects.toMatchObject({ code: "GAIA_LO04" });
   });
 
   test("一括 addRecords で各行にルックアップが効く", async () => {
@@ -1415,18 +1383,14 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
   });
 
   test("一括 addRecords で 1 件でもキー不一致なら全件失敗（GAIA_LO04）", async () => {
-    const r = await fetch(`${BASE_URL}/k/v1/records.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    await expect(
+      client.record.addRecords({
         app: lookupAppId, records: [
           { prod_code: { value: "P001" } },
           { prod_code: { value: "P999" } },
         ],
       }),
-    });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_LO04");
+    ).rejects.toMatchObject({ code: "GAIA_LO04" });
 
     // ロールバック確認: P001 のレコードも保存されていない
     const all = await client.record.getRecords({ app: lookupAppId });
@@ -1451,19 +1415,85 @@ describeEmulatorOnly("ルックアップ（LOOKUP）", () => {
   });
 });
 
-describeEmulatorOnly("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
-  const SESSION = "record-lookup-recno";
+// エミュレーター固有: エラーメッセージ文字列 / Accept-Language 挙動
+describeEmulatorOnly("ルックアップ（emulator 固有の応答形）", () => {
+  const SESSION = "record-lookup-emu";
   let BASE_URL: string;
   let client: KintoneRestAPIClient;
-  let masterAppId: number;
   let lookupAppId: number;
 
   beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
     await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const masterAppId = await createApp(BASE_URL, {
+      name: "商品マスター",
+      properties: {
+        code:  { type: "SINGLE_LINE_TEXT", code: "code",  label: "コード", unique: true },
+        name:  { type: "SINGLE_LINE_TEXT", code: "name",  label: "名前" },
+      },
+      records: [{ code: { value: "P001" }, name: { value: "りんご" } }],
+    });
+    lookupAppId = await createApp(BASE_URL, {
+      name: "注文",
+      properties: {
+        prod_code: {
+          type: "SINGLE_LINE_TEXT", code: "prod_code", label: "商品コード",
+          lookup: {
+            relatedApp: { app: String(masterAppId) },
+            relatedKeyField: "code",
+            fieldMappings: [{ field: "prod_name", relatedField: "name" }],
+            lookupPickerFields: ["code", "name"],
+            filterCond: "", sort: "",
+          },
+        },
+        prod_name: { type: "SINGLE_LINE_TEXT", code: "prod_name", label: "商品名" },
+      },
+    });
+    // client 初期化で使用するために lookupAppId を閉じ込めた parameter 名で touch
+    void client;
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
 
-    masterAppId = await createApp(BASE_URL, {
+  test("キー不一致の ja エラーメッセージと errors undefined", async () => {
+    const r = await fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app: lookupAppId, record: { prod_code: { value: "P999" } } }),
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+    expect(json.message).toBe(
+      "フィールド「prod_code」の値「P999」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。"
+    );
+    expect(json.errors).toBeUndefined();
+  });
+
+  test("Accept-Language: en で英語メッセージ", async () => {
+    const r = await fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Language": "en" },
+      body: JSON.stringify({ app: lookupAppId, record: { prod_code: { value: "P999" } } }),
+    });
+    const json = await r.json();
+    expect(json.message).toBe(
+      "A value P999 in the field prod_code does not exist in the datasource app for lookup, or you do not have permission to view the app or the field."
+    );
+  });
+});
+
+describeDualMode("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
+  const SESSION = "record-lookup-recno";
+  let client: KintoneRestAPIClient;
+  let masterAppId: number;
+  let lookupAppId: number;
+  let masterRecordIds: number[];
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+
+    const master = await createTestApp(SESSION, {
       name: "商品マスター",
       properties: {
         name: { type: "SINGLE_LINE_TEXT", code: "name", label: "名前" },
@@ -1474,8 +1504,17 @@ describeEmulatorOnly("ルックアップ: relatedKeyField が RECORD_NUMBER", ()
         { name: { value: "三番目" } },
       ],
     });
+    masterAppId = master.appId;
+    masterRecordIds = master.recordIds;
+    // emulator は createTestApp が recordIds を返さないので getRecords で取り直す
+    if (masterRecordIds.length === 0) {
+      const all = await client.record.getRecords({
+        app: masterAppId, query: "order by $id asc",
+      });
+      masterRecordIds = all.records.map((r) => Number(r.$id!.value));
+    }
 
-    lookupAppId = await createApp(BASE_URL, {
+    ({ appId: lookupAppId } = await createTestApp(SESSION, {
       name: "参照",
       properties: {
         by_no: {
@@ -1495,37 +1534,30 @@ describeEmulatorOnly("ルックアップ: relatedKeyField が RECORD_NUMBER", ()
         copied_no:   { type: "NUMBER", code: "copied_no", label: "copied_no" },
         copied_name: { type: "SINGLE_LINE_TEXT", code: "copied_name", label: "copied_name" },
       },
-    });
+    }));
   });
-  afterEach(async () => { await finalizeSession(BASE_URL); });
-
-  const postRecord = (body: unknown) =>
-    fetch(`${BASE_URL}/k/v1/record.json`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
 
   test("レコード番号で参照先レコードを特定しコピーする", async () => {
     // 2 番目のマスターレコード（name=二番目）をレコード番号で参照
+    const secondRecNo = String(masterRecordIds[1]);
     const { id } = await client.record.addRecord({
-      app: lookupAppId, record: { by_no: { value: "2" } },
+      app: lookupAppId, record: { by_no: { value: secondRecNo } },
     });
     const { record } = await client.record.getRecord({ app: lookupAppId, id });
-    expect(record.copied_no).toMatchObject({ value: "2" });
+    expect(record.copied_no).toMatchObject({ value: secondRecNo });
     expect(record.copied_name).toMatchObject({ value: "二番目" });
   });
 
   test("存在しないレコード番号で GAIA_LO04", async () => {
-    const r = await postRecord({
-      app: lookupAppId, record: { by_no: { value: "9999" } },
-    });
-    expect(r.status).toBe(400);
-    const json = await r.json();
-    expect(json.code).toBe("GAIA_LO04");
+    await expect(
+      client.record.addRecord({ app: lookupAppId, record: { by_no: { value: "9999999" } } }),
+    ).rejects.toMatchObject({ code: "GAIA_LO04" });
   });
 
   test("レコード番号キーを空で送るとコピー先もクリア", async () => {
+    const firstRecNo = String(masterRecordIds[0]);
     const { id } = await client.record.addRecord({
-      app: lookupAppId, record: { by_no: { value: "1" } },
+      app: lookupAppId, record: { by_no: { value: firstRecNo } },
     });
     await client.record.updateRecord({
       app: lookupAppId, id, record: { by_no: { value: "" } },

@@ -18,8 +18,10 @@
 - `record.test.ts` > `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）` (5 tests; マージ独自挙動 2 件は testEmulatorOnly)
 - `record.test.ts` > `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` (6 tests)
 - `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
+- `record.test.ts` > `ルックアップ（LOOKUP）` (11 tests; 応答メッセージ / Accept-Language の 2 件は emulatorOnly の別ブロック)
+- `record.test.ts` > `ルックアップ: relatedKeyField が RECORD_NUMBER` (3 tests)
 
-合計 89 tests を実 kintone 環境で検証済み（全 pass / record.test.ts 53 + records.test.ts 36 件 / 約 370 秒）。
+合計 103 tests を実 kintone 環境で検証済み（全 pass）。
 
 ### 実機差分を発見して emulator-only に退避した項目
 
@@ -51,7 +53,6 @@
 |---|---|
 | `required フィールドのバリデーション` | `USER_SELECT` に `{ code: "u1" }` というダミーユーザーコード → 実機には存在しないのでエラー |
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
-| `ルックアップ（LOOKUP）` / `ルックアップ: relatedKeyField が RECORD_NUMBER` | 2 つのアプリ + ルックアップ設定が必要。実機では addFormFields 後 deployApp、かつ relatedApp 指定が必要 |
 
 ### comment.test.ts
 
@@ -90,8 +91,11 @@
 
 ## 次フェーズの優先順位案
 
-**中**:
-1. `record.test.ts` > ルックアップ（setup 2 アプリ + deploy 必要）
+**低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
+- `record.test.ts` > `required フィールドのバリデーション`（ダミー USER_SELECT コード）
+- `record.test.ts` > `Accept-Language によるメッセージ切り替え`（エミュ固有エラー文言）
+
+record.test.ts / records.test.ts の実機互換な describe ブロックはほぼ全て移行完了。残りは認証、アプリ作成、フォーム管理、file 等のエミュ専用機能テスト。
 
 **低**（実機と乖離していて価値が低いか、エミュ専用機能の検証）:
 - `auth.test.ts`（エミュ固有の /setup/auth.json）

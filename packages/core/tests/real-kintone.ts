@@ -256,8 +256,32 @@ const deleteAllFields = async (client: KintoneRestAPIClient, appId: number): Pro
   const fieldCodes = Object.entries(properties)
     .filter(([, field]) => !SYSTEM_FIELD_TYPES.has((field as { type: string }).type))
     .map(([code]) => code);
-  if (fieldCodes.length > 0) {
+  if (fieldCodes.length === 0) return;
+  try {
     await client.app.deleteFormFields({ app: appId, fields: fieldCodes });
+  } catch (e) {
+    // GAIA_LO02: このフィールドが他アプリのルックアップから参照されている場合。
+    // 他のプール app のフィールドを先にすべてクリアしてから再試行する
+    // （前のテストブロックが残したルックアップ参照を解く）
+    if ((e as { code?: string }).code !== "GAIA_LO02") throw e;
+    await clearOtherPoolApps(client, appId);
+    await client.app.deleteFormFields({ app: appId, fields: fieldCodes });
+  }
+};
+
+/** 指定 appId 以外のプール app をすべて空にする（ルックアップ参照を解除するため） */
+const clearOtherPoolApps = async (client: KintoneRestAPIClient, exceptAppId: number): Promise<void> => {
+  const ids = getRealKintoneAppIds().filter((id) => id !== exceptAppId);
+  for (const otherId of ids) {
+    const { properties } = await client.app.getFormFields({ app: otherId, preview: true });
+    const codes = Object.entries(properties)
+      .filter(([, field]) => !SYSTEM_FIELD_TYPES.has((field as { type: string }).type))
+      .map(([code]) => code);
+    if (codes.length > 0) {
+      await client.app.deleteFormFields({ app: otherId, fields: codes });
+      await deployApp(client, otherId);
+    }
+    lastSetupFieldsHashByAppId.delete(otherId);
   }
 };
 
