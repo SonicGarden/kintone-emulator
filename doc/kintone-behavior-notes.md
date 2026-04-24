@@ -191,14 +191,34 @@ GET .../comments.json?...&order=wrong  (en)
 }
 ```
 
-### ロケール切り替え（`Accept-Language` ヘッダー）
+### ロケール切り替え（ユーザー言語設定 + `Accept-Language` ヘッダー）
 
-| リクエスト | message | messages |
+**実機の言語決定ロジック**: 認証ユーザーの「表示言語」設定が優先される。設定が「Webブラウザーの設定に従う」の場合のみ `Accept-Language` ヘッダーで決定する。
+
+| ユーザーの表示言語設定 | Accept-Language ヘッダー | 実機 |
 |---|---|---|
-| `Accept-Language: ja` | `入力内容が正しくありません。` | 日本語 |
-| `Accept-Language: en` | `Missing or invalid input.` | 英語 |
-| `Accept-Language: zh` | `输入有误。` | 中国語（エミュレーターでは実装していない） |
-| ヘッダー無し | `入力内容が正しくありません。` | 日本語（デフォルト） |
+| 「Webブラウザーの設定に従う」 | なし | ja（組織デフォルト） |
+| | `ja` | ja |
+| | `en` / `en-US` | en |
+| | `en,ja;q=0.9` | en（q 値評価） |
+| | `zh` | zh（中国語） |
+| 「English (US)」明示 | なし | en |
+| | `ja` | en（**ヘッダー無視**） |
+| | `en` | en |
+
+メッセージ例:
+
+| locale | `CB_VA01` の message | `必須` の messages |
+|---|---|---|
+| ja | `入力内容が正しくありません。` | `必須です。` |
+| en | `Missing or invalid input.` | `Required.` |
+| zh | `输入有误。` | `此为必填项。`（エミュレーターは未実装） |
+
+### エミュレーター実装との差分
+
+エミュレーターは認証ユーザーの言語設定を保持していないため、**全 API コールで `Accept-Language` ヘッダーから locale を決定する**。
+- ユーザー設定が「ブラウザに従う」のユーザーに対しては、実機挙動と一致
+- 明示的な言語設定（例: `English (US)`）を持つユーザーに対しては、実機は `Accept-Language` を無視するが、エミュはヘッダーを見るため乖離。必要なら `/setup/auth.json` 時にユーザー言語設定を保持させる拡張が必要（現状未実装）
 
 #### 生レスポンス（zh サンプル）
 
