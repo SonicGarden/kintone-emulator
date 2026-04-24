@@ -741,4 +741,27 @@ describe("クエリのエラーレスポンス / 上限チェック", () => {
     expect(json.message).toContain("memo");
     expect(json.message).toContain("=");
   });
+
+  test("CHECK_BOX 等の選択肢に無い値を指定すると GAIA_IQ10", async () => {
+    await fetch(`${URL_BASE}/k/v1/preview/app/form/fields.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: 1,
+        properties: {
+          cb: {
+            type: "CHECK_BOX", code: "cb", label: "cb",
+            options: {
+              opt1: { label: "opt1", index: "0" },
+              opt2: { label: "opt2", index: "1" },
+            },
+          },
+        },
+      }),
+    });
+    const r = await fetchRecords('cb in ("unknown")');
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_IQ10");
+    expect(json.message).toBe("フィールド「cb」の項目に「unknown」は存在しません。");
+  });
 });

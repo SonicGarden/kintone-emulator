@@ -116,6 +116,34 @@ describe("compile: in / not in", () => {
     expect(c.where).toBe("body->>'$.radio.value' IN (?)");
     expect(c.params).toEqual(["a"]);
   });
+
+  test("CHECK_BOX で選択肢に無い値を in に指定すると GAIA_IQ10", () => {
+    expect(() => compile(parseQuery('cb in ("unknown")'), {
+      fieldTypes: { cb: "CHECK_BOX" },
+      fieldOptions: { cb: new Set(["opt1", "opt2"]) },
+    })).toThrow("フィールド「cb」の項目に「unknown」は存在しません。");
+  });
+
+  test("CHECK_BOX で選択肢に無い値を not in に指定しても GAIA_IQ10", () => {
+    expect(() => compile(parseQuery('cb not in ("unknown")'), {
+      fieldTypes: { cb: "CHECK_BOX" },
+      fieldOptions: { cb: new Set(["opt1", "opt2"]) },
+    })).toThrow("フィールド「cb」の項目に「unknown」は存在しません。");
+  });
+
+  test("RADIO_BUTTON で選択肢に無い値は値検証が優先され GAIA_IQ10（= はそもそも許可されない演算子だが IQ03 より IQ10 が先）", () => {
+    expect(() => compile(parseQuery('radio = "unknown"'), {
+      fieldTypes: { radio: "RADIO_BUTTON" },
+      fieldOptions: { radio: new Set(["a", "b"]) },
+    })).toThrow("フィールド「radio」の項目に「unknown」は存在しません。");
+  });
+
+  test("fieldOptions 未指定時は検証をスキップ（後方互換）", () => {
+    const c = compile(parseQuery('cb in ("whatever")'), {
+      fieldTypes: { cb: "CHECK_BOX" },
+    });
+    expect(c.where).toContain("EXISTS");
+  });
 });
 
 describe("compile: like", () => {

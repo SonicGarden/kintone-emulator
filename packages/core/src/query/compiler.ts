@@ -45,10 +45,15 @@ export type FieldTypeMap = Record<string, string>;
 /** SUBTABLE 内フィールドの情報。キーは内側のフィールドコード */
 export type SubtableFieldMap = Record<string, { subtableCode: string; type: string }>;
 
+/** 選択肢フィールドの有効な値の集合（フィールドコード → 選択肢キー群）。GAIA_IQ10 の検証に使用 */
+export type FieldOptionsMap = Record<string, Set<string>>;
+
 export type CompileContext = {
   fieldTypes: FieldTypeMap;
   /** SUBTABLE 内フィールドの型マップ（内側フィールドコード → { subtableCode, type }） */
   subtableFields?: SubtableFieldMap;
+  /** 選択肢フィールド（CHECK_BOX / MULTI_SELECT / RADIO_BUTTON / DROP_DOWN）の有効な値 */
+  fieldOptions?: FieldOptionsMap;
   expandCtx?: ExpandContext;
 };
 
@@ -144,6 +149,14 @@ const OBJECT_ELEMENT_TYPES = new Set([
   "USER_SELECT",
   "ORGANIZATION_SELECT",
   "GROUP_SELECT",
+]);
+
+/** 選択肢で定義された値のみを `=` / `!=` / `in` / `not in` の引数に取れる型（実機 GAIA_IQ10） */
+const OPTION_VALIDATED_TYPES = new Set([
+  "CHECK_BOX",
+  "MULTI_SELECT",
+  "RADIO_BUTTON",
+  "DROP_DOWN",
 ]);
 
 /** Condition から「実機の表記で言う演算子名」を取り出す */
@@ -290,6 +303,9 @@ class Compiler {
     // 演算子とフィールドタイプの整合チェック（実機準拠）
     const resolved = resolveField(c.field, this.ctx);
     const opLabel = conditionOp(c);
+    // 実機は値の検証（GAIA_IQ10）を演算子検証（GAIA_IQ03）より先に行う。
+    // 例: `ラジオボタン = "存在しない値"` は IQ10 が返る（IQ03 ではない）
+    this.assertOptionValuesValid(c, resolved);
     assertOperatorAllowed(c.field, resolved, opLabel);
 
     if (resolved.location === "subtable") {
@@ -304,6 +320,28 @@ class Compiler {
 
     const ref = topLevelFieldExpr(c.field, this.ctx.fieldTypes);
     return this.buildSimpleCondition(c, ref);
+  }
+
+  /**
+   * CHECK_BOX / MULTI_SELECT / RADIO_BUTTON / DROP_DOWN の値が
+   * フィールドの選択肢に定義されているか検証（実機 GAIA_IQ10）。
+   * `=` / `!=` / `in` / `not in` すべてに適用。
+   */
+  private assertOptionValuesValid(c: Condition, resolved: ResolvedField): void {
+    if (c.field.type !== "field") return;
+    if (!OPTION_VALIDATED_TYPES.has(resolved.type)) return;
+    const options = this.ctx.fieldOptions?.[c.field.code];
+    if (!options) return; // 選択肢情報が未提供の場合はスキップ（後方互換）
+    const values: Value[] = c.type === "in" ? c.values : c.type === "cmp" ? [c.value] : [];
+    for (const v of values) {
+      if (v.type !== "string") continue;
+      if (!options.has(v.value)) {
+        throw new CompileError(
+          `フィールド「${c.field.code}」の項目に「${v.value}」は存在しません。`,
+          "GAIA_IQ10",
+        );
+      }
+    }
   }
 
   /**
