@@ -321,6 +321,63 @@ describeDualMode("CALC: CONTAINS と選択フィールド参照", () => {
   });
 });
 
+describeDualMode("CALC: SUBTABLE 内 SLT / DROP_DOWN を CONTAINS で検索", () => {
+  const SESSION = "calc-contains-subtable-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc contains subtable",
+      properties: {
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: {
+            name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" },
+            status: {
+              type: "DROP_DOWN", code: "status", label: "status",
+              options: { OPEN: { label: "OPEN", index: "0" }, CLOSED: { label: "CLOSED", index: "1" } },
+            },
+          },
+        },
+        calc_has_apple: { type: "CALC", code: "calc_has_apple", label: "ha",
+          expression: 'CONTAINS(name, "apple")', format: "NUMBER" },
+        calc_has_open:  { type: "CALC", code: "calc_has_open",  label: "ho",
+          expression: 'CONTAINS(status, "OPEN")', format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("いずれかの行の SLT が一致すれば 1", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: {
+        items: { value: [
+          { value: { name: { value: "apple" }, status: { value: "OPEN" } } },
+          { value: { name: { value: "orange" }, status: { value: "CLOSED" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_has_apple).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_has_open).toEqual({ type: "CALC", value: "1" });
+  });
+
+  test("どの行にも該当しなければ 0", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: {
+        items: { value: [
+          { value: { name: { value: "orange" }, status: { value: "CLOSED" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_has_apple).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_has_open).toEqual({ type: "CALC", value: "0" });
+  });
+});
+
 describeDualMode("CALC: CREATED_TIME / UPDATED_TIME 参照", () => {
   const SESSION = "calc-systime-session";
   let client: KintoneRestAPIClient;

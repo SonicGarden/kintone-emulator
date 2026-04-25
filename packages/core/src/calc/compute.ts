@@ -115,9 +115,19 @@ const buildValuesMap = (
     if (def.type === "SUBTABLE" && def.fields) {
       const rows = (record[code]?.value as SubtableRow[] | undefined) ?? [];
       for (const [innerCode, inner] of Object.entries(def.fields)) {
-        if (inner.type !== "NUMBER") continue;
-        values[innerCode] = rows.map((r) => Number(r.value?.[innerCode]?.value ?? 0))
-          .filter((n) => Number.isFinite(n));
+        if (inner.type === "NUMBER") {
+          values[innerCode] = rows.map((r) => Number(r.value?.[innerCode]?.value ?? 0))
+            .filter((n) => Number.isFinite(n));
+          continue;
+        }
+        // SLT / DROP_DOWN / RADIO_BUTTON 等の単一文字列型は string[] として CONTAINS で検索可能にする。
+        // SUBTABLE 内の CHECK_BOX / MULTI_SELECT は実機が deploy 時に拒否するためここでは扱わない。
+        if (inner.type === "SINGLE_LINE_TEXT" || inner.type === "DROP_DOWN" || inner.type === "RADIO_BUTTON") {
+          values[innerCode] = rows
+            .map((r) => r.value?.[innerCode]?.value)
+            .filter((v): v is string => typeof v === "string");
+          continue;
+        }
       }
       continue;
     }
