@@ -283,6 +283,70 @@ describeDualMode("CALC で文字列結果になる式は空", () => {
   });
 });
 
+describeDualMode("CALC: CONTAINS と選択フィールド参照", () => {
+  const SESSION = "calc-contains-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc contains",
+      properties: {
+        tags: {
+          type: "CHECK_BOX", code: "tags", label: "tags",
+          options: { x: { label: "x", index: "0" }, y: { label: "y", index: "1" } },
+        },
+        calc_has_x: { type: "CALC", code: "calc_has_x", label: "hx",
+          expression: 'CONTAINS(tags, "x")', format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("CHECK_BOX に値が含まれていれば 1", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { tags: { value: ["x", "y"] } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_has_x).toEqual({ type: "CALC", value: "1" });
+  });
+
+  test("含まれていなければ 0", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { tags: { value: ["y"] } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_has_x).toEqual({ type: "CALC", value: "0" });
+  });
+});
+
+describeDualMode("CALC: CREATED_TIME / UPDATED_TIME 参照", () => {
+  const SESSION = "calc-systime-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc systime",
+      properties: {
+        // CREATED_TIME / UPDATED_TIME はデフォルトで存在するシステムフィールド
+        calc_diff: { type: "CALC", code: "calc_diff", label: "d",
+          expression: "更新日時 - 作成日時", format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("挿入直後は updated == created なので差は 0", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: {} });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    // 1 秒未満の差は kintone 側で 0 になる（秒丸め）
+    expect(record.calc_diff).toEqual({ type: "CALC", value: "0" });
+  });
+});
+
 describeDualMode("CALC フィールドが別 CALC を参照", () => {
   const SESSION = "calc-nested-session";
   let client: KintoneRestAPIClient;

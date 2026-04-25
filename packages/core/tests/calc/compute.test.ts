@@ -163,6 +163,44 @@ describe("computeCalcFields", () => {
     expect(record.c).toEqual({ type: "CALC", value: "" });
   });
 
+  test("CHECK_BOX を CONTAINS で参照", () => {
+    const rows = [
+      field("tags", { type: "CHECK_BOX" }),
+      field("has_x", { type: "CALC", expression: 'CONTAINS(tags, "x")' }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {
+      tags: { value: ["x", "y"] },
+    };
+    computeCalcFields(rows, record);
+    expect(record.has_x).toEqual({ type: "CALC", value: "1" });
+  });
+
+  test("CONTAINS は DROP_DOWN 等の単一値には不適合 → 空文字列", () => {
+    const rows = [
+      field("status", { type: "DROP_DOWN" }),
+      field("is_open", { type: "CALC", expression: 'CONTAINS(status, "OPEN")' }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {
+      status: { value: "OPEN" },
+    };
+    computeCalcFields(rows, record);
+    expect(record.is_open).toEqual({ type: "CALC", value: "" });
+  });
+
+  test("CREATED_TIME / UPDATED_TIME を meta から取得", () => {
+    const rows = [
+      field("created", { type: "CREATED_TIME" }),
+      field("updated", { type: "UPDATED_TIME" }),
+      field("c", { type: "CALC", expression: "updated - created" }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = {};
+    computeCalcFields(rows, record, {
+      createdAt: "2026-04-25T10:00:00Z",
+      updatedAt: "2026-04-25T11:00:00Z",
+    });
+    expect(record.c).toEqual({ type: "CALC", value: "3600" });
+  });
+
   test("TIME フォーマット (mod 86400)", () => {
     const rows = [
       field("n", { type: "NUMBER" }),

@@ -77,7 +77,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
           const withDefaults = applyDefaults(fieldRows, recordBody);
-          computeCalcFields(fieldRows, withDefaults);
+          const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+          computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
           recordIds.push(insertedRecord.id.toString());

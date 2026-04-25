@@ -153,6 +153,17 @@ describe("evaluate (string-aware)", () => {
   test("DATE_FORMAT — system は UTC 扱い", () => {
     expect(evaluate(parseExpression('DATE_FORMAT(0, "YYYY-MM-dd HH:mm:ss", "system")'), {})).toBe("1970-01-01 00:00:00");
   });
+
+  test("CONTAINS — string[] 包含", () => {
+    expect(evaluate(parseExpression('CONTAINS(tag, "x")'), { tag: ["x", "y"] })).toBe(1);
+    expect(evaluate(parseExpression('CONTAINS(tag, "z")'), { tag: ["x", "y"] })).toBe(0);
+    expect(evaluate(parseExpression('CONTAINS(tag, "x")'), { tag: [] })).toBe(0);
+  });
+
+  test("CONTAINS — 単一値フィールドは型不適合で例外", () => {
+    expect(() => evaluate(parseExpression('CONTAINS(s, "yes")'), { s: "yes" })).toThrow(CalcEvalError);
+    expect(() => evaluate(parseExpression('CONTAINS(s, "yes")'), {})).toThrow(CalcEvalError);
+  });
 });
 
 describe("formatNumberAsKintone", () => {

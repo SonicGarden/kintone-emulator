@@ -3,7 +3,7 @@
 
 import type { CalcNode } from "./ast";
 
-export type CalcValue = string | number | number[];
+export type CalcValue = string | number | number[] | string[];
 export type CalcValues = Record<string, CalcValue | undefined>;
 export type CalcResult = number | string;
 
@@ -85,6 +85,7 @@ const evaluateCall = (name: string, args: CalcNode[], values: CalcValues): CalcR
     case "ROUNDDOWN":   return roundWith(args, values, "down");
     case "YEN":         return yen(args, values);
     case "DATE_FORMAT": return dateFormat(args, values);
+    case "CONTAINS":    return contains(args, values);
     default:
       throw new CalcEvalError(`unsupported function ${name}`, "unsupported");
   }
@@ -96,7 +97,7 @@ const evaluateSum = (args: CalcNode[], values: CalcValues): number => {
     if (a.type === "field") {
       const v = values[a.code];
       if (Array.isArray(v)) {
-        for (const x of v) sum += x;
+        for (const x of v) sum += typeof x === "number" ? x : 0;
         continue;
       }
     }
@@ -130,6 +131,24 @@ const yen = (args: CalcNode[], values: CalcValues): string => {
   const [int, frac] = fixed.split(".");
   const withCommas = int!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${sign}¥${frac ? `${withCommas}.${frac}` : withCommas}`;
+};
+
+// CONTAINS(field, value) → 0/1
+// 実機では CHECK_BOX / MULTI_SELECT（複数選択 = string[]）にのみ有効。
+// DROP_DOWN / RADIO_BUTTON / SINGLE_LINE_TEXT 等の単一値フィールドでは型不適合で空文字列になるため、
+// ここでは type_mismatch として例外を投げて呼び出し側で "" に変換させる。
+const contains = (args: CalcNode[], values: CalcValues): number => {
+  const target = args[0]!;
+  if (target.type !== "field") {
+    throw new CalcEvalError("CONTAINS requires a field reference", "type_mismatch");
+  }
+  const v = values[target.code];
+  if (!Array.isArray(v)) {
+    throw new CalcEvalError("CONTAINS requires a multi-select field", "type_mismatch");
+  }
+  const needleResult = evaluate(args[1]!, values);
+  const needle = typeof needleResult === "string" ? needleResult : asString(needleResult);
+  return (v as Array<string | number>).some((x) => String(x) === needle) ? 1 : 0;
 };
 
 // DATE_FORMAT(timestamp_or_field, format, timezone) → string
@@ -199,6 +218,7 @@ const extractDateParts = (date: Date, timeZone: string): Record<string, string> 
 
 const scalarToValue = (v: CalcValue | undefined): CalcResult => {
   if (v == null) return 0;
+  // 配列を SUM 以外 / CONTAINS 以外で参照すると 0 / "" 相当（CONTAINS は値を直接参照する）
   if (Array.isArray(v)) return 0;
   return v;
 };

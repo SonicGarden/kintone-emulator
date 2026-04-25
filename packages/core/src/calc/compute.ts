@@ -73,12 +73,22 @@ const topologicalSort = (acs: AutoCalcField[]): AutoCalcField[] => {
   return order.map((code) => byCode.get(code)!);
 };
 
-export const computeCalcFields = (fieldRows: FieldRow[], record: RecordBody): void => {
+export type ComputeMeta = {
+  /** ISO 8601 UTC（"YYYY-MM-DDTHH:MM:SSZ" など）。CREATED_TIME / UPDATED_TIME 参照のフォールバック */
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export const computeCalcFields = (
+  fieldRows: FieldRow[],
+  record: RecordBody,
+  meta: ComputeMeta = {},
+): void => {
   const acs = collectAutoCalcFields(fieldRows);
   if (acs.length === 0) return;
 
   const fieldDefs = parseFieldDefs(fieldRows);
-  const values = buildValuesMap(fieldDefs, record);
+  const values = buildValuesMap(fieldDefs, record, meta);
 
   for (const ac of acs) {
     const stored = computeOne(ac, values);
@@ -95,7 +105,11 @@ const parseFieldDefs = (fieldRows: FieldRow[]): Map<string, FieldDef> => {
   return map;
 };
 
-const buildValuesMap = (fieldDefs: Map<string, FieldDef>, record: RecordBody): CalcValues => {
+const buildValuesMap = (
+  fieldDefs: Map<string, FieldDef>,
+  record: RecordBody,
+  meta: ComputeMeta,
+): CalcValues => {
   const values: CalcValues = {};
   for (const [code, def] of fieldDefs) {
     if (def.type === "SUBTABLE" && def.fields) {
@@ -107,6 +121,17 @@ const buildValuesMap = (fieldDefs: Map<string, FieldDef>, record: RecordBody): C
       }
       continue;
     }
+    // CREATED_TIME / UPDATED_TIME は record body には入らないことが多いため meta からフォールバック
+    if (def.type === "CREATED_TIME") {
+      const raw = record[code]?.value ?? meta.createdAt;
+      values[code] = dateValueToSeconds("DATETIME", raw);
+      continue;
+    }
+    if (def.type === "UPDATED_TIME") {
+      const raw = record[code]?.value ?? meta.updatedAt;
+      values[code] = dateValueToSeconds("DATETIME", raw);
+      continue;
+    }
     const cell = record[code];
     if (cell === undefined) continue;
     const raw = cell.value;
@@ -114,9 +139,13 @@ const buildValuesMap = (fieldDefs: Map<string, FieldDef>, record: RecordBody): C
       values[code] = dateValueToSeconds(def.type, raw);
       continue;
     }
-    // NUMBER / CALC は文字列で保存されているが評価上は数値として扱う
     if (def.type === "NUMBER" || def.type === "CALC") {
       values[code] = toNumberOrZero(raw);
+      continue;
+    }
+    // CHECK_BOX / MULTI_SELECT / FILE は文字列配列。CONTAINS の入力として保持する
+    if (def.type === "CHECK_BOX" || def.type === "MULTI_SELECT") {
+      if (Array.isArray(raw)) values[code] = (raw as unknown[]).map(String);
       continue;
     }
     if (typeof raw === "string" || typeof raw === "number") {
