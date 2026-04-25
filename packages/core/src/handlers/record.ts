@@ -1,4 +1,5 @@
 import type { KintoneRecordField } from '@kintone/rest-api-client';
+import { computeCalcFields } from "../calc/compute";
 import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
@@ -6,7 +7,7 @@ import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors"
 import { applyLookups } from "./lookup";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -57,6 +58,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  computeCalcFields(fieldRows, record, { createdAt: now, updatedAt: now });
   const inserted = insertRecord(db, body.app, record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
@@ -105,6 +108,11 @@ export const put = async ({ request, params }: HandlerArgs) => {
   });
   if (errors) return validationErrorResponse(errors, locale);
 
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  computeCalcFields(fieldRows, mergedRecord, {
+    createdAt: formatKintoneDateTime(target.created_at),
+    updatedAt: now,
+  });
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {
     return errorNotFoundRecord(target.id, locale);

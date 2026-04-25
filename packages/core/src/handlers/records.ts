@@ -1,3 +1,4 @@
+import { computeCalcFields } from "../calc/compute";
 import { all, dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import type { FieldRow } from "../db/fields";
@@ -10,7 +11,7 @@ import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors"
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
-import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
 
 // ============================================================
 // フィールドコード
@@ -253,7 +254,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
     const result = db.transaction(() => {
       const ids: string[] = [];
       const revisions: string[] = [];
+      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       for (const rec of prep.prepared) {
+        computeCalcFields(fieldRows, rec, { createdAt: now, updatedAt: now });
         const inserted = insertRecord(db, body.app, rec);
         if (!inserted) throw new Error("insert failed");
         ids.push(inserted.id.toString());
@@ -298,7 +301,7 @@ const resolveUpdateTarget = (
   return { target };
 };
 
-type PreparedUpdate = { targetId: number; merged: Record<string, { value?: unknown }> };
+type PreparedUpdate = { targetId: number; createdAt: string; merged: Record<string, { value?: unknown }> };
 
 /** 一括更新前処理: 各レコードの対象特定 + マージ + validate を行い、エラーを集約 */
 const prepareRecordsForUpdate = (
@@ -323,7 +326,7 @@ const prepareRecordsForUpdate = (
       db: ctx.db, appId: ctx.appId, excludeId: target.id, locale: ctx.locale,
     });
     if (perRecordErrors) Object.assign(errors, prefixErrorKeys(perRecordErrors, i));
-    prepared.push({ targetId: target.id, merged });
+    prepared.push({ targetId: target.id, createdAt: target.created_at, merged });
   }
   return { prepared, errors };
 };
@@ -350,7 +353,12 @@ export const put = async ({ request, params }: HandlerArgs) => {
   try {
     const result = db.transaction(() => {
       const updated: Array<{ id: string; revision: string }> = [];
-      for (const { targetId, merged } of prep.prepared) {
+      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      for (const { targetId, createdAt, merged } of prep.prepared) {
+        computeCalcFields(fieldRows, merged, {
+          createdAt: formatKintoneDateTime(createdAt),
+          updatedAt: now,
+        });
         const u = updateRecord(db, body.app, String(targetId), merged);
         if (!u) throw new Error("update failed");
         updated.push({ id: u.id.toString(), revision: u.revision.toString() });

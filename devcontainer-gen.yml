@@ -71,6 +71,7 @@ allowed_domains:
       - cybozu.com
       - kintone.com
       - cybozu.dev
+      - kintone.help
   - group: Documents
     domains:
       - vitest.dev

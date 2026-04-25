@@ -425,7 +425,7 @@ export const validateRecord = (
 
 // DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を kintone の CREATED_TIME / UPDATED_TIME 形式に整形。
 // 実 kintone は秒を 00 に丸めた ISO 8601 UTC（"YYYY-MM-DDTHH:MM:00Z"）で返す。
-const formatKintoneDateTime = (sqlTime: string): string => {
+export const formatKintoneDateTime = (sqlTime: string): string => {
   const d = new Date(sqlTime.replace(" ", "T") + "Z");
   d.setUTCSeconds(0, 0);
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");

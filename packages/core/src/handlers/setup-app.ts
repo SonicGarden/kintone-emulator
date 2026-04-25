@@ -1,10 +1,13 @@
+import { computeCalcFields } from "../calc/compute";
+import { validateFieldsForInsert } from "../calc/field-validation";
 import { insertApp } from "../db/apps";
 import { dbSession } from "../db/client";
 import { findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
+import { errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
 import type { HandlerArgs } from "./types";
-import { applyDefaults } from "./validate";
+import { applyDefaults, detectLocale } from "./validate";
 
 // 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
 // setup/app.json で properties が指定されていても、ユーザーが同じ type を明示していなければ自動補完する。
@@ -37,8 +40,21 @@ const toPositiveInt = (value: unknown): number | undefined => {
 
 export const post = async ({ request, params }: HandlerArgs) => {
   try {
+    const locale = detectLocale(request.headers.get("accept-language"));
     const body = await request.json();
     const db = dbSession(params.session);
+
+    const properties = body.properties
+      ? withDefaultSystemFields(body.properties as FieldProperties)
+      : undefined;
+
+    if (properties) {
+      const issue = validateFieldsForInsert([], properties);
+      if (issue) {
+        if (issue.kind === "format_enum") return errorInvalidCalcFormat(issue.key, locale);
+        return errorInvalidFormula(issue.fieldLabel, issue.detailMessage, locale);
+      }
+    }
 
     const inserted = db.transaction(() => {
       const app = insertApp(
@@ -50,8 +66,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
       );
       if (!app) throw new Error('Failed to create app.');
 
-      if (body.properties) {
-        insertFields(db, app.id, withDefaultSystemFields(body.properties as FieldProperties));
+      if (properties) {
+        insertFields(db, app.id, properties);
       }
 
       const recordIds: string[] = [];
@@ -61,6 +77,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
           const withDefaults = applyDefaults(fieldRows, recordBody);
+          const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+          computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
           recordIds.push(insertedRecord.id.toString());
