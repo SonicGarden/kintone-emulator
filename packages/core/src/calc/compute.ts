@@ -1,5 +1,10 @@
 // CALC + SINGLE_LINE_TEXT (autoCalc) フィールドの式を評価してレコード本体に値を書き込む。
 // insertRecord / updateRecord 前に呼び出される想定。
+//
+// SUBTABLE 内の CALC / SLT autoCalc も対象。
+// SUBTABLE 内の autoCalc は、行ごとに「top-level の全フィールド + 同じ行の inner フィールド」を
+// スコープとして評価する。CONTAINS の引数となる CHECK_BOX / MULTI_SELECT は同じ行のものを
+// 参照する（実機ヘルプ準拠）。
 
 import type { FieldRow } from "../db/fields";
 import { collectFieldRefs, type CalcNode } from "./ast";
@@ -9,18 +14,19 @@ import {
   evaluate,
   formatNumberAsKintone,
   type CalcResult,
+  type CalcValue,
   type CalcValues,
 } from "./evaluator";
 import { parseExpression } from "./parser";
 
-type RecordBody = { [code: string]: { value?: unknown; type?: string } | undefined };
-type SubtableRow = { value?: { [code: string]: { value?: unknown; type?: string } | undefined } };
+type RecordCell = { value?: unknown; type?: string } | undefined;
+type RecordBody = { [code: string]: RecordCell };
+type SubtableRow = { id?: string; value?: { [code: string]: RecordCell } };
 
 type AutoCalcField = {
   code: string;
   ast: CalcNode;
   type: "CALC" | "SINGLE_LINE_TEXT";
-  /** CALC のみ。SINGLE_LINE_TEXT は常に文字列出力 */
   format: string;
 };
 
@@ -28,30 +34,94 @@ type FieldDef = {
   type?: string;
   expression?: string;
   format?: string;
-  fields?: Record<string, { type?: string }>;
+  fields?: Record<string, FieldDef & { code?: string }>;
 };
 
 const DATE_TYPES = new Set(["DATE", "DATETIME", "CREATED_TIME", "UPDATED_TIME", "TIME"]);
 
-const collectAutoCalcFields = (fieldRows: FieldRow[]): AutoCalcField[] => {
-  const acs: AutoCalcField[] = [];
-  for (const row of fieldRows) {
-    const def = JSON.parse(row.body) as FieldDef;
-    if (def.type !== "CALC" && def.type !== "SINGLE_LINE_TEXT") continue;
-    const expr = (def.expression ?? "").trim();
-    if (expr === "") continue;
-    try {
-      acs.push({
-        code: row.code,
-        ast: parseExpression(expr),
-        type: def.type,
-        format: def.format ?? "NUMBER",
-      });
-    } catch {
-      // deploy 時検証を通っていれば到達しないはず
+export type ComputeMeta = {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export const computeCalcFields = (
+  fieldRows: FieldRow[],
+  record: RecordBody,
+  meta: ComputeMeta = {},
+): void => {
+  const fieldDefs = parseFieldDefs(fieldRows);
+  const topAcs = collectTopLevelAutoCalc(fieldDefs);
+  const subAcs = collectSubtableInnerAutoCalc(fieldDefs);
+  if (topAcs.length === 0 && subAcs.size === 0) return;
+
+  // 1. SUBTABLE 内 autoCalc を行単位で評価（top-level CALC が SUM(inner_calc) を使うかもしれないので先）
+  for (const [subtableCode, innerAcs] of subAcs) {
+    const subtableDef = fieldDefs.get(subtableCode);
+    if (!subtableDef?.fields) continue;
+    const rows = (record[subtableCode]?.value as SubtableRow[] | undefined) ?? [];
+    for (const row of rows) {
+      computeRow(innerAcs, fieldDefs, subtableDef.fields, record, row, meta);
     }
   }
+
+  // 2. top-level autoCalc を評価
+  if (topAcs.length > 0) {
+    const values = buildTopLevelValuesMap(fieldDefs, record, meta);
+    for (const ac of topAcs) {
+      const stored = computeOne(ac, values);
+      record[ac.code] = { type: ac.type, value: stored };
+      values[ac.code] = stored;
+    }
+  }
+};
+
+// ---------- collect ----------
+
+const parseFieldDefs = (fieldRows: FieldRow[]): Map<string, FieldDef> => {
+  const map = new Map<string, FieldDef>();
+  for (const row of fieldRows) map.set(row.code, JSON.parse(row.body) as FieldDef);
+  return map;
+};
+
+const parseAutoCalc = (code: string, def: FieldDef): AutoCalcField | null => {
+  if (def.type !== "CALC" && def.type !== "SINGLE_LINE_TEXT") return null;
+  const expr = (def.expression ?? "").trim();
+  if (expr === "") return null;
+  try {
+    return {
+      code,
+      ast: parseExpression(expr),
+      type: def.type,
+      format: def.format ?? "NUMBER",
+    };
+  } catch {
+    return null;
+  }
+};
+
+const collectTopLevelAutoCalc = (fieldDefs: Map<string, FieldDef>): AutoCalcField[] => {
+  const acs: AutoCalcField[] = [];
+  for (const [code, def] of fieldDefs) {
+    const ac = parseAutoCalc(code, def);
+    if (ac) acs.push(ac);
+  }
   return topologicalSort(acs);
+};
+
+const collectSubtableInnerAutoCalc = (
+  fieldDefs: Map<string, FieldDef>,
+): Map<string, AutoCalcField[]> => {
+  const result = new Map<string, AutoCalcField[]>();
+  for (const [subtableCode, def] of fieldDefs) {
+    if (def.type !== "SUBTABLE" || !def.fields) continue;
+    const acs: AutoCalcField[] = [];
+    for (const [innerCode, innerDef] of Object.entries(def.fields)) {
+      const ac = parseAutoCalc(innerCode, innerDef);
+      if (ac) acs.push(ac);
+    }
+    if (acs.length > 0) result.set(subtableCode, topologicalSort(acs));
+  }
+  return result;
 };
 
 const topologicalSort = (acs: AutoCalcField[]): AutoCalcField[] => {
@@ -73,39 +143,39 @@ const topologicalSort = (acs: AutoCalcField[]): AutoCalcField[] => {
   return order.map((code) => byCode.get(code)!);
 };
 
-export type ComputeMeta = {
-  /** ISO 8601 UTC（"YYYY-MM-DDTHH:MM:SSZ" など）。CREATED_TIME / UPDATED_TIME 参照のフォールバック */
-  createdAt?: string;
-  updatedAt?: string;
-};
+// ---------- per-row evaluation ----------
 
-export const computeCalcFields = (
-  fieldRows: FieldRow[],
+const computeRow = (
+  innerAcs: AutoCalcField[],
+  fieldDefs: Map<string, FieldDef>,
+  innerFieldDefs: Record<string, FieldDef>,
   record: RecordBody,
-  meta: ComputeMeta = {},
+  row: SubtableRow,
+  meta: ComputeMeta,
 ): void => {
-  const acs = collectAutoCalcFields(fieldRows);
-  if (acs.length === 0) return;
-
-  const fieldDefs = parseFieldDefs(fieldRows);
-  const values = buildValuesMap(fieldDefs, record, meta);
-
-  for (const ac of acs) {
+  const values: CalcValues = {};
+  // top-level fields をスカラ正規化（subtable 配列展開はしない）
+  for (const [code, def] of fieldDefs) {
+    if (def.type === "SUBTABLE") continue;
+    const v = scalarValueFor(def, record[code], meta);
+    if (v !== undefined) values[code] = v;
+  }
+  // 同じ行の inner fields を加える
+  for (const [innerCode, innerDef] of Object.entries(innerFieldDefs)) {
+    const v = scalarValueFor(innerDef, row.value?.[innerCode], meta);
+    if (v !== undefined) values[innerCode] = v;
+  }
+  const rowBody = (row.value ??= {});
+  for (const ac of innerAcs) {
     const stored = computeOne(ac, values);
-    record[ac.code] = { type: ac.type, value: stored };
+    rowBody[ac.code] = { type: ac.type, value: stored };
     values[ac.code] = stored;
   }
 };
 
-const parseFieldDefs = (fieldRows: FieldRow[]): Map<string, FieldDef> => {
-  const map = new Map<string, FieldDef>();
-  for (const row of fieldRows) {
-    map.set(row.code, JSON.parse(row.body) as FieldDef);
-  }
-  return map;
-};
+// ---------- top-level values map ----------
 
-const buildValuesMap = (
+const buildTopLevelValuesMap = (
   fieldDefs: Map<string, FieldDef>,
   record: RecordBody,
   meta: ComputeMeta,
@@ -115,54 +185,59 @@ const buildValuesMap = (
     if (def.type === "SUBTABLE" && def.fields) {
       const rows = (record[code]?.value as SubtableRow[] | undefined) ?? [];
       for (const [innerCode, inner] of Object.entries(def.fields)) {
-        if (inner.type === "NUMBER") {
-          values[innerCode] = rows.map((r) => Number(r.value?.[innerCode]?.value ?? 0))
-            .filter((n) => Number.isFinite(n));
-          continue;
-        }
-        // SLT / DROP_DOWN / RADIO_BUTTON 等の単一文字列型は string[] として CONTAINS で検索可能にする。
-        // SUBTABLE 内の CHECK_BOX / MULTI_SELECT は実機が deploy 時に拒否するためここでは扱わない。
-        if (inner.type === "SINGLE_LINE_TEXT" || inner.type === "DROP_DOWN" || inner.type === "RADIO_BUTTON") {
-          values[innerCode] = rows
-            .map((r) => r.value?.[innerCode]?.value)
-            .filter((v): v is string => typeof v === "string");
-          continue;
-        }
+        const arr = subtableColumnArray(inner.type, innerCode, rows);
+        if (arr !== undefined) values[innerCode] = arr;
       }
       continue;
     }
-    // CREATED_TIME / UPDATED_TIME は record body には入らないことが多いため meta からフォールバック
-    if (def.type === "CREATED_TIME") {
-      const raw = record[code]?.value ?? meta.createdAt;
-      values[code] = dateValueToSeconds("DATETIME", raw);
-      continue;
-    }
-    if (def.type === "UPDATED_TIME") {
-      const raw = record[code]?.value ?? meta.updatedAt;
-      values[code] = dateValueToSeconds("DATETIME", raw);
-      continue;
-    }
-    const cell = record[code];
-    if (cell === undefined) continue;
-    const raw = cell.value;
-    if (def.type && DATE_TYPES.has(def.type)) {
-      values[code] = dateValueToSeconds(def.type, raw);
-      continue;
-    }
-    if (def.type === "NUMBER" || def.type === "CALC") {
-      values[code] = toNumberOrZero(raw);
-      continue;
-    }
-    // CHECK_BOX / MULTI_SELECT / FILE は文字列配列。CONTAINS の入力として保持する
-    if (def.type === "CHECK_BOX" || def.type === "MULTI_SELECT") {
-      if (Array.isArray(raw)) values[code] = (raw as unknown[]).map(String);
-      continue;
-    }
-    if (typeof raw === "string" || typeof raw === "number") {
-      values[code] = raw;
-    }
+    const v = scalarValueFor(def, record[code], meta);
+    if (v !== undefined) values[code] = v;
   }
   return values;
+};
+
+// SUBTABLE 列を SUM / CONTAINS 用に集約。NUMBER → number[]、SLT/DROP_DOWN/RADIO_BUTTON → string[]、
+// それ以外（CHECK_BOX 等）は実機が deploy 時に拒否するため対象外。
+const subtableColumnArray = (
+  innerType: string | undefined,
+  innerCode: string,
+  rows: SubtableRow[],
+): number[] | string[] | undefined => {
+  if (innerType === "NUMBER" || innerType === "CALC") {
+    return rows.map((r) => Number(r.value?.[innerCode]?.value ?? 0))
+      .filter((n) => Number.isFinite(n));
+  }
+  if (innerType === "SINGLE_LINE_TEXT" || innerType === "DROP_DOWN" || innerType === "RADIO_BUTTON") {
+    return rows
+      .map((r) => r.value?.[innerCode]?.value)
+      .filter((v): v is string => typeof v === "string");
+  }
+  return undefined;
+};
+
+// ---------- value normalization ----------
+
+const scalarValueFor = (
+  def: FieldDef,
+  cell: RecordCell,
+  meta: ComputeMeta,
+): CalcValue | undefined => {
+  // CREATED_TIME / UPDATED_TIME は cell が無くても meta からフォールバック
+  if (def.type === "CREATED_TIME") {
+    return dateValueToSeconds("DATETIME", cell?.value ?? meta.createdAt);
+  }
+  if (def.type === "UPDATED_TIME") {
+    return dateValueToSeconds("DATETIME", cell?.value ?? meta.updatedAt);
+  }
+  if (cell === undefined) return undefined;
+  const raw = cell.value;
+  if (def.type && DATE_TYPES.has(def.type)) return dateValueToSeconds(def.type, raw);
+  if (def.type === "NUMBER" || def.type === "CALC") return toNumberOrZero(raw);
+  if (def.type === "CHECK_BOX" || def.type === "MULTI_SELECT") {
+    return Array.isArray(raw) ? (raw as unknown[]).map(String) : undefined;
+  }
+  if (typeof raw === "string" || typeof raw === "number") return raw;
+  return undefined;
 };
 
 const toNumberOrZero = (raw: unknown): number => {
@@ -187,6 +262,8 @@ const dateValueToSeconds = (fieldType: string, raw: unknown): number => {
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
 };
 
+// ---------- output formatting ----------
+
 const computeOne = (ac: AutoCalcField, values: CalcValues): string => {
   let result: CalcResult;
   try {
@@ -195,9 +272,7 @@ const computeOne = (ac: AutoCalcField, values: CalcValues): string => {
     if (e instanceof CalcEvalError) return "";
     throw e;
   }
-  if (ac.type === "SINGLE_LINE_TEXT") {
-    return asString(result);
-  }
+  if (ac.type === "SINGLE_LINE_TEXT") return asString(result);
   return formatCalcOutput(result, ac.format);
 };
 

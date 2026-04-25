@@ -378,6 +378,63 @@ describeDualMode("CALC: SUBTABLE 内 SLT / DROP_DOWN を CONTAINS で検索", ()
   });
 });
 
+describeDualMode("SUBTABLE 内 CALC / SLT autoCalc", () => {
+  const SESSION = "calc-subtable-inner-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc subtable inner",
+      properties: {
+        rate: { type: "NUMBER", code: "rate", label: "rate" },
+        items: {
+          type: "SUBTABLE", code: "items", label: "items",
+          fields: {
+            qty: { type: "NUMBER", code: "qty", label: "qty" },
+            price: { type: "NUMBER", code: "price", label: "price" },
+            tags: {
+              type: "CHECK_BOX", code: "tags", label: "tags",
+              options: { sale: { label: "sale", index: "0" }, new: { label: "new", index: "1" } },
+            },
+            // 同じ行の qty * price * top-level rate を計算
+            calc_subtotal: { type: "CALC", code: "calc_subtotal", label: "st",
+              expression: "qty * price * rate", format: "NUMBER" },
+            // 同じ行の CHECK_BOX を CONTAINS で判定
+            calc_is_sale: { type: "CALC", code: "calc_is_sale", label: "is",
+              expression: 'CONTAINS(tags, "sale")', format: "NUMBER" },
+            // SLT autoCalc で文字列出力
+            text_label: { type: "SINGLE_LINE_TEXT", code: "text_label", label: "tl",
+              expression: 'qty & " * " & price' },
+          },
+        },
+      },
+    }));
+  });
+
+  test("行ごとに同じ行の inner と top-level が参照される", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: {
+        rate: { value: "1.1" },
+        items: { value: [
+          { value: { qty: { value: "2" }, price: { value: "100" }, tags: { value: ["sale"] } } },
+          { value: { qty: { value: "3" }, price: { value: "200" }, tags: { value: ["new"] } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    const rows = record.items.value as Array<{ value: Record<string, { value: unknown }> }>;
+    expect(rows[0]!.value.calc_subtotal).toEqual({ type: "CALC", value: "220" });
+    expect(rows[0]!.value.calc_is_sale).toEqual({ type: "CALC", value: "1" });
+    expect(rows[0]!.value.text_label).toEqual({ type: "SINGLE_LINE_TEXT", value: "2 * 100" });
+    expect(rows[1]!.value.calc_subtotal).toEqual({ type: "CALC", value: "660" });
+    expect(rows[1]!.value.calc_is_sale).toEqual({ type: "CALC", value: "0" });
+    expect(rows[1]!.value.text_label).toEqual({ type: "SINGLE_LINE_TEXT", value: "3 * 200" });
+  });
+});
+
 describeDualMode("CALC: CREATED_TIME / UPDATED_TIME 参照", () => {
   const SESSION = "calc-systime-session";
   let client: KintoneRestAPIClient;
