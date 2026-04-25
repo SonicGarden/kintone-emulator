@@ -70,6 +70,17 @@ describe("evaluateNumeric", () => {
     expect(evalExpr("3 = 3")).toBe(1);
     expect(evalExpr("3 != 3")).toBe(0);
     expect(evalExpr("a >= b", { a: 5, b: 5 })).toBe(1);
+    expect(evalExpr("a <= b", { a: 5, b: 5 })).toBe(1);
+    expect(evalExpr("a <= b", { a: 6, b: 5 })).toBe(0);
+    // <> は != のエイリアス
+    expect(evalExpr("3 <> 3")).toBe(0);
+    expect(evalExpr("3 <> 4")).toBe(1);
+  });
+
+  test("単項 + は値をそのまま返す", () => {
+    expect(evalExpr("+5")).toBe(5);
+    expect(evalExpr("+(-3)")).toBe(-3);
+    expect(evalExpr("+a", { a: 7 })).toBe(7);
   });
 
   test("AND / OR / NOT", () => {

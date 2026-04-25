@@ -66,6 +66,59 @@ describeDualMode("CALC フィールドの計算（数値）", () => {
   });
 });
 
+describeDualMode("CALC: 比較演算子の網羅", () => {
+  const SESSION = "calc-cmp-coverage-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc cmp coverage",
+      properties: {
+        a: { type: "NUMBER", code: "a", label: "a" },
+        b: { type: "NUMBER", code: "b", label: "b" },
+        calc_eq:  { type: "CALC", code: "calc_eq",  label: "eq",  expression: "a = b",  format: "NUMBER" },
+        calc_ne:  { type: "CALC", code: "calc_ne",  label: "ne",  expression: "a != b", format: "NUMBER" },
+        calc_ne2: { type: "CALC", code: "calc_ne2", label: "ne2", expression: "a <> b", format: "NUMBER" },
+        calc_lt:  { type: "CALC", code: "calc_lt",  label: "lt",  expression: "a < b",  format: "NUMBER" },
+        calc_le:  { type: "CALC", code: "calc_le",  label: "le",  expression: "a <= b", format: "NUMBER" },
+        calc_gt:  { type: "CALC", code: "calc_gt",  label: "gt",  expression: "a > b",  format: "NUMBER" },
+        calc_ge:  { type: "CALC", code: "calc_ge",  label: "ge",  expression: "a >= b", format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("a == b: =/<= は 1、!=/<>/</> は 0、>=は 1", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { a: { value: "5" }, b: { value: "5" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_eq).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_ne).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_ne2).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_lt).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_le).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_gt).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_ge).toEqual({ type: "CALC", value: "1" });
+  });
+
+  test("a < b: </<=/!=/<> は 1、=/>/>= は 0", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { a: { value: "3" }, b: { value: "5" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_eq).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_ne).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_ne2).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_lt).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_le).toEqual({ type: "CALC", value: "1" });
+    expect(record.calc_gt).toEqual({ type: "CALC", value: "0" });
+    expect(record.calc_ge).toEqual({ type: "CALC", value: "0" });
+  });
+});
+
 describeDualMode("CALC フィールド: 比較・論理・条件分岐", () => {
   const SESSION = "calc-bool-session";
   let client: KintoneRestAPIClient;
