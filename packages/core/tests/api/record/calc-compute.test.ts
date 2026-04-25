@@ -194,6 +194,95 @@ describeDualMode("CALC フィールド: 日付演算とフォーマット", () =
   });
 });
 
+describeDualMode("SINGLE_LINE_TEXT の autoCalc (expression)", () => {
+  const SESSION = "calc-text-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc text",
+      properties: {
+        a: { type: "NUMBER", code: "a", label: "a" },
+        b: { type: "NUMBER", code: "b", label: "b" },
+        text_concat: {
+          type: "SINGLE_LINE_TEXT", code: "text_concat", label: "concat",
+          expression: 'a & " + " & b & " = " & (a + b)',
+        },
+        text_if: {
+          type: "SINGLE_LINE_TEXT", code: "text_if", label: "if",
+          expression: 'IF(a > b, "a wins", "b wins")',
+        },
+        text_yen: {
+          type: "SINGLE_LINE_TEXT", code: "text_yen", label: "yen",
+          expression: "YEN(a * 1.1, 0)",
+        },
+        text_dt: {
+          type: "SINGLE_LINE_TEXT", code: "text_dt", label: "dt",
+          expression: 'DATE_FORMAT(1745574000, "YYYY-MM-dd", "UTC")',
+        },
+      },
+    }));
+  });
+
+  test("文字列連結", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { a: { value: "10" }, b: { value: "20" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.text_concat).toEqual({ type: "SINGLE_LINE_TEXT", value: "10 + 20 = 30" });
+  });
+
+  test("IF 文字列分岐", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { a: { value: "30" }, b: { value: "20" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.text_if).toEqual({ type: "SINGLE_LINE_TEXT", value: "a wins" });
+  });
+
+  test("YEN フォーマット", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId, record: { a: { value: "1000" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.text_yen).toEqual({ type: "SINGLE_LINE_TEXT", value: "¥1,100" });
+  });
+
+  test("DATE_FORMAT", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: {} });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.text_dt).toEqual({ type: "SINGLE_LINE_TEXT", value: "2025-04-25" });
+  });
+});
+
+describeDualMode("CALC で文字列結果になる式は空", () => {
+  const SESSION = "calc-string-on-calc-session";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "calc string drop",
+      properties: {
+        a: { type: "NUMBER", code: "a", label: "a" },
+        calc_str: { type: "CALC", code: "calc_str", label: "s",
+          expression: 'IF(a > 0, "pos", "neg")', format: "NUMBER" },
+      },
+    }));
+  });
+
+  test("CALC format=NUMBER で文字列分岐は ''", async () => {
+    const { id } = await client.record.addRecord({ app: appId, record: { a: { value: "5" } } });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record.calc_str).toEqual({ type: "CALC", value: "" });
+  });
+});
+
 describeDualMode("CALC フィールドが別 CALC を参照", () => {
   const SESSION = "calc-nested-session";
   let client: KintoneRestAPIClient;

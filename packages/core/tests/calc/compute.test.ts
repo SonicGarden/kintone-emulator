@@ -143,6 +143,26 @@ describe("computeCalcFields", () => {
     expect(record.hm).toEqual({ type: "CALC", value: "25:01" });
   });
 
+  test("SINGLE_LINE_TEXT の expression は文字列として保存される", () => {
+    const rows = [
+      field("a", { type: "NUMBER" }),
+      field("tc", { type: "SINGLE_LINE_TEXT", expression: '"x=" & a' }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = { a: { value: "5" } };
+    computeCalcFields(rows, record);
+    expect(record.tc).toEqual({ type: "SINGLE_LINE_TEXT", value: "x=5" });
+  });
+
+  test("CALC で文字列を返す式は空文字列 (format=NUMBER)", () => {
+    const rows = [
+      field("a", { type: "NUMBER" }),
+      field("c", { type: "CALC", expression: 'IF(a > 0, "pos", "neg")' }),
+    ];
+    const record: Record<string, { value: unknown; type?: string }> = { a: { value: "1" } };
+    computeCalcFields(rows, record);
+    expect(record.c).toEqual({ type: "CALC", value: "" });
+  });
+
   test("TIME フォーマット (mod 86400)", () => {
     const rows = [
       field("n", { type: "NUMBER" }),

@@ -1,15 +1,28 @@
-// CALC フィールドの式を評価してレコード本体に値を書き込む。
+// CALC + SINGLE_LINE_TEXT (autoCalc) フィールドの式を評価してレコード本体に値を書き込む。
 // insertRecord / updateRecord 前に呼び出される想定。
 
 import type { FieldRow } from "../db/fields";
 import { collectFieldRefs, type CalcNode } from "./ast";
-import { CalcEvalError, evaluateNumeric, formatNumberAsKintone, type CalcValues } from "./evaluator";
+import {
+  asString,
+  CalcEvalError,
+  evaluate,
+  formatNumberAsKintone,
+  type CalcResult,
+  type CalcValues,
+} from "./evaluator";
 import { parseExpression } from "./parser";
 
 type RecordBody = { [code: string]: { value?: unknown; type?: string } | undefined };
 type SubtableRow = { value?: { [code: string]: { value?: unknown; type?: string } | undefined } };
 
-type CalcField = { code: string; ast: CalcNode; format: string };
+type AutoCalcField = {
+  code: string;
+  ast: CalcNode;
+  type: "CALC" | "SINGLE_LINE_TEXT";
+  /** CALC のみ。SINGLE_LINE_TEXT は常に文字列出力 */
+  format: string;
+};
 
 type FieldDef = {
   type?: string;
@@ -20,26 +33,31 @@ type FieldDef = {
 
 const DATE_TYPES = new Set(["DATE", "DATETIME", "CREATED_TIME", "UPDATED_TIME", "TIME"]);
 
-const collectCalcFields = (fieldRows: FieldRow[]): CalcField[] => {
-  const calcs: CalcField[] = [];
+const collectAutoCalcFields = (fieldRows: FieldRow[]): AutoCalcField[] => {
+  const acs: AutoCalcField[] = [];
   for (const row of fieldRows) {
     const def = JSON.parse(row.body) as FieldDef;
-    if (def.type !== "CALC") continue;
+    if (def.type !== "CALC" && def.type !== "SINGLE_LINE_TEXT") continue;
     const expr = (def.expression ?? "").trim();
     if (expr === "") continue;
     try {
-      calcs.push({ code: row.code, ast: parseExpression(expr), format: def.format ?? "NUMBER" });
+      acs.push({
+        code: row.code,
+        ast: parseExpression(expr),
+        type: def.type,
+        format: def.format ?? "NUMBER",
+      });
     } catch {
       // deploy 時検証を通っていれば到達しないはず
     }
   }
-  return topologicalSort(calcs);
+  return topologicalSort(acs);
 };
 
-const topologicalSort = (calcs: CalcField[]): CalcField[] => {
-  const codes = new Set(calcs.map((c) => c.code));
+const topologicalSort = (acs: AutoCalcField[]): AutoCalcField[] => {
+  const codes = new Set(acs.map((c) => c.code));
   const deps = new Map<string, string[]>();
-  for (const c of calcs) {
+  for (const c of acs) {
     deps.set(c.code, [...collectFieldRefs(c.ast)].filter((ref) => codes.has(ref)));
   }
   const order: string[] = [];
@@ -50,26 +68,22 @@ const topologicalSort = (calcs: CalcField[]): CalcField[] => {
     for (const d of deps.get(code) ?? []) visit(d);
     order.push(code);
   };
-  for (const c of calcs) visit(c.code);
-  const byCode = new Map(calcs.map((c) => [c.code, c]));
+  for (const c of acs) visit(c.code);
+  const byCode = new Map(acs.map((c) => [c.code, c]));
   return order.map((code) => byCode.get(code)!);
 };
 
-/**
- * record の CALC フィールドに計算結果を書き込む（in-place 更新）。
- * Phase 3: 数値演算 + 比較・論理 + IF / SUM / ROUND 系 + 日付演算（フィールドを Unix 秒に変換）。
- */
 export const computeCalcFields = (fieldRows: FieldRow[], record: RecordBody): void => {
-  const calcs = collectCalcFields(fieldRows);
-  if (calcs.length === 0) return;
+  const acs = collectAutoCalcFields(fieldRows);
+  if (acs.length === 0) return;
 
   const fieldDefs = parseFieldDefs(fieldRows);
   const values = buildValuesMap(fieldDefs, record);
 
-  for (const calc of calcs) {
-    const stored = computeOne(calc, values);
-    record[calc.code] = { type: "CALC", value: stored };
-    values[calc.code] = stored;
+  for (const ac of acs) {
+    const stored = computeOne(ac, values);
+    record[ac.code] = { type: ac.type, value: stored };
+    values[ac.code] = stored;
   }
 };
 
@@ -100,6 +114,11 @@ const buildValuesMap = (fieldDefs: Map<string, FieldDef>, record: RecordBody): C
       values[code] = dateValueToSeconds(def.type, raw);
       continue;
     }
+    // NUMBER / CALC は文字列で保存されているが評価上は数値として扱う
+    if (def.type === "NUMBER" || def.type === "CALC") {
+      values[code] = toNumberOrZero(raw);
+      continue;
+    }
     if (typeof raw === "string" || typeof raw === "number") {
       values[code] = raw;
     }
@@ -107,7 +126,12 @@ const buildValuesMap = (fieldDefs: Map<string, FieldDef>, record: RecordBody): C
   return values;
 };
 
-/** DATE / DATETIME / TIME 等を Unix 秒（または 0:00 起点の秒数）に変換 */
+const toNumberOrZero = (raw: unknown): number => {
+  if (raw == null || raw === "") return 0;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
 const dateValueToSeconds = (fieldType: string, raw: unknown): number => {
   if (raw == null || raw === "") return 0;
   const s = String(raw);
@@ -117,74 +141,64 @@ const dateValueToSeconds = (fieldType: string, raw: unknown): number => {
     return Number(m[1]) * 3600 + Number(m[2]) * 60;
   }
   if (fieldType === "DATE") {
-    // DATE はユーザー TZ 依存だが、実機観察では UTC 00:00 起点で計算される模様
     const t = Date.parse(`${s}T00:00:00Z`);
     return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
   }
-  // DATETIME / CREATED_TIME / UPDATED_TIME は ISO 8601 UTC
   const t = Date.parse(s);
   return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
 };
 
-const computeOne = (calc: CalcField, values: CalcValues): string => {
-  let n: number;
+const computeOne = (ac: AutoCalcField, values: CalcValues): string => {
+  let result: CalcResult;
   try {
-    n = evaluateNumeric(calc.ast, values);
+    result = evaluate(ac.ast, values);
   } catch (e) {
     if (e instanceof CalcEvalError) return "";
     throw e;
   }
-  return formatCalcOutput(n, calc.format);
+  if (ac.type === "SINGLE_LINE_TEXT") {
+    return asString(result);
+  }
+  return formatCalcOutput(result, ac.format);
 };
 
-const formatCalcOutput = (n: number, format: string): string => {
-  if (!Number.isFinite(n)) return "";
+// CALC は format が数値系のときのみ数値結果を整形して返す。
+// 文字列結果（DATE_FORMAT / YEN / & / IF の文字列分岐）は CALC 上では "" になる（実機挙動）。
+const formatCalcOutput = (result: CalcResult, format: string): string => {
+  if (typeof result === "string") return "";
+  if (!Number.isFinite(result)) return "";
   switch (format) {
     case "NUMBER":
-    case "NUMBER_DIGIT":
-      return formatNumberAsKintone(n);
-    case "DATETIME":
-      return formatDateTime(n);
-    case "DATE":
-      return formatDate(n);
-    case "TIME":
-      return formatTime(n);
+    case "NUMBER_DIGIT":   return formatNumberAsKintone(result);
+    case "DATETIME":       return formatDateTime(result);
+    case "DATE":           return formatDate(result);
+    case "TIME":           return formatTime(result);
     case "HOUR_MINUTE":
-    case "DAY_HOUR_MINUTE":
-      return formatHourMinute(n);
-    default:
-      return formatNumberAsKintone(n);
+    case "DAY_HOUR_MINUTE": return formatHourMinute(result);
+    default:               return formatNumberAsKintone(result);
   }
 };
 
-// 秒 → "YYYY-MM-DDTHH:MM:SSZ"
 const formatDateTime = (sec: number): string => {
   const d = new Date(Math.floor(sec) * 1000);
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 };
 
-// 秒 → "YYYY-MM-DD"
 const formatDate = (sec: number): string => {
   const d = new Date(Math.floor(sec) * 1000);
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().slice(0, 10);
 };
 
-// 秒 mod 86400 → "HH:MM"
 const formatTime = (sec: number): string => {
   const total = ((Math.floor(sec) % 86400) + 86400) % 86400;
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  return `${pad2(h)}:${pad2(m)}`;
+  return `${pad2(Math.floor(total / 3600))}:${pad2(Math.floor((total % 3600) / 60))}`;
 };
 
-// 総秒数 → "HH:MM"（24h を超える可能性あり）
 const formatHourMinute = (sec: number): string => {
   const total = Math.max(0, Math.floor(sec));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  return `${pad2(h)}:${pad2(m)}`;
+  return `${pad2(Math.floor(total / 3600))}:${pad2(Math.floor((total % 3600) / 60))}`;
 };
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { CalcEvalError, evaluateNumeric, formatNumberAsKintone } from "../../src/calc/evaluator";
+import { CalcEvalError, evaluate, evaluateNumeric, formatNumberAsKintone } from "../../src/calc/evaluator";
 import { parseExpression } from "../../src/calc/parser";
 
 const evalExpr = (expr: string, values: Record<string, string | number> = {}): number =>
@@ -114,6 +114,44 @@ describe("evaluateNumeric", () => {
 
   test("配列を SUM 以外で参照すると 0", () => {
     expect(evaluateNumeric(parseExpression("qty + 1"), { qty: [10, 20] })).toBe(1);
+  });
+});
+
+describe("evaluate (string-aware)", () => {
+  test("文字列リテラルが文字列で返る", () => {
+    expect(evaluate(parseExpression('"hello"'), {})).toBe("hello");
+  });
+
+  test("& による文字列連結", () => {
+    expect(evaluate(parseExpression('"a" & "b"'), {})).toBe("ab");
+    expect(evaluate(parseExpression('a & " " & b'), { a: "100", b: "20" })).toBe("100 20");
+    expect(evaluate(parseExpression('"x=" & 1 + 2'), {})).toBe("x=3");
+  });
+
+  test("IF の文字列分岐", () => {
+    expect(evaluate(parseExpression('IF(a > 10, "big", "small")'), { a: 15 })).toBe("big");
+    expect(evaluate(parseExpression('IF(a > 10, "big", "small")'), { a: 5 })).toBe("small");
+  });
+
+  test("YEN — 千区切り + ¥", () => {
+    expect(evaluate(parseExpression("YEN(1000, 0)"), {})).toBe("¥1,000");
+    expect(evaluate(parseExpression("YEN(1234567, 0)"), {})).toBe("¥1,234,567");
+    expect(evaluate(parseExpression("YEN(1000.4, 0)"), {})).toBe("¥1,000");
+    expect(evaluate(parseExpression("YEN(1000.5, 0)"), {})).toBe("¥1,001");
+    expect(evaluate(parseExpression("YEN(1234.5, 1)"), {})).toBe("¥1,234.5");
+    expect(evaluate(parseExpression("YEN(-500, 0)"), {})).toBe("-¥500");
+  });
+
+  test("DATE_FORMAT — UNIX 秒", () => {
+    // 2025-04-25 09:40:00 UTC ≈ 1745574000s
+    expect(evaluate(parseExpression('DATE_FORMAT(1745574000, "YYYY-MM-dd", "UTC")'), {})).toBe("2025-04-25");
+    // Asia/Tokyo は +9h、UTC 09:40 → JST 18:40
+    expect(evaluate(parseExpression('DATE_FORMAT(1745574000, "HH:mm", "Asia/Tokyo")'), {})).toBe("18:40");
+    expect(evaluate(parseExpression('DATE_FORMAT(1745574000, "YYYY MMM d", "UTC")'), {})).toBe("2025 Apr 25");
+  });
+
+  test("DATE_FORMAT — system は UTC 扱い", () => {
+    expect(evaluate(parseExpression('DATE_FORMAT(0, "YYYY-MM-dd HH:mm:ss", "system")'), {})).toBe("1970-01-01 00:00:00");
   });
 });
 
