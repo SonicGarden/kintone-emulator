@@ -1666,3 +1666,115 @@ describeDualMode("ルックアップ: relatedKeyField が RECORD_NUMBER", () => 
     expect(record.copied_name).toMatchObject({ value: "" });
   });
 });
+
+describeDualMode("SUBTABLE 内 LOOKUP", () => {
+  const SESSION = "subtable-lookup";
+  let client: KintoneRestAPIClient;
+  let masterAppId: number;
+  let lookupAppId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+
+    ({ appId: masterAppId } = await createTestApp(SESSION, {
+      name: "商品マスター",
+      properties: {
+        code:  { type: "SINGLE_LINE_TEXT", code: "code",  label: "コード", unique: true },
+        name:  { type: "SINGLE_LINE_TEXT", code: "name",  label: "名前" },
+        price: { type: "NUMBER",           code: "price", label: "価格" },
+      },
+      records: [
+        { code: { value: "P001" }, name: { value: "りんご" }, price: { value: "100" } },
+        { code: { value: "P002" }, name: { value: "みかん" }, price: { value: "80" } },
+      ],
+    }));
+
+    ({ appId: lookupAppId } = await createTestApp(SESSION, {
+      name: "注文（明細）",
+      properties: {
+        items: {
+          type: "SUBTABLE", code: "items", label: "明細",
+          fields: {
+            prod_code: {
+              type: "SINGLE_LINE_TEXT", code: "prod_code", label: "商品コード",
+              lookup: {
+                relatedApp: { app: String(masterAppId) },
+                relatedKeyField: "code",
+                fieldMappings: [
+                  { field: "prod_name",  relatedField: "name" },
+                  { field: "prod_price", relatedField: "price" },
+                ],
+                lookupPickerFields: ["code", "name"],
+                filterCond: "", sort: "",
+              },
+            },
+            prod_name:  { type: "SINGLE_LINE_TEXT", code: "prod_name",  label: "商品名" },
+            prod_price: { type: "NUMBER",           code: "prod_price", label: "価格" },
+            qty:        { type: "NUMBER",           code: "qty",        label: "数量" },
+          },
+        },
+      },
+    }));
+  });
+
+  test("各行のキーが解決され、同じ行のコピー先が埋まる", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: {
+        items: { value: [
+          { value: { prod_code: { value: "P001" }, qty: { value: "5" } } },
+          { value: { prod_code: { value: "P002" }, qty: { value: "3" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    const rows = record.items!.value as Array<{ value: Record<string, { value: unknown }> }>;
+    expect(rows[0]!.value.prod_name).toMatchObject({ value: "りんご" });
+    expect(rows[0]!.value.prod_price).toMatchObject({ value: "100" });
+    expect(rows[1]!.value.prod_name).toMatchObject({ value: "みかん" });
+    expect(rows[1]!.value.prod_price).toMatchObject({ value: "80" });
+  });
+
+  test("行内のキーが空ならその行のコピー先も空", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: {
+        items: { value: [
+          { value: { prod_code: { value: "" }, qty: { value: "1" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    const rows = record.items!.value as Array<{ value: Record<string, { value: unknown }> }>;
+    expect(rows[0]!.value.prod_name).toMatchObject({ value: "" });
+    expect(rows[0]!.value.prod_price).toMatchObject({ value: "" });
+  });
+
+  test("キー不一致は GAIA_LO04", async () => {
+    await expect(
+      client.record.addRecord({
+        app: lookupAppId, record: {
+          items: { value: [
+            { value: { prod_code: { value: "ZZZ" } } },
+          ] },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "GAIA_LO04" });
+  });
+
+  test("行ごとに別キーが解決される（混在）", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: {
+        items: { value: [
+          { value: { prod_code: { value: "P001" } } },
+          { value: { prod_code: { value: "" } } },
+          { value: { prod_code: { value: "P002" } } },
+        ] },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    const rows = record.items!.value as Array<{ value: Record<string, { value: unknown }> }>;
+    expect(rows[0]!.value.prod_name).toMatchObject({ value: "りんご" });
+    expect(rows[1]!.value.prod_name).toMatchObject({ value: "" });
+    expect(rows[2]!.value.prod_name).toMatchObject({ value: "みかん" });
+  });
+});

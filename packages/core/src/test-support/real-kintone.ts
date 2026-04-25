@@ -313,15 +313,6 @@ const filterAddableFields = (
     const f = field as { type: string; fields?: Record<string, unknown>; lookup?: unknown };
     if (SYSTEM_FIELD_TYPES.has(f.type)) continue;
     if (f.type === "REFERENCE_TABLE") continue;
-    // ルックアップを含む SUBTABLE は、内部のルックアップだけ除外してから渡す
-    if (f.type === "SUBTABLE" && f.fields) {
-      const filteredFields: Record<string, unknown> = {};
-      for (const [subCode, subField] of Object.entries(f.fields)) {
-        if (!(subField as { lookup?: unknown }).lookup) filteredFields[subCode] = subField;
-      }
-      result[code] = { ...f, fields: filteredFields };
-      continue;
-    }
     result[code] = field;
   }
   return result;
