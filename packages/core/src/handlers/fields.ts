@@ -1,6 +1,7 @@
 import { findApp } from "../db/apps";
 import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
+import { applyFieldDefaults } from "../field-defaults";
 import { errorNotFoundApp } from "./errors";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
@@ -18,7 +19,7 @@ export const get = ({ request, params }: HandlerArgs) => {
   const rows = findFields(db, appId);
   const properties: Record<string, unknown> = {};
   for (const row of rows) {
-    properties[row.code] = { noLabel: false, ...JSON.parse(row.body) };
+    properties[row.code] = applyFieldDefaults(JSON.parse(row.body) as Record<string, unknown>);
   }
 
   return Response.json({ properties, revision: '1' });

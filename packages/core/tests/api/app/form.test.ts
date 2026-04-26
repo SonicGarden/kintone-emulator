@@ -49,6 +49,13 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
       code: "test",
       label: "Test",
       noLabel: false,
+      required: false,
+      minLength: "",
+      maxLength: "",
+      expression: "",
+      hideExpression: false,
+      unique: false,
+      defaultValue: "",
     });
     await client.app.deleteFormFields({
       app: appId,
