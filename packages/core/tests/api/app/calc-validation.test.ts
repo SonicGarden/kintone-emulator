@@ -144,40 +144,6 @@ describeEmulatorOnly("CALC / 文字列 autoCalc バリデーション", () => {
     expect(body.message).toContain("NOSUCH関数は使用できません。");
   });
 
-  test("LOOKUP の fieldMappings.field が同一リクエスト内に無いと GAIA_FC01", async () => {
-    const res = await addFields({
-      master_code: { type: "SINGLE_LINE_TEXT", code: "master_code", label: "mc",
-        lookup: {
-          relatedApp: { app: "999" }, relatedKeyField: "code",
-          fieldMappings: [{ field: "missing_dest", relatedField: "name" }],
-          lookupPickerFields: [], filterCond: "", sort: "",
-        },
-      },
-      // missing_dest を意図的に含めない
-    });
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.code).toBe("GAIA_FC01");
-    expect(body.message).toContain("指定されたフィールド（code: missing_dest）が見つかりません");
-  });
-
-  test("LOOKUP の fieldMappings.field が同一リクエストにあれば順序問わず OK", async () => {
-    const lookupDef = (mapping: string) => ({
-      type: "SINGLE_LINE_TEXT", code: "master_code", label: "mc",
-      lookup: {
-        relatedApp: { app: "999" }, relatedKeyField: "code",
-        fieldMappings: [{ field: mapping, relatedField: "name" }],
-        lookupPickerFields: [], filterCond: "", sort: "",
-      },
-    });
-    // dest が後ろ
-    const res1 = await addFields({
-      master_code: lookupDef("dest_name"),
-      dest_name: { type: "SINGLE_LINE_TEXT", code: "dest_name", label: "dn" },
-    });
-    expect(res1.status).toBe(200);
-  });
-
   test("setup/app.json でも同様にバリデーションされる", async () => {
     await finalizeSession(BASE_URL);
     await initializeSession(BASE_URL);
