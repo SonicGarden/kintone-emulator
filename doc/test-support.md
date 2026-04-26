@@ -20,6 +20,8 @@
 | `getTestClient(session)` | 上記を組み合わせた `KintoneRestAPIClient` |
 | `createTestApp(session, params)` | emulator: `/setup/app.json`、real: `addFormFields + deploy + addRecords` を一貫した API で実行。`{ appId, recordIds }` を返す |
 | `setupTestAuth(session, user, password)` | emulator 専用の `/setup/auth.json`（real では no-op） |
+| `field(code, type, attrs?)` | フィールド定義を作るヘルパー。type 別のデフォルト属性を補完した完全な定義を返す（実機 `getFormFields` の応答形と同じ shape）。`createTestApp` の `properties` などに渡せる |
+| `applyFieldDefaults(def)` | 既存のフィールド定義に type 別のデフォルトを補完。`field` の下位ビルディングブロック |
 | `createBaseUrl` / `initializeSession` / `finalizeSession` / `setupAuth` / `createApp` | emulator 向けの下位プリミティブ |
 
 ### vitest 固有（`@sonicgarden/kintone-emulator/test-support/vitest`）
@@ -103,7 +105,7 @@ configureTestEnv({ emulatorHost: `localhost:${port}` });
 
 ```ts
 import { beforeEach, expect, test } from "vitest";
-import { createTestApp, getTestClient, resetTestEnvironment } from "@sonicgarden/kintone-emulator/test-support";
+import { createTestApp, field, getTestClient, resetTestEnvironment } from "@sonicgarden/kintone-emulator/test-support";
 import { describeDualMode } from "@sonicgarden/kintone-emulator/test-support/vitest";
 
 describeDualMode("SUBTABLE クエリ", () => {
@@ -117,14 +119,13 @@ describeDualMode("SUBTABLE クエリ", () => {
     ({ appId } = await createTestApp(SESSION, {
       name: "subtable query",
       properties: {
-        top_title: { type: "SINGLE_LINE_TEXT", code: "top_title", label: "top" },
-        items: {
-          type: "SUBTABLE", code: "items", label: "items",
+        top_title: field("top_title", "SINGLE_LINE_TEXT"),
+        items: field("items", "SUBTABLE", {
           fields: {
-            name: { type: "SINGLE_LINE_TEXT", code: "name", label: "name" },
-            qty:  { type: "NUMBER",           code: "qty",  label: "qty" },
+            name: field("name", "SINGLE_LINE_TEXT"),
+            qty:  field("qty",  "NUMBER"),
           },
-        },
+        }),
       },
       records: [
         { top_title: { value: "r1" }, items: { value: [
@@ -140,6 +141,36 @@ describeDualMode("SUBTABLE クエリ", () => {
     });
     expect(records).toHaveLength(1);
   });
+});
+```
+
+### 5. `field` ヘルパー詳細
+
+最低限 `code` と `type` を受け取り、type 別の optional 属性をデフォルトで埋めた完全な定義を返します。明示的に渡した属性はデフォルトより優先されます。
+
+```ts
+field("title", "SINGLE_LINE_TEXT");
+// → { code: "title", type: "SINGLE_LINE_TEXT", label: "title",
+//      noLabel: false, required: false, minLength: "", maxLength: "",
+//      expression: "", hideExpression: false, unique: false, defaultValue: "" }
+
+field("qty", "NUMBER", { required: true, maxValue: "100", unit: "個" });
+// 指定した required/maxValue/unit が優先、他は型のデフォルト
+
+field("color", "RADIO_BUTTON", {
+  options: { red: { label: "赤", index: "0" }, blue: { label: "青", index: "1" } },
+});
+// RADIO_BUTTON は実機準拠で required: true、defaultValue は最初の option キー (red)
+```
+
+`SUBTABLE` の `fields` 内の inner field も `field()` で書けます。inner field 単体に対して `applyFieldDefaults` が再帰的に走るので、inner の `code` も同様にエントリキーから自動補完されます:
+
+```ts
+field("items", "SUBTABLE", {
+  fields: {
+    name: field("name", "SINGLE_LINE_TEXT"),
+    qty:  field("qty",  "NUMBER", { required: true }),
+  },
 });
 ```
 
