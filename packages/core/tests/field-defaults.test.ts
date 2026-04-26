@@ -185,8 +185,8 @@ describe("applyFieldDefaults — 各 type", () => {
     });
     expect(f).not.toHaveProperty("minValue");
     expect(f).not.toHaveProperty("digit");
-    expect((f.lookup as any).filterCond).toBe("");
-    expect((f.lookup as any).sort).toBe("レコード番号 desc");
+    expect((f.lookup as Record<string, unknown>).filterCond).toBe("");
+    expect((f.lookup as Record<string, unknown>).sort).toBe("レコード番号 desc");
   });
 
   test("LOOKUP の lookup 内属性をユーザーが指定したら優先", () => {
