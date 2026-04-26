@@ -99,6 +99,18 @@ export const errorInvalidFormula = (
 export const errorInvalidCalcFormat = (key: string, locale: Locale = "ja") =>
   errorInvalidInput({ [key]: { messages: [MESSAGES[locale].enumValue] } }, locale);
 
+// addFormFields 時に LOOKUP の fieldMappings.field が同一リクエスト内 +
+// 既存フィールドのいずれにも存在しない場合に返るエラー。
+export const errorFieldNotFound = (fieldCode: string, locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? `指定されたフィールド（code: ${fieldCode}）が見つかりません。`
+    : `The specified field (code: ${fieldCode}) is not found.`;
+  return Response.json(
+    { code: "GAIA_FC01", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
 // ルックアップのキー不一致（HTTP 400、errors オブジェクトは付かない）
 export const errorLookupNotFound = (fieldCode: string, value: string, locale: Locale = "ja") => {
   const message = locale === "ja"
