@@ -30,14 +30,14 @@ describeEmulatorOnly("アプリ作成API", () => {
   });
 
   test("複数回作成するとIDがインクリメントされる", async () => {
-    const id1 = await createApp(BASE_URL, { name: "アプリ1" });
-    const id2 = await createApp(BASE_URL, { name: "アプリ2" });
+    const id1 = (await createApp(BASE_URL, { name: "アプリ1" })).appId;
+    const id2 = (await createApp(BASE_URL, { name: "アプリ2" })).appId;
 
     expect(id2).toBeGreaterThan(id1);
   });
 
   test("ID を指定してアプリを作成するとそのIDが使われる", async () => {
-    const appId = await createApp(BASE_URL, { id: 42, name: "ID指定アプリ" });
+    const appId = (await createApp(BASE_URL, { id: 42, name: "ID指定アプリ" })).appId;
     expect(appId).toBe(42);
 
     const client = new KintoneRestAPIClient({
@@ -115,7 +115,7 @@ describeEmulatorOnly("アプリ作成API", () => {
       auth: { apiToken: "test" },
     });
 
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "フィールド付きアプリ",
       properties: {
         text_field: {
@@ -123,7 +123,7 @@ describeEmulatorOnly("アプリ作成API", () => {
           label: "テキスト",
         },
       },
-    });
+    })).appId;
 
     const formResult = await client.app.getFormFields({ app: appId });
     expect(formResult.properties).toHaveProperty("text_field");
@@ -140,7 +140,7 @@ describeEmulatorOnly("アプリ作成API", () => {
       auth: { apiToken: "test" },
     });
 
-    const appId = await createApp(BASE_URL, { name: "フィールドなしアプリ" });
+    const appId = (await createApp(BASE_URL, { name: "フィールドなしアプリ" })).appId;
 
     const formResult = await client.app.getFormFields({ app: appId });
     expect(formResult.properties).toEqual({});
@@ -148,10 +148,10 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("properties 指定時は RECORD_NUMBER（レコード番号）が自動補完される", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "自動補完アプリ",
       properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
-    });
+    })).appId;
     const { properties } = await client.app.getFormFields({ app: appId });
     expect(properties["レコード番号"]).toMatchObject({
       type: "RECORD_NUMBER",
@@ -161,13 +161,13 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("ユーザーが RECORD_NUMBER を明示していれば自動補完しない", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "明示 RECORD_NUMBER アプリ",
       properties: {
         my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
         foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
       },
-    });
+    })).appId;
     const { properties } = await client.app.getFormFields({ app: appId });
     expect(properties).toHaveProperty("my_no");
     expect(properties).not.toHaveProperty("レコード番号");
@@ -175,11 +175,11 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("レコード取得時、RECORD_NUMBER フィールドコードでも値が返り、$id の type は __ID__", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "RECORD_NUMBER 返却テスト",
       properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
       records: [{ foo: { value: "x" } }],
-    });
+    })).appId;
     const { record } = await client.record.getRecord({ app: appId, id: 1 });
     expect(record.$id).toEqual({ value: "1", type: "__ID__" });
     expect(record["レコード番号"]).toEqual({ value: "1", type: "RECORD_NUMBER" });
@@ -187,10 +187,10 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("作成日時 / 更新日時 フィールドも自動補完され、GET レスポンスに値が含まれる", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "timestamp fields",
       properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
-    });
+    })).appId;
     // フィールド定義に追加されている
     const { properties } = await client.app.getFormFields({ app: appId });
     expect(properties["作成日時"]).toMatchObject({ type: "CREATED_TIME", code: "作成日時" });
@@ -210,10 +210,10 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("PUT で更新すると更新日時が変わる（作成日時は不変）", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "timestamp update",
       properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
-    });
+    })).appId;
     const { id } = await client.record.addRecord({ app: appId, record: { foo: { value: "a" } } });
     const before = await client.record.getRecord({ app: appId, id });
     const createdBefore = before.record["作成日時"]!.value;
@@ -234,14 +234,14 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("ユーザーが CREATED_TIME / UPDATED_TIME を明示していれば自動補完しない", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "explicit timestamps",
       properties: {
         my_created: { type: "CREATED_TIME", code: "my_created", label: "my created" },
         my_updated: { type: "UPDATED_TIME", code: "my_updated", label: "my updated" },
         foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
       },
-    });
+    })).appId;
     const { properties } = await client.app.getFormFields({ app: appId });
     expect(properties).toHaveProperty("my_created");
     expect(properties).toHaveProperty("my_updated");
@@ -256,14 +256,14 @@ describeEmulatorOnly("アプリ作成API", () => {
 
   test("カスタムフィールドコードの RECORD_NUMBER でも値が返る", async () => {
     const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "カスタム RECORD_NUMBER",
       properties: {
         my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
         foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
       },
       records: [{ foo: { value: "x" } }],
-    });
+    })).appId;
     const { record } = await client.record.getRecord({ app: appId, id: 1 });
     expect(record.my_no).toEqual({ value: "1", type: "RECORD_NUMBER" });
     expect(record.$id).toEqual({ value: "1", type: "__ID__" });
@@ -275,7 +275,7 @@ describeEmulatorOnly("アプリ作成API", () => {
       auth: { apiToken: "test" },
     });
 
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "複数フィールドアプリ",
       properties: {
         field1: {
@@ -287,7 +287,7 @@ describeEmulatorOnly("アプリ作成API", () => {
           label: "フィールド2",
         },
       },
-    });
+    })).appId;
 
     const formResult = await client.app.getFormFields({ app: appId });
     expect(formResult.properties).toHaveProperty("field1");
@@ -313,7 +313,7 @@ describeEmulatorOnly("アプリ情報取得API", () => {
   });
 
   test("作成したアプリを1件取得できる", async () => {
-    const appIdNum = await createApp(BASE_URL, { name: "取得テストアプリ" });
+    const appIdNum = (await createApp(BASE_URL, { name: "取得テストアプリ" })).appId;
     const appId = String(appIdNum);
 
     const result = await client.app.getApp({ id: appIdNum });
@@ -358,7 +358,7 @@ describeEmulatorOnly("アプリ情報取得API", () => {
   });
 
   test("IDで絞り込んで取得できる", async () => {
-    const id1 = await createApp(BASE_URL, { name: "アプリX" });
+    const id1 = (await createApp(BASE_URL, { name: "アプリX" })).appId;
     await createApp(BASE_URL, { name: "アプリY" });
 
     const result = await client.app.getApps({ ids: [id1] });

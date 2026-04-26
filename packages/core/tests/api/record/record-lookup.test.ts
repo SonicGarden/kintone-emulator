@@ -205,15 +205,15 @@ describeEmulatorOnly("ルックアップ（emulator 固有の応答形）", () =
   beforeEach(async () => {
     await initializeSession(BASE_URL);
     client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
-    const masterAppId = await createApp(BASE_URL, {
+    const masterAppId = (await createApp(BASE_URL, {
       name: "商品マスター",
       properties: {
         code:  { type: "SINGLE_LINE_TEXT", code: "code",  label: "コード", unique: true },
         name:  { type: "SINGLE_LINE_TEXT", code: "name",  label: "名前" },
       },
       records: [{ code: { value: "P001" }, name: { value: "りんご" } }],
-    });
-    lookupAppId = await createApp(BASE_URL, {
+    })).appId;
+    lookupAppId = (await createApp(BASE_URL, {
       name: "注文",
       properties: {
         prod_code: {
@@ -228,7 +228,7 @@ describeEmulatorOnly("ルックアップ（emulator 固有の応答形）", () =
         },
         prod_name: { type: "SINGLE_LINE_TEXT", code: "prod_name", label: "商品名" },
       },
-    });
+    })).appId;
     // client 初期化で使用するために lookupAppId を閉じ込めた parameter 名で touch
     void client;
   });

@@ -10,14 +10,14 @@ describeEmulatorOnly("Accept-Language によるメッセージ切り替え", () 
   beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
   beforeEach(async () => {
     await initializeSession(BASE_URL);
-    appId = await createApp(BASE_URL, {
+    appId = (await createApp(BASE_URL, {
       name: "locale テスト",
       properties: {
         req_text: { type: "SINGLE_LINE_TEXT", code: "req_text", label: "req", required: true, maxLength: "3", unique: true },
         num:      { type: "NUMBER",           code: "num",      label: "num", maxValue: "100", minValue: "10" },
         radio:    { type: "RADIO_BUTTON",     code: "radio",    label: "radio", options: { A: { label: "A", index: "0" } } },
       },
-    });
+    })).appId;
   });
   afterEach(async () => { await finalizeSession(BASE_URL); });
 

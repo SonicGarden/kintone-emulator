@@ -114,7 +114,7 @@ describeEmulatorOnly("アプリのレコードAPI（emulator 固有）", () => {
   });
 
   test("setup/app.json の records で $id を指定するとレコード ID が維持される", async () => {
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "ID指定レコードアプリ",
       properties: {
         title: { type: "SINGLE_LINE_TEXT", code: "title", label: "タイトル" },
@@ -123,7 +123,7 @@ describeEmulatorOnly("アプリのレコードAPI（emulator 固有）", () => {
         { $id: { value: "100" }, title: { value: "レコード100" } },
         { $id: { value: "200" }, title: { value: "レコード200" } },
       ],
-    });
+    })).appId;
 
     const record100 = await client!.record.getRecord({ app: appId, id: 100 });
     expect(record100.record.$id).toEqual({ value: "100", type: "__ID__" });
@@ -150,14 +150,14 @@ describeEmulatorOnly("アプリのレコードAPI（emulator 固有）", () => {
   });
 
   test("異なるアプリのレコード ID はそれぞれ1から始まる", async () => {
-    const app1 = await createApp(BASE_URL, {
+    const app1 = (await createApp(BASE_URL, {
       name: "アプリ1",
       properties: { field1: { type: "SINGLE_LINE_TEXT", code: "field1", label: "フィールド1" } },
-    });
-    const app2 = await createApp(BASE_URL, {
+    })).appId;
+    const app2 = (await createApp(BASE_URL, {
       name: "アプリ2",
       properties: { field2: { type: "SINGLE_LINE_TEXT", code: "field2", label: "フィールド2" } },
-    });
+    })).appId;
 
     const result1 = await client!.record.addRecord({
       app: app1,

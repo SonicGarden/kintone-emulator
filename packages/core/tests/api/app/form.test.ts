@@ -13,7 +13,7 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
 
   beforeEach(async () => {
     await initializeSession(BASE_URL);
-    appId = await createApp(BASE_URL, { name: "テストアプリ" });
+    appId = (await createApp(BASE_URL, { name: "テストアプリ" })).appId;
   });
 
   afterEach(async () => {

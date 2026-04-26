@@ -23,7 +23,7 @@ describeEmulatorOnly("フォームレイアウト取得API", () => {
       auth: { apiToken: "test" },
     });
 
-    const appId = await createApp(BASE_URL, { name: "レイアウトなしアプリ" });
+    const appId = (await createApp(BASE_URL, { name: "レイアウトなしアプリ" })).appId;
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual([]);
@@ -49,7 +49,7 @@ describeEmulatorOnly("フォームレイアウト取得API", () => {
       },
     ];
 
-    const appId = await createApp(BASE_URL, { name: "レイアウトありアプリ", layout });
+    const appId = (await createApp(BASE_URL, { name: "レイアウトありアプリ", layout })).appId;
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual(layout);
