@@ -148,6 +148,87 @@ describe("applyFieldDefaults — 各 type", () => {
     });
   });
 
+  test("LOOKUP (SLT + lookup)：基底 type のデフォルトは入らず、lookup の defaults のみ", () => {
+    const f = applyFieldDefaults({
+      type: "SINGLE_LINE_TEXT", code: "lk", label: "lk",
+      lookup: {
+        relatedApp: { app: "12" },
+        relatedKeyField: "code",
+        fieldMappings: [{ field: "dest", relatedField: "name" }],
+      },
+    });
+    expect(f).toEqual({
+      type: "SINGLE_LINE_TEXT", code: "lk", label: "lk",
+      noLabel: false, required: false,
+      lookup: {
+        relatedApp: { app: "12", code: "" },
+        relatedKeyField: "code",
+        fieldMappings: [{ field: "dest", relatedField: "name" }],
+        lookupPickerFields: [],
+        filterCond: "",
+        sort: "レコード番号 desc",
+      },
+    });
+    // 基底 SLT のデフォルト（minLength 等）は入らない
+    expect(f).not.toHaveProperty("minLength");
+    expect(f).not.toHaveProperty("defaultValue");
+  });
+
+  test("LOOKUP (NUMBER + lookup)：基底 type のデフォルトは入らない", () => {
+    const f = applyFieldDefaults({
+      type: "NUMBER", code: "lk", label: "lk",
+      lookup: {
+        relatedApp: { app: "12" }, relatedKeyField: "price",
+        fieldMappings: [{ field: "dest", relatedField: "price" }],
+        lookupPickerFields: ["price"],
+      },
+    });
+    expect(f).not.toHaveProperty("minValue");
+    expect(f).not.toHaveProperty("digit");
+    expect((f.lookup as any).filterCond).toBe("");
+    expect((f.lookup as any).sort).toBe("レコード番号 desc");
+  });
+
+  test("LOOKUP の lookup 内属性をユーザーが指定したら優先", () => {
+    const f = applyFieldDefaults({
+      type: "SINGLE_LINE_TEXT", code: "lk", label: "lk",
+      lookup: {
+        relatedApp: { app: "12", code: "MASTER" },
+        relatedKeyField: "code",
+        fieldMappings: [],
+        lookupPickerFields: ["a", "b"],
+        filterCond: 'status in ("active")',
+        sort: "price desc",
+      },
+    });
+    const lk = f.lookup as Record<string, unknown>;
+    expect(lk.lookupPickerFields).toEqual(["a", "b"]);
+    expect(lk.filterCond).toBe('status in ("active")');
+    expect(lk.sort).toBe("price desc");
+    expect(lk.relatedApp).toEqual({ app: "12", code: "MASTER" });
+  });
+
+  test("REFERENCE_TABLE：required なし、referenceTable のデフォルト補完", () => {
+    const f = applyFieldDefaults({
+      type: "REFERENCE_TABLE", code: "rt", label: "rt",
+      referenceTable: {
+        relatedApp: { app: "12" },
+        condition: { field: "key", relatedField: "code" },
+        displayFields: ["name"],
+      },
+    });
+    expect(f).not.toHaveProperty("required");
+    expect(f.noLabel).toBe(false);
+    expect(f.referenceTable).toEqual({
+      relatedApp: { app: "12", code: "" },
+      condition: { field: "key", relatedField: "code" },
+      displayFields: ["name"],
+      filterCond: "",
+      sort: "レコード番号 desc",
+      size: "5",
+    });
+  });
+
   test("SUBTABLE（required を持たず、内部 fields は再帰補完）", () => {
     const f = applyFieldDefaults({
       type: "SUBTABLE", code: "items", label: "items",

@@ -29,8 +29,33 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   GROUP_SELECT:        { entities: [], defaultValue: [] },
 };
 
-// SUBTABLE は noLabel のみ持ち、required は持たない（実機準拠）
-const NO_REQUIRED_TYPES = new Set(["SUBTABLE"]);
+// SUBTABLE / REFERENCE_TABLE は noLabel のみ持ち、required は持たない（実機準拠）
+const NO_REQUIRED_TYPES = new Set(["SUBTABLE", "REFERENCE_TABLE"]);
+
+// 実機で lookup / referenceTable が自動設定するデフォルト sort
+const DEFAULT_REF_SORT = "レコード番号 desc";
+
+// LOOKUP の lookup プロパティに補完するデフォルト
+const applyLookupDefaults = (lookup: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = { ...lookup };
+  const relatedApp = (out.relatedApp ?? {}) as Record<string, unknown>;
+  out.relatedApp = { ...relatedApp, code: relatedApp.code ?? "" };
+  if (!("lookupPickerFields" in out)) out.lookupPickerFields = [];
+  if (!("filterCond" in out)) out.filterCond = "";
+  if (!("sort" in out)) out.sort = DEFAULT_REF_SORT;
+  return out;
+};
+
+// REFERENCE_TABLE の referenceTable プロパティに補完するデフォルト
+const applyReferenceTableDefaults = (rt: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = { ...rt };
+  const relatedApp = (out.relatedApp ?? {}) as Record<string, unknown>;
+  out.relatedApp = { ...relatedApp, code: relatedApp.code ?? "" };
+  if (!("filterCond" in out)) out.filterCond = "";
+  if (!("sort" in out)) out.sort = DEFAULT_REF_SORT;
+  if (!("size" in out)) out.size = "5";
+  return out;
+};
 
 const firstOptionKey = (def: FieldDef): string | undefined => {
   const opts = def.options as Record<string, { label?: string; index?: string }> | undefined;
@@ -68,6 +93,21 @@ export const applyFieldDefaults = (def: FieldDef): FieldDef => {
   for (const [k, v] of Object.entries(COMMON)) {
     if (k === "required" && NO_REQUIRED_TYPES.has(type)) continue;
     if (!(k in out)) out[k] = v;
+  }
+
+  // REFERENCE_TABLE は referenceTable オブジェクトのデフォルトのみ補完（基底 type のデフォルトは無し）
+  if (type === "REFERENCE_TABLE") {
+    if (out.referenceTable && typeof out.referenceTable === "object") {
+      out.referenceTable = applyReferenceTableDefaults(out.referenceTable as Record<string, unknown>);
+    }
+    return out;
+  }
+
+  // lookup プロパティを持つフィールドは基底 type のデフォルト（minLength 等）を入れず、
+  // lookup オブジェクトのデフォルトだけ補完する（実機準拠）
+  if (out.lookup && typeof out.lookup === "object") {
+    out.lookup = applyLookupDefaults(out.lookup as Record<string, unknown>);
+    return out;
   }
 
   // RADIO_BUTTON は required: true がデフォルト（共通の required: false より優先）
