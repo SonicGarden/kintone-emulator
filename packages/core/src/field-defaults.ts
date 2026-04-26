@@ -97,11 +97,11 @@ export const applyFieldDefaults = (def: FieldDef): FieldDef => {
  * type ごとのデフォルトを補完した完全なフィールド定義を返す。
  *
  * @example
- *   field("title", "SINGLE_LINE_TEXT")
- *   field("qty",   "NUMBER",       { required: true, maxValue: "100" })
- *   field("color", "RADIO_BUTTON", { options: { red: { label: "Red", index: "0" } } })
+ *   fieldProperty("title", "SINGLE_LINE_TEXT")
+ *   fieldProperty("qty",   "NUMBER",       { required: true, maxValue: "100" })
+ *   fieldProperty("color", "RADIO_BUTTON", { options: { red: { label: "Red", index: "0" } } })
  */
-export const field = (
+export const fieldProperty = (
   code: string,
   type: string,
   attrs?: Record<string, unknown>,

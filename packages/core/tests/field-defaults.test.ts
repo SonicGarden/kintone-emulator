@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { applyFieldDefaults, field } from "../src/field-defaults";
+import { applyFieldDefaults, fieldProperty } from "../src/field-defaults";
 
-describe("field()", () => {
+describe("fieldProperty()", () => {
   test("最小プロパティ（code, type）でデフォルトが補完される", () => {
-    expect(field("title", "SINGLE_LINE_TEXT")).toEqual({
+    expect(fieldProperty("title", "SINGLE_LINE_TEXT")).toEqual({
       type: "SINGLE_LINE_TEXT",
       code: "title",
       label: "title",
@@ -19,7 +19,7 @@ describe("field()", () => {
   });
 
   test("optional 属性は指定したものが優先される", () => {
-    const f = field("qty", "NUMBER", { required: true, maxValue: "100", unit: "個" });
+    const f = fieldProperty("qty", "NUMBER", { required: true, maxValue: "100", unit: "個" });
     expect(f.required).toBe(true);
     expect(f.maxValue).toBe("100");
     expect(f.unit).toBe("個");
@@ -30,7 +30,7 @@ describe("field()", () => {
   });
 
   test("label を明示的に渡したら優先", () => {
-    expect(field("c", "SINGLE_LINE_TEXT", { label: "明示" }).label).toBe("明示");
+    expect(fieldProperty("c", "SINGLE_LINE_TEXT", { label: "明示" }).label).toBe("明示");
   });
 });
 
