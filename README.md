@@ -266,7 +266,7 @@ npx --package @sonicgarden/kintone-emulator-cli sg-kintone export-app \
 - **リビジョン（楽観的ロック）** — `PUT /k/v1/record.json` の `revision` パラメーターは無視される（不一致でもエラーにならない）
 - **OAuth / セッション認証** — API トークン認証 / パスワード認証のみサポート
 - **`lang` クエリパラメーター** — `GET /k/v1/app/form/fields.json?lang=...` の多言語ラベル対応
-- **`LOOKUP` の `filterCond` / `sort`** — 参照先レコードの絞り込み・ソートは未対応
+- **`LOOKUP` の `filterCond` / `sort` の deploy 時バリデーション** — `filterCond` / `sort` 自体は UI のルックアップピッカー専用で REST API の値コピーには影響しない（実機もそう）。当エミュレーターは値をストレージするだけで参照しないため API 互換だが、不正なクエリ構文や型不適合な演算子（NUMBER に `>` 等）の deploy 時拒否は未実装
 - **アプリコード機能全般** — 参照先アプリにアプリコードを設定したり、`lookup.relatedApp.code` を参照先アプリのアプリコードと同期させたりする仕組みは未実装（エミュレーターは保存された値をそのまま返すだけで、アプリコード変更への追従もなし）
 - **`REFERENCE_TABLE` の動的参照**
 - **CALC の型不整合 deploy 時検出** — 演算子・関数の型不一致や「配列型関数エラー」は実機が deploy 時に GAIA_IL01 で拒否するが、エミュレーターは deploy を通過し実行時に `""` で代用する
