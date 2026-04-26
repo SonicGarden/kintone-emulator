@@ -1,36 +1,19 @@
 # Dual-mode テスト移行: follow-up リスト
 
-`USE_REAL_KINTONE=1` でも実行できる dual-mode テストへの移行が未完了のブロック一覧。
+`vitest --mode real-kintone` でも実行できる dual-mode テストへの移行が未完了のブロック一覧。
 
 ## 完了済み（describeDualMode）
 
-- `records.test.ts` > `アプリのレコード一覧のAPI` (14 tests; 削除の存在しない ID は実機準拠で GAIA_RE01 に修正済み)
-- `records.test.ts` > `一括 addRecords / updateRecords` (11 tests)
-- `records.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` (6 tests)
-- `records.test.ts` > `システムフィールドコードでの検索クエリ` (3 tests)
-- `records.test.ts` > `一括 addRecords / updateRecords` (11 tests; Accept-Language en / app 欠落 raw fetch の 2 件は emulatorOnly の別ブロック)
-- `record.test.ts` > `アプリのレコードAPI` (3 tests; 逐次 ID / Accept-Language / /setup/app.json の 6 件は emulatorOnly の別ブロック)
-- `record.test.ts` > `required フィールドのバリデーション` (7 tests; `USER_SELECT` を含む検証はダミーユーザーコード問題で除外し、SINGLE_LINE_TEXT と CHECK_BOX で検証)
-- `record.test.ts` > `required フィールドのバリデーション（各フィールドタイプ）` (3 tests; MULTI_LINE_TEXT / RICH_TEXT / NUMBER / DATE / TIME / DATETIME / DROP_DOWN / MULTI_SELECT の required 検証を網羅。`.value` と `.values` の 2 つの errors キー接尾辞をカバー。RADIO_BUTTON は実機で required が発動しないため除外)
-- `record.test.ts` > `unique フィールドのバリデーション` (4 tests)
-- `record.test.ts` > `unique 検証対象のフィールドタイプ` (2 tests; SINGLE_LINE_TEXT/NUMBER/LINK/DATE/DATETIME の 5 タイプ unique 発動を網羅、他タイプは silently drop されて発動しないことを確認)
-- `record.test.ts` > `maxLength / minLength バリデーション` (4 tests; 空文字の minLength 検証も実機準拠)
-- `record.test.ts` > `LINK の minLength` (1 test; 実機は URL 形式エラーも併せて返すため arrayContaining で検証)
-- `record.test.ts` > `maxValue / minValue バリデーション` (4 tests)
-- `record.test.ts` > `options 整合バリデーション` (6 tests)
-- `record.test.ts` > `defaultValue / defaultNowValue の自動補完` (8 tests)
-- `record.test.ts` > `SUBTABLE 対応` (10 tests; 行 id 保持テスト 1 件は testEmulatorOnly)
-- `record.test.ts` > `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）` (5 tests; マージ独自挙動 2 件は testEmulatorOnly)
-- `record.test.ts` > `SUBTABLE 内 NUMBER の正規化 / 非数値の扱い` (6 tests)
-- `record.test.ts` > `top-level NUMBER の正規化` (4 tests)
-- `record.test.ts` > `ルックアップ（LOOKUP）` (11 tests; 応答メッセージ / Accept-Language の 2 件は emulatorOnly の別ブロック)
-- `record.test.ts` > `ルックアップ: relatedKeyField が RECORD_NUMBER` (3 tests)
-- `records.test.ts` > `クエリのエラーレスポンス / 上限チェック` (8 tests; CB_VA01 / GAIA_QU01 / GAIA_QU02 / GAIA_IQ11 / GAIA_IQ07 / GAIA_IQ03 / GAIA_IQ10 すべて実機と一致)
-- `comment.test.ts` > `アプリのレコードコメントAPI` (9 tests; mentions 2 件は testEmulatorOnly)
-
-合計 **114 tests** を実 kintone 環境で検証済み（combined run / 全 pass / 524 秒）。
-
-（行を足し算するとダブっている 6 件があるのは同ブロック内の個別 test を重複記述したため。実機実行の実数は 114）
+- `records-basic.test.ts` > `アプリのレコード一覧のAPI` / `一括 addRecords / updateRecords`（emulator 固有の app 欠落 raw fetch / Accept-Language en は emulatorOnly の別ブロック）
+- `records-query.test.ts` > `SUBTABLE 内フィールドでの検索クエリ` / `システムフィールドコードでの検索クエリ` / `クエリのエラーレスポンス / 上限チェック`（CB_VA01 / GAIA_QU01 / GAIA_QU02 / GAIA_IQ11 / GAIA_IQ07 / GAIA_IQ03 / GAIA_IQ10 すべて実機と一致）
+- `record-basic.test.ts` > `アプリのレコードAPI`（逐次 ID / Accept-Language / /setup/app.json は emulatorOnly の別ブロック）
+- `record-validation.test.ts` > `required フィールドのバリデーション` / `required（各フィールドタイプ）` / `unique` / `unique 対象タイプ` / `maxLength / minLength` / `LINK の minLength` / `maxValue / minValue` / `options 整合`
+- `record-defaults.test.ts` > `defaultValue / defaultNowValue の自動補完`
+- `record-subtable.test.ts` > `SUBTABLE 対応` / `SUBTABLE 行の追加 / 更新 / 削除（PUT マージ）`（独自挙動の数件は testEmulatorOnly）
+- `record-number.test.ts` > `SUBTABLE 内 NUMBER の正規化` / `top-level NUMBER の正規化`
+- `record-lookup.test.ts` > `ルックアップ（LOOKUP）` / `ルックアップ: relatedKeyField が RECORD_NUMBER` / `SUBTABLE 内 LOOKUP`
+- `calc-compute.test.ts` > CALC 評価系全ブロック（数値計算 / 比較 / 論理 / SUM / ROUND / 日付 / SLT autoCalc / CONTAINS / SUBTABLE 内 CALC / CREATED/UPDATED_TIME / CALC 連鎖）
+- `comment.test.ts` > `アプリのレコードコメントAPI`（mentions 2 件は testEmulatorOnly）
 
 ### 実機差分の調査結果と対応
 
@@ -52,19 +35,30 @@
 
 ## 未移行（describeEmulatorOnly でタグ付け、実 kintone では skip）
 
-### records.test.ts
+### records-basic.test.ts
 
 | ブロック | 移行時の障壁 |
 |---|---|
-| `アプリのレコード一覧のAPI` | `addFormFields({app:1})` + `$id = 1` / `$id = 2` ハードコード。createTestApp + 返却 recordIds に書き換え必要 |
-| `一括 addRecords / updateRecords` | `ids: ["1","2","3"]` という逐次 ID 前提が多数。実 kintone は自動採番で 1 始まりにならない |
-| `クエリのエラーレスポンス / 上限チェック` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いている。実 kintone は deploy 必須。app=1 ハードコード |
+| `アプリのレコード一覧のAPI`（emulator 固有部） | `addFormFields({app:1})` + `$id = 1` / `$id = 2` ハードコード |
+| `一括 addRecords / updateRecords`（emulator 固有部） | `ids: ["1","2","3"]` という逐次 ID 前提。実 kintone は自動採番で 1 始まりにならない |
 
-### record.test.ts (残り emulator-only 1 ブロック)
+### record-basic.test.ts
+
+| ブロック | 障壁 |
+|---|---|
+| `アプリのレコードAPI（emulator 固有）` | 逐次 ID 依存、`/setup/app.json` の $id ハードコード |
+
+### record-locale.test.ts
 
 | ブロック | 障壁 |
 |---|---|
 | `Accept-Language によるメッセージ切り替え` | エミュ固有のエラーメッセージ文字列を検証 |
+
+### app/calc-validation.test.ts
+
+| ブロック | 障壁 |
+|---|---|
+| `CALC / 文字列 autoCalc バリデーション` | `/k/v1/preview/app/form/fields.json` を raw fetch で叩いて即時応答を検証。実機は deploy が必須で挙動が異なる |
 
 ### comment.test.ts
 
@@ -103,11 +97,12 @@
 
 ## 次フェーズの優先順位案
 
-record.test.ts / records.test.ts / comment.test.ts の実機互換な describe ブロックはすべて移行完了。残りはエミュ専用機能のテスト:
+record-*.test.ts / records-*.test.ts / comment.test.ts / calc-compute.test.ts の実機互換な describe ブロックはすべて移行完了。残りはエミュ専用機能のテスト:
 
 - `auth.test.ts`（エミュ固有の /setup/auth.json）
 - `app.test.ts`（/setup/app.json 由来の挙動）
 - `form/layout/status.test.ts` 各種（revision / layout / status の setup 独自挙動）
 - `file.test.ts`（`/k/v1/file.json` のアップロード API 自体は実機でも動くが優先度低）
-- `record.test.ts` > `アプリのレコードAPI (emulator 固有)`（逐次 ID 依存）
-- `record.test.ts` > `Accept-Language によるメッセージ切り替え`（エミュ固有エラー文言）
+- `record-basic.test.ts` > `アプリのレコードAPI (emulator 固有)`（逐次 ID 依存）
+- `record-locale.test.ts`（エミュ固有エラー文言）
+- `app/calc-validation.test.ts`（preview/app/form/fields.json の即時応答検証）
