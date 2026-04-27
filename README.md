@@ -96,6 +96,10 @@ SUBTABLE 内 LOOKUP も同様に動作し、各行のキー値ごとに同じ行
 | POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
 | POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能）。レスポンスに `app`, `revision`, `recordIds` を返す。`properties` のシステムフィールド（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME）は明示していなければ自動補完される（既定コード: `レコード番号` / `作成日時` / `更新日時`） |
 | POST | `/[session]/setup/auth.json` | 認証ユーザーの登録（`username`, `password`）。1人以上登録すると認証が有効になる |
+| POST / DELETE | `/[session]/setup/failure.json` | 障害注入。`{skip?, count?, status, body, contentType?, extraHeaders?, pathPattern?}`。`skip` 回スキップしてから `count` 回連続で `status` / `body` を返す（`skip` 省略で 0、`count` 省略で永続発火＝メンテナンス再現）。`body` が string なら `text/plain`、object なら `application/json` で返す。DELETE で解除 |
+| POST / DELETE | `/[session]/setup/failure/rate-limit.json` | 同時実行制限のショートカット。`{skip?, count?, pathPattern?}` で実機準拠の 429 / `GAIA_TO04` / `X-ConcurrencyLimit-*` を返す |
+
+`setup/failure*` は実機 kintone の LB レベルのエラー（503 / 429 等）の挙動をクライアント側で検証するためのテストフックです。実機の挙動とクライアント (`@kintone/rest-api-client`) の挙動の根拠は [`doc/kintone-behavior-notes.md`](doc/kintone-behavior-notes.md) と [`doc/rest-api-client-behavior.md`](doc/rest-api-client-behavior.md) を参照。
 
 ## セットアップ
 
@@ -212,6 +216,60 @@ await client.record.addRecord({ app, record: { title: { value: "test" } } });
 
 // クリーンアップ
 await fetch(`${BASE_URL}/finalize`, { method: "POST" });
+```
+
+## 障害注入（503 / 429 などの検証）
+
+クライアント (`@kintone/rest-api-client`) の 503 / 429 ハンドリングを検証するためのテストフックを提供しています。
+
+```ts
+// 次の 1 回のリクエストを 503 + テキストボディで返す（rest-api-client は素の Error を投げる）
+await fetch(`${BASE_URL}/setup/failure.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    count: 1,
+    status: 503,
+    body: "Service Unavailable",
+  }),
+});
+
+await expect(client.record.getRecord({ app, id: 1 })).rejects.toThrow(/^503:/);
+
+// リトライ検証: 次の 3 回失敗、4 回目以降は通常レスポンス
+await fetch(`${BASE_URL}/setup/failure.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ count: 3, status: 503, body: "Service Unavailable" }),
+});
+
+// 1 回成功 → 2-4 失敗 → 5 回目以降通常 (skip と count の併用)
+await fetch(`${BASE_URL}/setup/failure.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ skip: 1, count: 3, status: 503, body: "..." }),
+});
+
+// 同時実行制限 (429 / GAIA_TO04) のショートカット。実機と同じ JSON ボディとヘッダで返す。
+await fetch(`${BASE_URL}/setup/failure/rate-limit.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ count: 1 }),
+});
+
+await expect(client.record.getRecord({ app, id: 1 })).rejects.toMatchObject({
+  status: 429,
+  code: "GAIA_TO04",
+});
+
+// メンテナンス中の再現: count を省略すると解除されるまで全リクエストが 503 を返し続ける
+await fetch(`${BASE_URL}/setup/failure.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ status: 503, body: "Service Unavailable" }),
+});
+// ... 任意回数のリクエストがすべて 503
+await fetch(`${BASE_URL}/setup/failure.json`, { method: "DELETE" }); // 解除
 ```
 
 ## @sonicgarden/kintone-emulator をライブラリとして使う
