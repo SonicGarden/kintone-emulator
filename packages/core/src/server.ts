@@ -33,6 +33,10 @@ type RouteEntry = {
   guestSpaceIdGroup?: number;
 };
 
+// k/v1 配下のパスは optional に /guest/{N} を許容する。group 1: session, group 2: guestSpaceId
+const K = (suffix: string) =>
+  new RegExp(`^\\/(?:([^/]+)\\/)?k(?:\\/guest\\/(\\d+))?\\/v1\\/${suffix}$`);
+
 const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?initialize$/,
@@ -43,14 +47,16 @@ const routes: RouteEntry[] = [
     POST: finalize.post,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\.json$/,
+    pattern: K("record\\.json"),
+    guestSpaceIdGroup: 2,
     GET: record.get,
     POST: record.post,
     PUT: record.put,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
+    pattern: K("records\\.json"),
+    guestSpaceIdGroup: 2,
     GET: records.get,
     POST: records.post,
     PUT: records.put,
@@ -58,50 +64,45 @@ const routes: RouteEntry[] = [
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
-    GET: appRoute.get,
-    requiresAuth: true,
-  },
-  {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
-    GET: appsRoute.get,
-    requiresAuth: true,
-  },
-  {
-    pattern: /^\/(?:([^/]+)\/)?k\/guest\/(\d+)\/v1\/app\.json$/,
+    pattern: K("app\\.json"),
     guestSpaceIdGroup: 2,
     GET: appRoute.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/guest\/(\d+)\/v1\/apps\.json$/,
+    pattern: K("apps\\.json"),
     guestSpaceIdGroup: 2,
     GET: appsRoute.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
+    pattern: K("app\\/status\\.json"),
+    guestSpaceIdGroup: 2,
     GET: status.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,
+    pattern: K("app\\/form\\/fields\\.json"),
+    guestSpaceIdGroup: 2,
     GET: fields.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/layout\.json$/,
+    pattern: K("app\\/form\\/layout\\.json"),
+    guestSpaceIdGroup: 2,
     GET: layout.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/preview\/app\/form\/fields\.json$/,
+    pattern: K("preview\\/app\\/form\\/fields\\.json"),
+    guestSpaceIdGroup: 2,
     POST: previewFields.post,
     DELETE: previewFields.del,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/file\.json$/,
+    pattern: K("file\\.json"),
+    guestSpaceIdGroup: 2,
     GET: file.get,
     POST: file.post,
     requiresAuth: true,
@@ -129,13 +130,15 @@ const routes: RouteEntry[] = [
     DELETE: setupFailureRateLimit.del,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
+    pattern: K("record\\/comment\\.json"),
+    guestSpaceIdGroup: 2,
     POST: comment.post,
     DELETE: comment.del,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comments\.json$/,
+    pattern: K("record\\/comments\\.json"),
+    guestSpaceIdGroup: 2,
     GET: comment.get,
     requiresAuth: true,
   },

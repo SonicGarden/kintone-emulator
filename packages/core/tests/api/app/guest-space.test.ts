@@ -62,6 +62,50 @@ describeEmulatorOnly("ゲストスペース", () => {
     expect(json.code).toBe("GAIA_AP01");
   });
 
+  test("非ゲストパスでゲストスペースのアプリの records を取得すると GAIA_IL23", async () => {
+    const { appId } = await createApp(BASE_URL, {
+      name: "ゲスト app",
+      spaceId: 2,
+      threadId: 2,
+      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "title" } },
+      records: [{ title: { value: "a" } }],
+    });
+
+    const response = await fetch(`${BASE_URL}/k/v1/records.json?app=${appId}`);
+    expect(response.status).toBe(520);
+    expect((await response.json()).code).toBe("GAIA_IL23");
+  });
+
+  test("ゲストパスで guestSpaceId が一致するアプリのレコードを取得できる", async () => {
+    const { appId } = await createApp(BASE_URL, {
+      name: "ゲスト app",
+      spaceId: 2,
+      threadId: 2,
+      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "title" } },
+      records: [{ title: { value: "a" } }],
+    });
+
+    const client = new KintoneRestAPIClient({
+      baseUrl: BASE_URL,
+      auth: { apiToken: "test" },
+      guestSpaceId: 2,
+    });
+    const result = await client.record.getRecords({ app: appId });
+    expect(result.records).toHaveLength(1);
+  });
+
+  test("非ゲストパスでゲスト app の form fields を取得すると GAIA_IL23", async () => {
+    const { appId } = await createApp(BASE_URL, {
+      name: "ゲスト app",
+      spaceId: 2,
+      threadId: 2,
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+    });
+    const response = await fetch(`${BASE_URL}/k/v1/app/form/fields.json?app=${appId}`);
+    expect(response.status).toBe(520);
+    expect((await response.json()).code).toBe("GAIA_IL23");
+  });
+
   test("ユーザーの判定ロジックを再現できる: getApps→guestSpaceId 指定 getApp", async () => {
     const { appId: normalAppId } = await createApp(BASE_URL, {
       name: "通常 app",

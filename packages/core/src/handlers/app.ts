@@ -4,8 +4,8 @@
 import { findApp } from "../db/apps";
 import type { AppRow } from "../db/apps";
 import { dbSession } from "../db/client";
-import { findSpace } from "../db/spaces";
-import { errorGuestSpacePathRequired, errorInvalidInput, errorMessages, errorNotFoundApp } from "./errors";
+import { errorInvalidInput, errorMessages, errorNotFoundApp } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
@@ -36,21 +36,8 @@ export const get = ({ request, params }: HandlerArgs) => {
     return errorNotFoundApp(idParam, locale);
   }
 
-  const requestedGuest = params.guestSpaceId != null ? Number(params.guestSpaceId) : null;
-  const appSpace = row.space_id != null ? findSpace(db, row.space_id) : undefined;
-  const appIsInGuestSpace = !!appSpace && appSpace.is_guest === 1;
-
-  if (requestedGuest == null) {
-    // 非ゲストパス × ゲストスペース内アプリ → GAIA_IL23
-    if (appIsInGuestSpace) {
-      return errorGuestSpacePathRequired(locale);
-    }
-  } else {
-    // ゲストパス × 通常スペースのアプリ or 別の guest space のアプリ → 404
-    if (!appIsInGuestSpace || row.space_id !== requestedGuest) {
-      return errorNotFoundApp(idParam, locale);
-    }
-  }
+  const guestErr = enforceGuestSpace(db, row.id, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   return Response.json(toAppResponse(row));
 };

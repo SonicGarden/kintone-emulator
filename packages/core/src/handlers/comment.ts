@@ -1,6 +1,7 @@
 import { dbSession } from "../db/client";
 import { countComments, deleteComment, findComments, findRecordExists, insertComment } from "../db/comments";
 import { errorInvalidInput, errorMessages, errorNotFoundComment, errorNotFoundRecord } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
@@ -19,6 +20,9 @@ export const get = ({ request, params }: HandlerArgs) => {
     if (!record) missing.record = { messages: [m.requiredField] };
     return errorInvalidInput(missing, locale);
   }
+
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {
@@ -74,6 +78,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (body.comment == null) missing.comment = { messages: [m.requiredField] };
   if (Object.keys(missing).length > 0) return errorInvalidInput(missing, locale);
 
+  const guestErr = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
+
   const record = findRecordExists(db, body.app, body.record);
   if (!record) {
     return errorNotFoundRecord(body.record, locale);
@@ -113,6 +120,9 @@ export const del = ({ request, params }: HandlerArgs) => {
   }
 
   const db = dbSession(params.session);
+
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {

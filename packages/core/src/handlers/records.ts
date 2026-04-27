@@ -8,6 +8,7 @@ import { ParseError, TokenizeError, compile, parseQuery } from "../query";
 import type { CompileContext, FieldOptionsMap, FieldTypeMap, Query, SubtableFieldMap } from "../query";
 import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
@@ -185,6 +186,11 @@ export const get = ({ request, params }: HandlerArgs) => {
   const { app, rawQuery, fields } = parseListParams(request);
   const locale = detectLocale(request.headers.get("accept-language"));
 
+  if (app != null) {
+    const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+    if (guestErr) return guestErr;
+  }
+
   const fieldRows = findFields(db, app!);
   const queryCtx = buildQueryContext(fieldRows);
 
@@ -240,6 +246,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (body.app == null) {
     return errorInvalidInput({ app: { messages: [m.requiredField] } }, locale);
   }
+  const guestErrPost = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
+  if (guestErrPost) return guestErrPost;
   const records: Array<Record<string, { value?: unknown }>> = body.records ?? [];
   if (records.length > BULK_LIMIT) {
     return errorInvalidInput({ records: { messages: [BULK_LIMIT_MESSAGES.add[locale]] } }, locale);
@@ -340,6 +348,8 @@ export const put = async ({ request, params }: HandlerArgs) => {
   if (body.app == null) {
     return errorInvalidInput({ app: { messages: [m.requiredField] } }, locale);
   }
+  const guestErrPut = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
+  if (guestErrPut) return guestErrPut;
   const records: UpdateRecordInput[] = body.records ?? [];
   if (records.length > BULK_LIMIT) {
     return errorInvalidInput({ records: { messages: [BULK_LIMIT_MESSAGES.update[locale]] } }, locale);
@@ -395,6 +405,9 @@ export const del = ({ request, params }: HandlerArgs) => {
     if (ids.length === 0) missing.ids = { messages: [m.requiredField] };
     return errorInvalidInput(missing, locale);
   }
+
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   // 実機準拠: 指定 ID に存在しないものが含まれていたら GAIA_RE01 で拒否し、削除は一切行わない
   for (const id of ids) {

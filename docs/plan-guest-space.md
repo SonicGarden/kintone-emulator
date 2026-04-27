@@ -35,9 +35,12 @@
 - [x] インプロセスサーバー（`src/server.ts`）にもゲストパス + setup/space.json を追加
 - [x] テスト: ユーザー判定ロジックの再現テスト（getApps→guest 指定 getApp）
 
-### Phase 3 (任意): その他エンドポイントへの波及
-- [ ] record / records / fields / layout 等のゲストパスを必要に応じて追加
-- [ ] 一旦 Phase 2 で detection が通る最低限のみ実装し、必要が出たら追加
+### Phase 3: その他エンドポイントへの波及
+- [x] 共通ガード `handlers/guest-space.ts` (`enforceGuestSpace`)
+- [x] record / records / fields / layout / status / preview-fields / comment / comments の各メソッドに組み込み
+- [x] `server.ts` のルートを `/k(?:/guest/{N})?/v1/...` パターンに統合
+- [x] Remix ルート `($session).k.guest.$guestSpaceId.v1.*` を全エンドポイント分追加
+- [x] テスト: ゲスト app の records / form fields を非ゲストパスで叩くと GAIA_IL23、ゲストパスでは成功
 
 ## 実装上のメモ
 
