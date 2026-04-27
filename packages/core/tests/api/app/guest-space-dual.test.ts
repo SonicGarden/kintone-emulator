@@ -73,6 +73,26 @@ describeDualMode("ゲストスペース挙動 (dualMode)", () => {
     expect(json.message).toBe("権限がありません。");
   });
 
+  test("非ゲストパスで getRecords しても GAIA_IL23 (400)", async () => {
+    const res = await fetch(`${baseUrl}/k/v1/records.json?app=${guestApp.appId}`, { headers });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("GAIA_IL23");
+  });
+
+  test("ゲストパスで getRecords できる", async () => {
+    const guestClient = new KintoneRestAPIClient({
+      baseUrl, auth: getTestAuth(), guestSpaceId: guestApp.spaceId,
+    });
+    const result = await guestClient.record.getRecords({ app: guestApp.appId });
+    expect(Array.isArray(result.records)).toBe(true);
+  });
+
+  test("非ゲストパスで getFormFields しても GAIA_IL23 (400)", async () => {
+    const res = await fetch(`${baseUrl}/k/v1/app/form/fields.json?app=${guestApp.appId}`, { headers });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("GAIA_IL23");
+  });
+
   test("ユーザー判定ロジック再現: getApps→guestSpaceId 指定で getApp", async () => {
     const probe = async (appId: number, spaceId: number) => {
       const guestClient = new KintoneRestAPIClient({
