@@ -140,9 +140,9 @@ pnpm test:e2e
 
 #### このリポジトリ内で使う
 
-1. `packages/core/.env.real-kintone.sample` をコピーして `packages/core/.env.real-kintone` を作る（`.env.*` は `.gitignore` 済み、`.env.*.sample` だけ tracked）:
+1. `packages/core/.env.real-kintone.example` をコピーして `packages/core/.env.real-kintone` を作る（`.env.*` は `.gitignore` 済み、`.env.*.example` だけ tracked）:
    ```sh
-   cp packages/core/.env.real-kintone.sample packages/core/.env.real-kintone
+   cp packages/core/.env.real-kintone.example packages/core/.env.real-kintone
    ```
 2. 以下の環境変数を設定（`VITE_` プレフィックス必須、vite のデフォルト挙動を利用しているため）:
 
