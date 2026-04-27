@@ -6,14 +6,18 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
 
-  const id = Number(body.id);
-  if (!Number.isInteger(id) || id <= 0) {
-    return Response.json({ message: "id (positive integer) is required." }, { status: 400 });
+  let id: number | undefined;
+  if (body.id != null) {
+    const n = Number(body.id);
+    if (!Number.isInteger(n) || n <= 0) {
+      return Response.json({ message: "id must be a positive integer." }, { status: 400 });
+    }
+    id = n;
   }
 
   const isGuest = Boolean(body.isGuest);
   const name = typeof body.name === "string" ? body.name : undefined;
 
-  insertSpace(db, { id, isGuest, name });
-  return Response.json({ result: "ok" });
+  const result = insertSpace(db, { id, isGuest, name });
+  return Response.json({ id: result.id });
 };

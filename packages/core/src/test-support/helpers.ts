@@ -36,8 +36,8 @@ export const setupAuth = async (
 
 export const setupSpace = async (
   baseUrl: string,
-  params: { id: number; isGuest?: boolean; name?: string },
-): Promise<void> => {
+  params: { id?: number; isGuest?: boolean; name?: string } = {},
+): Promise<{ id: number }> => {
   const response = await fetch(`${baseUrl}/setup/space.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -46,6 +46,7 @@ export const setupSpace = async (
   if (!response.ok) {
     throw new Error(`setupSpace failed: ${response.status} ${response.statusText}`);
   }
+  return response.json() as Promise<{ id: number }>;
 };
 
 export type CreateAppResult = {

@@ -16,6 +16,7 @@ import {
   finalizeSession as emulatorFinalizeSession,
   initializeSession as emulatorInitializeSession,
   setupAuth as emulatorSetupAuth,
+  setupSpace as emulatorSetupSpace,
 } from "./helpers";
 
 // ============================================================
@@ -63,15 +64,19 @@ export const resetAppAssignment = (): void => {
   nextRealAppIndex = 0;
 };
 
-let realKintoneClient: KintoneRestAPIClient | null = null;
-const getRealKintoneClient = (): KintoneRestAPIClient => {
-  if (realKintoneClient) return realKintoneClient;
+const realKintoneClientCache = new Map<string, KintoneRestAPIClient>();
+const getRealKintoneClient = (guestSpaceId?: number): KintoneRestAPIClient => {
+  const key = guestSpaceId == null ? "default" : `guest:${guestSpaceId}`;
+  const cached = realKintoneClientCache.get(key);
+  if (cached) return cached;
   const cfg = getRealKintoneConfig();
-  realKintoneClient = new KintoneRestAPIClient({
+  const client = new KintoneRestAPIClient({
     baseUrl: `https://${cfg.domain}.cybozu.com`,
     auth: { username: cfg.user, password: cfg.password },
+    ...(guestSpaceId != null ? { guestSpaceId } : {}),
   });
-  return realKintoneClient;
+  realKintoneClientCache.set(key, client);
+  return client;
 };
 
 // ============================================================
@@ -133,6 +138,7 @@ export const getTestRequestHeaders = (): Record<string, string> => {
  */
 export const resetTestEnvironment = async (session: string): Promise<void> => {
   resetAppAssignment();
+  clearEmulatorDynamicSpaceCache(session);
   if (isUsingRealKintone()) return;
   const url = emulatorCreateBaseUrl(session);
   await emulatorFinalizeSession(url);
@@ -172,6 +178,136 @@ export const createTestApp = async (
     return emulatorCreateApp(emulatorCreateBaseUrl(session), params);
   }
   return setupRealKintoneApp(params);
+};
+
+// ============================================================
+// 公開 API: createTestSpaceApp
+// ============================================================
+
+export type SpaceKind = "space" | "guestSpace";
+
+export type CreateTestSpaceAppParams = {
+  /** 通常スペース所属なら "space"、ゲストスペース所属なら "guestSpace" */
+  kind: SpaceKind;
+  /**
+   * 何番目のスペースを使うか（spaceId のユニーク順、デフォルト 0）。
+   * env `2:15,2:16,4:20` の場合、spaceIndex=0→space 2、spaceIndex=1→space 4
+   */
+  spaceIndex?: number;
+  /**
+   * 同一スペース内の何番目のアプリを使うか（spaceIndex で選んだ space 内の登場順、デフォルト 0）。
+   * env `2:15,2:16` の場合、spaceIndex=0/appIndex=0→app 15、spaceIndex=0/appIndex=1→app 16
+   */
+  appIndex?: number;
+  /** emulator モードでのみ参照される。real モードでは既存アプリ名を変更しない */
+  name?: string;
+  properties?: Record<string, unknown>;
+  layout?: unknown[];
+  status?: unknown;
+  records?: unknown[];
+};
+
+/** spaceId 順に space/app をグルーピングして spaceIndex/appIndex で引けるようにする */
+const groupBySpace = (entries: { spaceId: number; appId: number }[]) => {
+  const seen = new Map<number, number[]>();
+  for (const e of entries) {
+    if (!seen.has(e.spaceId)) seen.set(e.spaceId, []);
+    seen.get(e.spaceId)!.push(e.appId);
+  }
+  return [...seen.entries()].map(([spaceId, appIds]) => ({ spaceId, appIds }));
+};
+
+export type CreateTestSpaceAppResult = {
+  appId: number;
+  spaceId: number;
+  recordIds: number[];
+};
+
+// emulator かつ env 未指定のとき、spaceIndex → 動的割当した spaceId を覚えておく。
+// 同一テスト内で「同じ spaceIndex なら同じ space」を保証するため。
+// resetTestEnvironment でセッション単位にクリアされる。
+const emulatorDynamicSpaceCache = new Map<string, number>(); // key=`${session}:${kind}:${spaceIndex}` → spaceId
+
+const clearEmulatorDynamicSpaceCache = (session: string): void => {
+  for (const key of [...emulatorDynamicSpaceCache.keys()]) {
+    if (key.startsWith(`${session}:`)) emulatorDynamicSpaceCache.delete(key);
+  }
+};
+
+/**
+ * スペース所属（通常 or ゲスト）のテスト用アプリを準備する。
+ * - emulator: env があれば指定 ID で setup、無ければ DB の auto-assign に任せる。
+ *   同一 session 内で同じ spaceIndex を指定すれば同じスペースが再利用される
+ * - real: env で指定された appId を使ってレコード/フィールドを setup する
+ */
+export const createTestSpaceApp = async (
+  session: string,
+  params: CreateTestSpaceAppParams,
+): Promise<CreateTestSpaceAppResult> => {
+  const spaceIndex = params.spaceIndex ?? 0;
+  const appIndex = params.appIndex ?? 0;
+  const grouped = groupBySpace(
+    params.kind === "guestSpace" ? getTestGuestSpaceApps() : getTestSpaceApps(),
+  );
+  const space = grouped[spaceIndex];
+  const envFixture = space && space.appIds[appIndex] != null
+    ? { spaceId: space.spaceId, appId: space.appIds[appIndex]! }
+    : undefined;
+
+  if (isUsingRealKintone() && !envFixture) {
+    const envName = params.kind === "guestSpace"
+      ? "VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS"
+      : "VITE_KINTONE_TEST_SPACE_APP_IDS";
+    throw new Error(
+      `${envName} に spaceIndex=${spaceIndex} / appIndex=${appIndex} に対応するエントリがありません`,
+    );
+  }
+
+  const appParams: CreateTestAppParams = {
+    name: params.name ?? `${params.kind} app`,
+    properties: params.properties,
+    layout: params.layout,
+    status: params.status,
+    records: params.records,
+  };
+
+  if (!isUsingRealKintone()) {
+    const url = emulatorCreateBaseUrl(session);
+    let spaceId: number;
+    let appIdToCreate: number | undefined;
+
+    if (envFixture) {
+      spaceId = envFixture.spaceId;
+      appIdToCreate = envFixture.appId;
+      await emulatorSetupSpace(url, { id: spaceId, isGuest: params.kind === "guestSpace" });
+    } else {
+      // 動的割当: spaceIndex キーで space を再利用、app は毎回新規
+      const cacheKey = `${session}:${params.kind}:${spaceIndex}`;
+      const cached = emulatorDynamicSpaceCache.get(cacheKey);
+      if (cached != null) {
+        spaceId = cached;
+      } else {
+        const r = await emulatorSetupSpace(url, { isGuest: params.kind === "guestSpace" });
+        spaceId = r.id;
+        emulatorDynamicSpaceCache.set(cacheKey, spaceId);
+      }
+    }
+
+    const result = await emulatorCreateApp(url, {
+      ...appParams,
+      id: appIdToCreate,
+      spaceId,
+      threadId: spaceId,
+    });
+    return { appId: result.appId, spaceId, recordIds: result.recordIds };
+  }
+
+  const result = await setupRealKintoneAppWithId(
+    envFixture!.appId,
+    appParams,
+    params.kind === "guestSpace" ? envFixture!.spaceId : undefined,
+  );
+  return { appId: result.appId, spaceId: envFixture!.spaceId, recordIds: result.recordIds };
 };
 
 // ============================================================
@@ -217,9 +353,14 @@ const sortKeysDeep = (value: unknown): unknown => {
 
 const setupRealKintoneApp = async (
   params: CreateTestAppParams,
+): Promise<CreateTestAppResult> => setupRealKintoneAppWithId(nextRealAppId(), params);
+
+const setupRealKintoneAppWithId = async (
+  appId: number,
+  params: CreateTestAppParams,
+  guestSpaceId?: number,
 ): Promise<CreateTestAppResult> => {
-  const appId = nextRealAppId();
-  const client = getRealKintoneClient();
+  const client = getRealKintoneClient(guestSpaceId);
 
   // 1. レコード全削除
   await deleteAllRecords(client, appId);
