@@ -14,6 +14,9 @@ import {
   resetTestEnvironment,
 } from "../../real-kintone";
 
+const GAIA_IL23_MESSAGE_JA =
+  "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。";
+
 describeDualMode("ゲストスペース挙動", () => {
   const SESSION = "guest-space";
   let baseUrl: string;
@@ -46,9 +49,7 @@ describeDualMode("ゲストスペース挙動", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.code).toBe("GAIA_IL23");
-    expect(json.message).toBe(
-      "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。",
-    );
+    expect(json.message).toBe(GAIA_IL23_MESSAGE_JA);
   });
 
   test("ゲストパスで spaceId 一致のゲスト app は 200 で取得できる", async () => {
@@ -76,7 +77,9 @@ describeDualMode("ゲストスペース挙動", () => {
   test("非ゲストパスで getRecords しても GAIA_IL23 (400)", async () => {
     const res = await fetch(`${baseUrl}/k/v1/records.json?app=${guestApp.appId}`, { headers });
     expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe("GAIA_IL23");
+    const json = await res.json();
+    expect(json.code).toBe("GAIA_IL23");
+    expect(json.message).toBe(GAIA_IL23_MESSAGE_JA);
   });
 
   test("ゲストパスで getRecords できる", async () => {
@@ -90,7 +93,9 @@ describeDualMode("ゲストスペース挙動", () => {
   test("非ゲストパスで getFormFields しても GAIA_IL23 (400)", async () => {
     const res = await fetch(`${baseUrl}/k/v1/app/form/fields.json?app=${guestApp.appId}`, { headers });
     expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe("GAIA_IL23");
+    const json = await res.json();
+    expect(json.code).toBe("GAIA_IL23");
+    expect(json.message).toBe(GAIA_IL23_MESSAGE_JA);
   });
 
   // 注: spaceId のゲスト/通常を判定する実用パターン。
