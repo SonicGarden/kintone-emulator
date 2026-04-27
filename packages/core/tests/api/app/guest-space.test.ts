@@ -93,8 +93,11 @@ describeDualMode("ゲストスペース挙動", () => {
     expect((await res.json()).code).toBe("GAIA_IL23");
   });
 
-  test("ユーザー判定ロジック再現: getApps→guestSpaceId 指定で getApp", async () => {
-    const probe = async (appId: number, spaceId: number) => {
+  // 注: spaceId のゲスト/通常を判定する実用パターン。
+  // getApps で得た spaceId を guestSpaceId に指定して getApp し、
+  // 成功すればゲストスペース、失敗すれば通常スペース、と判別できる。
+  test("spaceId をそのまま guestSpaceId に渡した getApp は、ゲストスペース所属時のみ成功する", async () => {
+    const tryGetAppAsGuest = async (appId: number, spaceId: number) => {
       const guestClient = new KintoneRestAPIClient({
         baseUrl, auth: getTestAuth(), guestSpaceId: spaceId,
       });
@@ -105,7 +108,7 @@ describeDualMode("ゲストスペース挙動", () => {
         return false;
       }
     };
-    expect(await probe(guestApp.appId, guestApp.spaceId)).toBe(true);
-    expect(await probe(normalApp.appId, normalApp.spaceId)).toBe(false);
+    expect(await tryGetAppAsGuest(guestApp.appId, guestApp.spaceId)).toBe(true);
+    expect(await tryGetAppAsGuest(normalApp.appId, normalApp.spaceId)).toBe(false);
   });
 });
