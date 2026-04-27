@@ -3,6 +3,8 @@ import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { applyLookups } from "./lookup";
+import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
@@ -32,8 +34,12 @@ export const get = ({ request, params }: HandlerArgs) => {
 
   const body: Record = JSON.parse(row.body);
   const fieldRows = findFields(db, app);
-  attachFieldTypes(body, fieldRows);
-  body['$id'] = { value: row.id.toString(), type: 'RECORD_NUMBER' };
+  attachFieldTypes(body, fieldRows, {
+    recordId: row.id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+  body['$id'] = { value: row.id.toString(), type: '__ID__' };
   body['$revision'] = { value: row.revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
 };
@@ -45,7 +51,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const locale = detectLocale(request.headers.get("accept-language"));
   const fieldRows = findFields(db, body.app);
   const withDefaults = applyDefaults(fieldRows, body.record ?? {});
-  const record = normalizeNumbers(fieldRows, withDefaults);
+  const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
+  if (lookupResult.error) return lookupResult.error;
+  const record = normalizeNumbers(fieldRows, lookupResult.record);
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
@@ -59,9 +67,6 @@ export const post = async ({ request, params }: HandlerArgs) => {
   });
 };
 
-// フィールドコードに使用可能な文字: ASCII英数字・アンダースコア(\w)、ひらがな・カタカナ・漢字(\u3000-\u9fff)、全角英数字・記号(\uff00-\uffef)
-// SQL の JSON path 式にフィールドコードを直接埋め込むため、クォートや = など SQL で意味を持つ文字を弾く
-const FIELD_CODE_PATTERN = /^[\w\u3000-\u9fff\uff00-\uffef]+$/;
 
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
@@ -86,7 +91,10 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const existingBody = JSON.parse(target.body);
   // SUBTABLE 行は id マッチで既存とマージ、id 無しは新規採番、送信配列にない既存行は削除
   const incomingRecord = mergeSubtableRows(fieldRows, existingBody, body.record ?? {});
-  const beforeNormalize = { ...existingBody, ...incomingRecord };
+  // ルックアップ: body.record 側でキーが変わったらコピー先を再計算
+  const lookupResult = applyLookups(fieldRows, incomingRecord, { db, locale });
+  if (lookupResult.error) return lookupResult.error;
+  const beforeNormalize = { ...existingBody, ...lookupResult.record };
   const mergedRecord = normalizeNumbers(fieldRows, beforeNormalize);
 
   const errors = validateRecord(fieldRows, mergedRecord, {

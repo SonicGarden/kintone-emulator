@@ -108,7 +108,9 @@ const subtableFieldsToParsed = (fields: Record<string, FieldDef>): ParsedField[]
 
 export type ValidationErrors = { [key: string]: { messages: string[] } };
 
-type RecordInput = Record<string, { value?: unknown }>;
+// レコードのフィールド 1 つ分のセル。入力時は `type` 無し、レスポンス時は `type` が付く。
+type RecordCell = { value?: unknown; type?: string };
+type RecordInput = Record<string, RecordCell>;
 type SubtableRow = { id?: string; value?: RecordInput };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -407,9 +409,29 @@ export const validateRecord = (
   return Object.keys(errors).length > 0 ? errors : null;
 };
 
+// DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を kintone の CREATED_TIME / UPDATED_TIME 形式に整形。
+// 実 kintone は秒を 00 に丸めた ISO 8601 UTC（"YYYY-MM-DDTHH:MM:00Z"）で返す。
+const formatKintoneDateTime = (sqlTime: string): string => {
+  const d = new Date(sqlTime.replace(" ", "T") + "Z");
+  d.setUTCSeconds(0, 0);
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+};
+
+export type RecordMeta = {
+  recordId?: number | string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 // getRecord / getRecords 応答で各フィールドに type を注入するヘルパー。
-// SUBTABLE の場合は行内の各フィールドにも type を注入する。
-export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void => {
+// - SUBTABLE の場合は行内の各フィールドにも type を注入する
+// - meta が渡された場合、システムフィールド（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME）の
+//   フィールドコードに対して `{type, value}` を補完する（body には保存されていないため）
+export const attachFieldTypes = (
+  body: RecordInput,
+  fieldRows: FieldRow[],
+  meta: RecordMeta = {},
+): void => {
   const topTypes: Record<string, string> = {};
   const subTypes: Record<string, Record<string, string>> = {};
   for (const row of fieldRows) {
@@ -421,11 +443,19 @@ export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void
         subTypes[row.code]![c] = f.type;
       }
     }
+    if (row.code in body) continue;
+    if (def.type === "RECORD_NUMBER" && meta.recordId != null) {
+      body[row.code] = { type: "RECORD_NUMBER", value: String(meta.recordId) };
+    } else if (def.type === "CREATED_TIME" && meta.createdAt != null) {
+      body[row.code] = { type: "CREATED_TIME", value: formatKintoneDateTime(meta.createdAt) };
+    } else if (def.type === "UPDATED_TIME" && meta.updatedAt != null) {
+      body[row.code] = { type: "UPDATED_TIME", value: formatKintoneDateTime(meta.updatedAt) };
+    }
   }
   for (const code of Object.keys(body)) {
     const t = topTypes[code];
     if (!t) continue;
-    (body[code] as { type?: string }).type = t;
+    body[code]!.type = t;
     if (t === "SUBTABLE") {
       const rows = body[code]?.value;
       if (!Array.isArray(rows)) continue;
@@ -433,7 +463,7 @@ export const attachFieldTypes = (body: RecordInput, fieldRows: FieldRow[]): void
         if (!r.value) continue;
         for (const c of Object.keys(r.value)) {
           const st = subTypes[code]?.[c];
-          if (st) (r.value[c] as { type?: string }).type = st;
+          if (st) r.value[c]!.type = st;
         }
       }
     }

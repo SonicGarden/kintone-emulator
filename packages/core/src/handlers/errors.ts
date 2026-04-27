@@ -76,3 +76,14 @@ export const errorNotFoundComment = (locale: Locale = "ja") =>
     { code: "GAIA_RE02", id: generateErrorId(), message: MESSAGES[locale].notFoundComment },
     { status: 400 }
   );
+
+// ルックアップのキー不一致（HTTP 400、errors オブジェクトは付かない）
+export const errorLookupNotFound = (fieldCode: string, value: string, locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? `フィールド「${fieldCode}」の値「${value}」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。`
+    : `A value ${value} in the field ${fieldCode} does not exist in the datasource app for lookup, or you do not have permission to view the app or the field.`;
+  return Response.json(
+    { code: "GAIA_LO04", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};

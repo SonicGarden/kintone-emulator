@@ -1,13 +1,21 @@
 import type Database from "better-sqlite3";
 import { all, run } from "./client";
 
-export type RecordRow = { id: number; body: string; revision: number };
+export type RecordRow = {
+  id: number;
+  body: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
+const SELECT_COLS = "id, revision, body, created_at, updated_at";
 
 export const findRecord = (db: Database.Database, appId: string | null, id: string | null) =>
-  all<RecordRow>(db, `SELECT id, revision, body FROM records WHERE app_id = ? AND id = ?`, appId, id)[0];
+  all<RecordRow>(db, `SELECT ${SELECT_COLS} FROM records WHERE app_id = ? AND id = ?`, appId, id)[0];
 
 export const findRecords = (db: Database.Database, appId: string | null) =>
-  all<RecordRow>(db, `SELECT id, revision, body FROM records WHERE app_id = ?`, appId);
+  all<RecordRow>(db, `SELECT ${SELECT_COLS} FROM records WHERE app_id = ?`, appId);
 
 export const findRecordsByClause = (
   db: Database.Database,
@@ -17,7 +25,7 @@ export const findRecordsByClause = (
 ) =>
   all<RecordRow>(
     db,
-    `SELECT id, revision, body FROM records WHERE app_id = ? ${hasWhere ? 'AND' : ''} ${clause}`,
+    `SELECT ${SELECT_COLS} FROM records WHERE app_id = ? ${hasWhere ? 'AND' : ''} ${clause}`,
     appId
   );
 
@@ -51,7 +59,7 @@ export const insertRecord = (db: Database.Database, appId: string, record: unkno
 export const updateRecord = (db: Database.Database, appId: string, id: string, record: unknown) =>
   all<{ id: number; revision: number }>(
     db,
-    "UPDATE records SET body = ?, revision = revision + 1 WHERE app_id = ? AND id = ? RETURNING id, revision",
+    "UPDATE records SET body = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE app_id = ? AND id = ? RETURNING id, revision",
     JSON.stringify(record),
     appId,
     id
@@ -79,7 +87,7 @@ export const findRecordsByKey = (
 ) =>
   all<RecordRow>(
     db,
-    `SELECT id, revision, body FROM records WHERE app_id = ? AND body->>'$.${fieldCode}.value' = ?`,
+    `SELECT ${SELECT_COLS} FROM records WHERE app_id = ? AND body->>'$.${fieldCode}.value' = ?`,
     appId,
     fieldValue
   );

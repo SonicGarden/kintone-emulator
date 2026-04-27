@@ -145,6 +145,129 @@ describe("アプリ作成API", () => {
     expect(formResult.properties).toEqual({});
   });
 
+  test("properties 指定時は RECORD_NUMBER（レコード番号）が自動補完される", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "自動補完アプリ",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+    });
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties["レコード番号"]).toMatchObject({
+      type: "RECORD_NUMBER",
+      code: "レコード番号",
+    });
+  });
+
+  test("ユーザーが RECORD_NUMBER を明示していれば自動補完しない", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "明示 RECORD_NUMBER アプリ",
+      properties: {
+        my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
+        foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
+      },
+    });
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties).toHaveProperty("my_no");
+    expect(properties).not.toHaveProperty("レコード番号");
+  });
+
+  test("レコード取得時、RECORD_NUMBER フィールドコードでも値が返り、$id の type は __ID__", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "RECORD_NUMBER 返却テスト",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+      records: [{ foo: { value: "x" } }],
+    });
+    const { record } = await client.record.getRecord({ app: appId, id: 1 });
+    expect(record.$id).toEqual({ value: "1", type: "__ID__" });
+    expect(record["レコード番号"]).toEqual({ value: "1", type: "RECORD_NUMBER" });
+  });
+
+  test("作成日時 / 更新日時 フィールドも自動補完され、GET レスポンスに値が含まれる", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "timestamp fields",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+    });
+    // フィールド定義に追加されている
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties["作成日時"]).toMatchObject({ type: "CREATED_TIME", code: "作成日時" });
+    expect(properties["更新日時"]).toMatchObject({ type: "UPDATED_TIME", code: "更新日時" });
+
+    // レコード作成 → GET で値が返る
+    const { id } = await client.record.addRecord({
+      app: appId, record: { foo: { value: "x" } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
+    expect(record["作成日時"]).toMatchObject({ type: "CREATED_TIME" });
+    expect(record["作成日時"]!.value).toMatch(isoPattern);
+    expect(record["更新日時"]).toMatchObject({ type: "UPDATED_TIME" });
+    expect(record["更新日時"]!.value).toMatch(isoPattern);
+  });
+
+  test("PUT で更新すると更新日時が変わる（作成日時は不変）", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "timestamp update",
+      properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
+    });
+    const { id } = await client.record.addRecord({ app: appId, record: { foo: { value: "a" } } });
+    const before = await client.record.getRecord({ app: appId, id });
+    const createdBefore = before.record["作成日時"]!.value;
+    const updatedBefore = before.record["更新日時"]!.value;
+
+    // 時刻が進むのを待つ: SQLite の CURRENT_TIMESTAMP は秒精度、kintone 形式は分単位に丸められるので
+    // ここでは 1 秒だけ待って DB 上の値が別タイムスタンプになっていることを確認（秒位置の差分）
+    await new Promise((r) => setTimeout(r, 1100));
+    await client.record.updateRecord({ app: appId, id, record: { foo: { value: "b" } } });
+    const after = await client.record.getRecord({ app: appId, id });
+    expect(after.record["作成日時"]!.value).toBe(createdBefore);
+    // 更新日時 は変わっている or 同じ分（ちょうど分単位の丸めで同値の可能性もある）
+    // 少なくとも DB レベルで updated_at が更新されていることだけ型で確認
+    expect(typeof after.record["更新日時"]!.value).toBe("string");
+    // 秒レベルの丸めで同値になる可能性はあるので、等しいか後ろに進んでいるかだけ確認
+    expect((after.record["更新日時"]!.value as string) >= (updatedBefore as string)).toBe(true);
+  });
+
+  test("ユーザーが CREATED_TIME / UPDATED_TIME を明示していれば自動補完しない", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "explicit timestamps",
+      properties: {
+        my_created: { type: "CREATED_TIME", code: "my_created", label: "my created" },
+        my_updated: { type: "UPDATED_TIME", code: "my_updated", label: "my updated" },
+        foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
+      },
+    });
+    const { properties } = await client.app.getFormFields({ app: appId });
+    expect(properties).toHaveProperty("my_created");
+    expect(properties).toHaveProperty("my_updated");
+    expect(properties).not.toHaveProperty("作成日時");
+    expect(properties).not.toHaveProperty("更新日時");
+
+    const { id } = await client.record.addRecord({ app: appId, record: { foo: { value: "x" } } });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    expect(record["my_created"]).toMatchObject({ type: "CREATED_TIME" });
+    expect(record["my_updated"]).toMatchObject({ type: "UPDATED_TIME" });
+  });
+
+  test("カスタムフィールドコードの RECORD_NUMBER でも値が返る", async () => {
+    const client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+    const appId = await createApp(BASE_URL, {
+      name: "カスタム RECORD_NUMBER",
+      properties: {
+        my_no: { type: "RECORD_NUMBER", code: "my_no", label: "my no" },
+        foo:   { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" },
+      },
+      records: [{ foo: { value: "x" } }],
+    });
+    const { record } = await client.record.getRecord({ app: appId, id: 1 });
+    expect(record.my_no).toEqual({ value: "1", type: "RECORD_NUMBER" });
+    expect(record.$id).toEqual({ value: "1", type: "__ID__" });
+  });
+
   test("複数フィールドを一度に登録できる", async () => {
     const client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,

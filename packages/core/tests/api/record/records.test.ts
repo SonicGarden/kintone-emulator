@@ -1,6 +1,6 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 
 let BASE_URL: string;
 beforeAll(() => {
@@ -502,5 +502,59 @@ describe("一括 addRecords / updateRecords", () => {
   test("updateRecords 空配列は空のままで成功", async () => {
     const result = await client.record.updateRecords({ app: 1, records: [] });
     expect(result).toEqual({ records: [] });
+  });
+});
+
+describe("システムフィールドコードでの検索クエリ", () => {
+  const SESSION = "records-system-fields-query";
+  let QUERY_URL: string;
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(() => { QUERY_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(QUERY_URL);
+    client = new KintoneRestAPIClient({ baseUrl: QUERY_URL, auth: { apiToken: "test" } });
+    // setup/app.json 経由で作ることでシステムフィールド（レコード番号等）が自動補完される
+    appId = await createApp(QUERY_URL, {
+      name: "system fields query",
+      properties: { title: { type: "SINGLE_LINE_TEXT", code: "title", label: "title" } },
+      records: [
+        { title: { value: "A" } },
+        { title: { value: "B" } },
+        { title: { value: "C" } },
+      ],
+    });
+  });
+  afterEach(async () => { await finalizeSession(QUERY_URL); });
+
+  test("レコード番号フィールドコードで = クエリできる", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'レコード番号 = "2"',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.title!.value).toBe("B");
+  });
+
+  test("レコード番号フィールドコードで order by できる", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: "order by レコード番号 desc",
+    });
+    expect(records.map((r) => r.title!.value)).toEqual(["C", "B", "A"]);
+  });
+
+  test("アンダースコアを含む日本語混在フィールドコードで = クエリが動作する", async () => {
+    const app2 = await createApp(QUERY_URL, {
+      name: "mixed field code",
+      properties: {
+        文字列__1行_: { type: "SINGLE_LINE_TEXT", code: "文字列__1行_", label: "mixed" },
+      },
+      records: [{ 文字列__1行_: { value: "テスト値" } }],
+    });
+    const { records } = await client.record.getRecords({
+      app: app2, query: '文字列__1行_ = "テスト値"',
+    });
+    expect(records).toHaveLength(1);
+    expect((records[0] as Record<string, { value: unknown }>).文字列__1行_!.value).toBe("テスト値");
   });
 });

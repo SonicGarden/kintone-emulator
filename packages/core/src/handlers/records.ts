@@ -3,7 +3,9 @@ import { dbSession } from "../db/client";
 import { findFields, findFieldTypes } from "../db/fields";
 import type { FieldRow, FieldTypeRow } from "../db/fields";
 import { deleteRecords, findRecord, findRecordByKey, findRecords, findRecordsByClause, insertRecord, updateRecord } from "../db/records";
+import type { RecordRow } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
 import { applyDefaults, attachFieldTypes, detectLocale, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
@@ -20,8 +22,16 @@ const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
       break;
     case 'column_ref':
       switch (fieldTypes[expression.column]) {
+        case 'RECORD_NUMBER':
+          // RECORD_NUMBER フィールドは records.id カラムに対応。body には保存されていない
+          expression.column = 'id';
+          break;
         case 'CREATED_TIME':
+          expression.column = `datetime(created_at, '+9 hours')`;
+          break;
         case 'UPDATED_TIME':
+          expression.column = `datetime(updated_at, '+9 hours')`;
+          break;
         case 'DATETIME':
           expression.column = `datetime(body->>'$.${expression.column}.value', '+9 hours')`;
           break;
@@ -54,13 +64,17 @@ const replaceField = (param: { expression: any, fieldTypes: FieldTypes }) => {
 };
 
 const generateRecords = ({ recordResult, fieldRows, fields }: {
-  recordResult: { id: number, body: string, revision: number }[],
+  recordResult: RecordRow[],
   fieldRows: FieldRow[],
   fields: string[]
 }) => {
   return recordResult.map((record) => {
     const body = JSON.parse(record.body);
-    attachFieldTypes(body, fieldRows);
+    attachFieldTypes(body, fieldRows, {
+      recordId: record.id,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+    });
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) {
@@ -69,7 +83,7 @@ const generateRecords = ({ recordResult, fieldRows, fields }: {
       }
     }
     body['$revision'] = { value: record.revision.toString(), type: '__REVISION__' };
-    body['$id'] = { value: record.id.toString(), type: 'RECORD_NUMBER' };
+    body['$id'] = { value: record.id.toString(), type: '__ID__' };
     return body;
   });
 };
@@ -79,9 +93,25 @@ const hasWhereClause = (query: string) =>
   && !query.trim().toLowerCase().startsWith('limit')
   && !query.trim().toLowerCase().startsWith('offset');
 
+// フィールドコードとして許容する非 ASCII 文字の Unicode 範囲:
+//   \u3005-\u3006 : 繰り返し記号「々」「〆」
+//   \u3040-\u30ff : ひらがな + カタカナ のブロック
+//   \u4e00-\u9fff : 基本 CJK 漢字ブロック
+//   \uff00-\uffef : 全角英数字・記号・半角カナ等
+export const NON_ASCII_FIELD_CODE_CHARS = "\\u3005-\\u3006\\u3040-\\u30ff\\u4e00-\\u9fff\\uff00-\\uffef";
+
+// フィールドコード全体の許容文字集合（SQL injection ガードにも使う）
+export const FIELD_CODE_PATTERN = new RegExp(`^[\\w${NON_ASCII_FIELD_CODE_CHARS}]+$`);
+
+// 日本語や全角英数字を含む識別子はバッククォートで囲んで node-sql-parser に渡す。
+// ASCII の `\w` と非 ASCII 文字が混在した識別子（例: `文字列__1行_`）も 1 つの識別子としてまとめて括る。
+// クォート内の文字列リテラルはマッチ対象外（lookbehind / lookahead で除外）。
 const replaceUniCodeField = (query: string) => {
-  const includedJp = /(?<!['"\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf])\w*[\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf]+\w*(?!['"])/g;
-  return query.replace(includedJp, (match) => `\`${match}\``);
+  // lookbehind で「クォート / 非 ASCII 文字の直後」を除外しないと、
+  // "参照元９５" のような文字列リテラル内で部分マッチしてしまう
+  const identifier = new RegExp(`(?<!['"${NON_ASCII_FIELD_CODE_CHARS}])[\\w${NON_ASCII_FIELD_CODE_CHARS}]+(?!['"])`, "g");
+  const hasNonAscii = new RegExp(`[${NON_ASCII_FIELD_CODE_CHARS}]`);
+  return query.replace(identifier, (match) => (hasNonAscii.test(match) ? `\`${match}\`` : match));
 };
 
 export const get = ({ request, params }: HandlerArgs) => {
@@ -198,7 +228,10 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   for (let i = 0; i < records.length; i++) {
     const withDefaults = applyDefaults(fieldRows, records[i]!);
-    const normalized = normalizeNumbers(fieldRows, withDefaults);
+    const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
+    // 実 kintone の一括 API は 1 件目のルックアップエラーで即終了（errors に index 情報は含まれない）
+    if (lookupResult.error) return lookupResult.error;
+    const normalized = normalizeNumbers(fieldRows, lookupResult.record);
     prepared.push(normalized);
     const errors = validateRecord(fieldRows, normalized, { db, appId: body.app, locale });
     if (errors) Object.assign(allErrors, prefixErrorKeys(errors, i));
@@ -231,8 +264,8 @@ type UpdateRecordInput = {
   revision?: string | number;
 };
 
-// record.ts の PUT と同じパターン（updateKey.field の SQL injection ガード）
-const FIELD_CODE_PATTERN = /^[\w\u3000-\u9fff\uff00-\uffef]+$/;
+// updateKey.field の SQL injection ガードは、ファイル先頭で定義した
+// FIELD_CODE_PATTERN（クエリ内の識別子として許容するのと同じ文字集合）を使う
 
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
@@ -271,7 +304,9 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
     const existingBody = JSON.parse(target.body);
     const incoming = mergeSubtableRows(fieldRows, existingBody, item.record);
-    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...incoming });
+    const lookupResult = applyLookups(fieldRows, incoming, { db, locale });
+    if (lookupResult.error) return lookupResult.error;
+    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...lookupResult.record });
     const errors = validateRecord(fieldRows, merged, {
       db, appId: body.app, excludeId: target.id, locale,
     });
