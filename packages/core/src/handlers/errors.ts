@@ -111,6 +111,17 @@ export const errorFieldNotFound = (fieldCode: string, locale: Locale = "ja") => 
   );
 };
 
+// ゲストスペース内のアプリへ非ゲストパスでアクセスしたときのエラー（HTTP 520, GAIA_IL23）
+export const errorGuestSpacePathRequired = (locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。"
+    : "When you operate an app in a guest space, please send the request to '/k/guest/(guest space ID)/v1/...'.";
+  return Response.json(
+    { code: "GAIA_IL23", id: generateErrorId(), message },
+    { status: 520 }
+  );
+};
+
 // ルックアップのキー不一致（HTTP 400、errors オブジェクトは付かない）
 export const errorLookupNotFound = (fieldCode: string, value: string, locale: Locale = "ja") => {
   const message = locale === "ja"

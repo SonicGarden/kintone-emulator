@@ -34,6 +34,20 @@ export const setupAuth = async (
   }
 };
 
+export const setupSpace = async (
+  baseUrl: string,
+  params: { id: number; isGuest?: boolean; name?: string },
+): Promise<void> => {
+  const response = await fetch(`${baseUrl}/setup/space.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    throw new Error(`setupSpace failed: ${response.status} ${response.statusText}`);
+  }
+};
+
 export type CreateAppResult = {
   appId: number;
   recordIds: number[];
@@ -48,6 +62,8 @@ export const createApp = async (
     layout?: unknown[];
     status?: unknown;
     records?: unknown[];
+    spaceId?: number;
+    threadId?: number;
   },
 ): Promise<CreateAppResult> => {
   const response = await fetch(`${baseUrl}/setup/app.json`, {

@@ -16,6 +16,7 @@ import * as setupApp from "./handlers/setup-app";
 import * as setupAuth from "./handlers/setup-auth";
 import * as setupFailure from "./handlers/setup-failure";
 import * as setupFailureRateLimit from "./handlers/setup-failure-rate-limit";
+import * as setupSpace from "./handlers/setup-space";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
 import { withFailureInjection } from "./handlers/with-failure-injection";
@@ -29,6 +30,7 @@ type RouteEntry = {
   PUT?: RouteHandler;
   DELETE?: RouteHandler;
   requiresAuth?: boolean;
+  guestSpaceIdGroup?: number;
 };
 
 const routes: RouteEntry[] = [
@@ -66,6 +68,18 @@ const routes: RouteEntry[] = [
     requiresAuth: true,
   },
   {
+    pattern: /^\/(?:([^/]+)\/)?k\/guest\/(\d+)\/v1\/app\.json$/,
+    guestSpaceIdGroup: 2,
+    GET: appRoute.get,
+    requiresAuth: true,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?k\/guest\/(\d+)\/v1\/apps\.json$/,
+    guestSpaceIdGroup: 2,
+    GET: appsRoute.get,
+    requiresAuth: true,
+  },
+  {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
     GET: status.get,
     requiresAuth: true,
@@ -99,6 +113,10 @@ const routes: RouteEntry[] = [
   {
     pattern: /^\/(?:([^/]+)\/)?setup\/auth\.json$/,
     POST: setupAuth.post,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?setup\/space\.json$/,
+    POST: setupSpace.post,
   },
   {
     pattern: /^\/(?:([^/]+)\/)?setup\/failure\.json$/,
@@ -200,9 +218,10 @@ async function handler(
         return routeHandler(args);
       };
       const wrapped = route.requiresAuth ? withFailureInjection(authedHandler) : authedHandler;
+      const guestSpaceId = route.guestSpaceIdGroup != null ? match[route.guestSpaceIdGroup] : undefined;
       const webRes = await wrapped({
         request: webReq,
-        params: { session },
+        params: { session, guestSpaceId },
       });
       await sendWebResponse(webRes, res);
     } catch (e) {

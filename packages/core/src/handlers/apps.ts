@@ -11,8 +11,8 @@ const toAppResponse = (row: AppRow) => ({
   code: "",
   name: row.name,
   description: "",
-  spaceId: null,
-  threadId: null,
+  spaceId: row.space_id != null ? row.space_id.toString() : null,
+  threadId: row.thread_id != null ? row.thread_id.toString() : null,
   createdAt: row.created_at,
   creator: { code: "", name: "" },
   modifiedAt: row.updated_at,
@@ -29,9 +29,12 @@ export const get = ({ request, params }: HandlerArgs) => {
     }
   }
 
+  const guestSpaceId = params.guestSpaceId != null ? Number(params.guestSpaceId) : undefined;
+
   const result = findApps(dbSession(params.session), {
     ids,
     name: url.searchParams.get('name') ?? undefined,
+    spaceIds: guestSpaceId != null ? [guestSpaceId] : undefined,
     limit: Math.min(Number(url.searchParams.get('limit') ?? '100'), 100),
     offset: Number(url.searchParams.get('offset') ?? '0'),
   });
