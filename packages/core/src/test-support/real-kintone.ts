@@ -104,6 +104,16 @@ export const getTestClient = (session: string): KintoneRestAPIClient =>
  * - real: X-Cybozu-Authorization (basic)
  * - emulator: 認証未設定の場合は空（auth handler が素通し）
  */
+/**
+ * 通常スペース所属のテスト用アプリ一覧を返す。
+ * - real: configureTestEnv で渡された spaceApps
+ * - emulator: undefined（呼び出し側で testEmulatorOnly / setupSpace を組み合わせる前提）
+ */
+export const getTestSpaceApps = () => getTestEnv().realKintone?.spaceApps ?? [];
+
+/** ゲストスペース所属のテスト用アプリ一覧を返す。 */
+export const getTestGuestSpaceApps = () => getTestEnv().realKintone?.guestSpaceApps ?? [];
+
 export const getTestRequestHeaders = (): Record<string, string> => {
   if (!isUsingRealKintone()) return {};
   const cfg = getRealKintoneConfig();

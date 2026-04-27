@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { findApp } from "../db/apps";
 import { findSpace } from "../db/spaces";
-import { errorGuestSpacePathRequired, errorNotFoundApp } from "./errors";
+import { errorGuestSpacePathRequired, errorNoPermission } from "./errors";
 import type { Locale } from "./validate";
 
 // 与えられた appId と params.guestSpaceId の整合性を検査する。
@@ -28,7 +28,7 @@ export const enforceGuestSpace = (
     return undefined;
   }
   if (!appIsInGuestSpace || app.space_id !== requestedGuest) {
-    return errorNotFoundApp(String(appId), locale);
+    return errorNoPermission(locale);
   }
   return undefined;
 };

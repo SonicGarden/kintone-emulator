@@ -7,6 +7,17 @@ import { configureTestEnv, isUsingRealKintone, resetAppAssignment } from "../src
 
 // vitest の import.meta.env 経由で test-support に設定を注入する。
 // （他プロジェクトからこのモジュール群を使う場合は自分で configureTestEnv を呼ぶ）
+const parseSpaceApps = (raw: string) =>
+  raw
+    .split(",")
+    .map((s: string) => s.trim())
+    .filter(Boolean)
+    .map((entry: string) => {
+      const [spaceId, appId] = entry.split(":").map(Number);
+      return { spaceId: spaceId!, appId: appId! };
+    })
+    .filter((e) => Number.isFinite(e.spaceId) && e.spaceId > 0 && Number.isFinite(e.appId) && e.appId > 0);
+
 configureTestEnv({
   mode: import.meta.env.MODE,
   realKintone: {
@@ -17,6 +28,8 @@ configureTestEnv({
       .split(",")
       .map((s: string) => Number(s.trim()))
       .filter((n: number) => Number.isFinite(n) && n > 0),
+    spaceApps:      parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_SPACE_APP_IDS ?? ""),
+    guestSpaceApps: parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS ?? ""),
   },
 });
 

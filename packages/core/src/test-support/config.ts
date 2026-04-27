@@ -2,6 +2,9 @@
 // vitest に限らず任意のテストランナーで使えるよう、環境検出はしない。
 // 消費側が `configureTestEnv(...)` を呼んで一度セットする。
 
+/** `<spaceId>:<appId>` 形式で渡されるスペース所属アプリのエントリ */
+export type SpaceAppEntry = { spaceId: number; appId: number };
+
 export type RealKintoneTestEnv = {
   /** サブドメイン（https://<domain>.cybozu.com） */
   domain: string;
@@ -11,6 +14,10 @@ export type RealKintoneTestEnv = {
   password: string;
   /** 事前に用意したテスト用アプリ ID プール（1 テスト内で必要な最大数を賄う個数） */
   appIds: number[];
+  /** 通常スペース所属のテスト用アプリ。`spaceId:appId` 形式の配列 */
+  spaceApps?: SpaceAppEntry[];
+  /** ゲストスペース所属のテスト用アプリ。`spaceId:appId` 形式の配列 */
+  guestSpaceApps?: SpaceAppEntry[];
 };
 
 export type TestEnv = {

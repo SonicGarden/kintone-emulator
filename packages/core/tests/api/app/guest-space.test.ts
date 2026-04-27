@@ -35,7 +35,7 @@ describeEmulatorOnly("ゲストスペース", () => {
     const { appId } = await createApp(BASE_URL, { name: "ゲスト app", spaceId: 2, threadId: 2 });
 
     const response = await fetch(`${BASE_URL}/k/v1/app.json?id=${appId}`);
-    expect(response.status).toBe(520);
+    expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.code).toBe("GAIA_IL23");
   });
@@ -53,13 +53,13 @@ describeEmulatorOnly("ゲストスペース", () => {
     expect(result.spaceId).toBe("2");
   });
 
-  test("ゲストパスで通常スペースのアプリを getApp するとエラー", async () => {
+  test("ゲストパスで通常スペースのアプリを getApp すると CB_NO02", async () => {
     const { appId } = await createApp(BASE_URL, { name: "通常 app", spaceId: 1, threadId: 1 });
 
     const response = await fetch(`${BASE_URL}/k/guest/2/v1/app.json?id=${appId}`);
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
     const json = await response.json();
-    expect(json.code).toBe("GAIA_AP01");
+    expect(json.code).toBe("CB_NO02");
   });
 
   test("非ゲストパスでゲストスペースのアプリの records を取得すると GAIA_IL23", async () => {
@@ -72,7 +72,7 @@ describeEmulatorOnly("ゲストスペース", () => {
     });
 
     const response = await fetch(`${BASE_URL}/k/v1/records.json?app=${appId}`);
-    expect(response.status).toBe(520);
+    expect(response.status).toBe(400);
     expect((await response.json()).code).toBe("GAIA_IL23");
   });
 
@@ -102,7 +102,7 @@ describeEmulatorOnly("ゲストスペース", () => {
       properties: { foo: { type: "SINGLE_LINE_TEXT", code: "foo", label: "foo" } },
     });
     const response = await fetch(`${BASE_URL}/k/v1/app/form/fields.json?app=${appId}`);
-    expect(response.status).toBe(520);
+    expect(response.status).toBe(400);
     expect((await response.json()).code).toBe("GAIA_IL23");
   });
 

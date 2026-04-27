@@ -111,14 +111,25 @@ export const errorFieldNotFound = (fieldCode: string, locale: Locale = "ja") => 
   );
 };
 
-// ゲストスペース内のアプリへ非ゲストパスでアクセスしたときのエラー（HTTP 520, GAIA_IL23）
+// 権限なしエラー（HTTP 403, CB_NO02）。
+// 実 kintone では「ゲストパス × そのゲストスペースに属さないアプリ」など、
+// アクセス自体は可能だが対象リソースの閲覧権限がないケースで返る。
+export const errorNoPermission = (locale: Locale = "ja") => {
+  const message = locale === "ja" ? "権限がありません。" : "No privilege.";
+  return Response.json(
+    { code: "CB_NO02", id: generateErrorId(), message },
+    { status: 403 }
+  );
+};
+
+// ゲストスペース内のアプリへ非ゲストパスでアクセスしたときのエラー（HTTP 400, GAIA_IL23）
 export const errorGuestSpacePathRequired = (locale: Locale = "ja") => {
   const message = locale === "ja"
     ? "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。"
     : "When you operate an app in a guest space, please send the request to '/k/guest/(guest space ID)/v1/...'.";
   return Response.json(
     { code: "GAIA_IL23", id: generateErrorId(), message },
-    { status: 520 }
+    { status: 400 }
   );
 };
 
