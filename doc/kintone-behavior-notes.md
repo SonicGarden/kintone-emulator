@@ -74,6 +74,52 @@ GET /k/v1/file.json?fileKey=xxx  (en)
 }
 ```
 
+### 429 系（同時実行制限）
+
+検証日時 2026-04-27、スクリプト `tmp/probe-rate-limit.ts` (concurrency=300〜500, 10000 records)。
+
+| ケース | code | HTTP | message ja | message en |
+|---|---|---|---|---|
+| 同時実行 100/ドメインを超過 | `GAIA_TO04` | 429 | `APIの同時リクエスト数が上限を超えています。` | `The number of concurrent API requests exceeds the limit.` |
+
+レスポンス固有のヘッダー:
+
+- `X-Cybozu-Error: GAIA_TO04`
+- `X-ConcurrencyLimit-Limit: 100`
+- `X-ConcurrencyLimit-Running: 101` （上限+1。「101 個目で弾かれた」を表現）
+- `Cache-Control: no-cache, no-store, must-revalidate`
+
+`X-ConcurrencyLimit-Limit` / `X-ConcurrencyLimit-Running` はこの 429 だけでなく **すべての成功レスポンスにも付く**（公式: [concurrent-connection-limit-reason](https://cybozu.dev/ja/kintone/tips/development/customize/columns/concurrent-connection-limit-reason/)）。
+
+#### ロケール挙動の特殊性
+
+検証アカウントは「Web ブラウザーの設定に従う」設定で、他の API は `Accept-Language` ヘッダー無し時に日本語が返るが、**429 だけはヘッダー無しで英語が返った**。429 は他の API 経路（アプリレベル）と異なる層で生成されており、デフォルトロケールの解決が違う可能性がある。エミュレーターはこの細かい挙動までは再現せず、auth エラーの方針 (commit `0cc7617`) に揃えて `ja` または ヘッダー無し → 日本語 / `en` → 英語 で実装している。
+
+#### 生レスポンス
+
+```
+GET /k/v1/records.json?app=<APP_ID>&query=limit+500  (Accept-Language: ja)
+-> 429
+content-type: application/json;charset=utf-8
+x-cybozu-error: GAIA_TO04
+x-concurrencylimit-limit: 100
+x-concurrencylimit-running: 101
+
+{
+  "code": "GAIA_TO04",
+  "id": "OaLSLb8AQehhg8QdooV3",
+  "message": "APIの同時リクエスト数が上限を超えています。"
+}
+
+GET /k/v1/records.json?app=<APP_ID>&query=limit+500  (Accept-Language ヘッダー無し)
+-> 429
+{
+  "code": "GAIA_TO04",
+  "id": "19FkfOekrYPcqWcW6SgC",
+  "message": "The number of concurrent API requests exceeds the limit."
+}
+```
+
 ### 400 系（コメント削除失敗は 400！）
 
 | ケース | code | HTTP | message ja | message en |

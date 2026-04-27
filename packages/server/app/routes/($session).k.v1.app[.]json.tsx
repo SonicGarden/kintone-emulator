@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { get } from "@sonicgarden/kintone-emulator/handlers/app";
 import { withAuth } from "@sonicgarden/kintone-emulator/handlers/auth";
+import { withFailureInjection } from "@sonicgarden/kintone-emulator/handlers/with-failure-injection";
 
 export const loader = ({ request, params }: LoaderFunctionArgs) =>
-  withAuth(get)({ request, params });
+  withFailureInjection(withAuth(get))({ request, params });

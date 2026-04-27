@@ -14,8 +14,11 @@ import * as record from "./handlers/record";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
 import * as setupAuth from "./handlers/setup-auth";
+import * as setupFailure from "./handlers/setup-failure";
+import * as setupFailureRateLimit from "./handlers/setup-failure-rate-limit";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
+import { withFailureInjection } from "./handlers/with-failure-injection";
 
 type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
 
@@ -98,6 +101,16 @@ const routes: RouteEntry[] = [
     POST: setupAuth.post,
   },
   {
+    pattern: /^\/(?:([^/]+)\/)?setup\/failure\.json$/,
+    POST: setupFailure.post,
+    DELETE: setupFailure.del,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?setup\/failure\/rate-limit\.json$/,
+    POST: setupFailureRateLimit.post,
+    DELETE: setupFailureRateLimit.del,
+  },
+  {
     pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
     POST: comment.post,
     DELETE: comment.del,
@@ -177,15 +190,17 @@ async function handler(
       const url = `http://localhost${req.url}`;
       const webReq = await toWebRequest(req, url);
 
-      if (route.requiresAuth) {
-        const authResult = authenticate(webReq, session);
-        if (authResult) {
-          await sendWebResponse(authResult, res);
-          return;
+      // 実機 kintone の LB レベルのエラー (503/429 等) は auth より手前で発生するため、
+      // failure injection を auth より先に評価する。
+      const authedHandler: RouteHandler = (args) => {
+        if (route.requiresAuth) {
+          const authResult = authenticate(args.request, session);
+          if (authResult) return authResult;
         }
-      }
-
-      const webRes = await routeHandler({
+        return routeHandler(args);
+      };
+      const wrapped = route.requiresAuth ? withFailureInjection(authedHandler) : authedHandler;
+      const webRes = await wrapped({
         request: webReq,
         params: { session },
       });
