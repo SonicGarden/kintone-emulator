@@ -14,7 +14,7 @@ describeEmulatorOnly("CALC / 文字列 autoCalc バリデーション", () => {
 
   beforeEach(async () => {
     await initializeSession(BASE_URL);
-    appId = await createApp(BASE_URL, { name: "calc validation" });
+    appId = (await createApp(BASE_URL, { name: "calc validation" })).appId;
   });
 
   afterEach(async () => {

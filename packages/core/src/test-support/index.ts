@@ -4,3 +4,4 @@
 export * from "./config";
 export * from "./helpers";
 export * from "./real-kintone";
+export { fieldProperty, applyFieldDefaults } from "../field-defaults";

@@ -34,6 +34,11 @@ export const setupAuth = async (
   }
 };
 
+export type CreateAppResult = {
+  appId: number;
+  recordIds: number[];
+};
+
 export const createApp = async (
   baseUrl: string,
   params: {
@@ -44,7 +49,7 @@ export const createApp = async (
     status?: unknown;
     records?: unknown[];
   },
-): Promise<number> => {
+): Promise<CreateAppResult> => {
   const response = await fetch(`${baseUrl}/setup/app.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -53,6 +58,12 @@ export const createApp = async (
   if (!response.ok) {
     throw new Error(`createApp failed: ${response.status} ${response.statusText}`);
   }
-  const data = await response.json();
-  return Number(data.app);
+  const data = (await response.json()) as {
+    app: number | string;
+    recordIds?: (number | string)[];
+  };
+  return {
+    appId: Number(data.app),
+    recordIds: (data.recordIds ?? []).map(Number),
+  };
 };

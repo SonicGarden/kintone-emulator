@@ -13,7 +13,7 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
 
   beforeEach(async () => {
     await initializeSession(BASE_URL);
-    appId = await createApp(BASE_URL, { name: "テストアプリ" });
+    appId = (await createApp(BASE_URL, { name: "テストアプリ" })).appId;
   });
 
   afterEach(async () => {
@@ -49,6 +49,13 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
       code: "test",
       label: "Test",
       noLabel: false,
+      required: false,
+      minLength: "",
+      maxLength: "",
+      expression: "",
+      hideExpression: false,
+      unique: false,
+      defaultValue: "",
     });
     await client.app.deleteFormFields({
       app: appId,

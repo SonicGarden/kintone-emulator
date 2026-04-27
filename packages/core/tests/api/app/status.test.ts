@@ -17,7 +17,7 @@ describeEmulatorOnly("プロセス管理の設定取得API", () => {
   });
 
   test("プロセス管理未設定のアプリではデフォルト値が返る", async () => {
-    const appId = await createApp(BASE_URL, { name: "テストアプリ" });
+    const appId = (await createApp(BASE_URL, { name: "テストアプリ" })).appId;
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=${appId}`);
     expect(response.ok).toBe(true);
 
@@ -67,10 +67,10 @@ describeEmulatorOnly("プロセス管理の設定取得API", () => {
       revision: "10",
     };
 
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "プロセス管理アプリ",
       status: statusConfig,
-    });
+    })).appId;
 
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=${appId}`);
     expect(response.ok).toBe(true);

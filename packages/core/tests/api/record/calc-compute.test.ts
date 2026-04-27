@@ -478,7 +478,7 @@ describeDualMode("SUBTABLE 内 CALC / SLT autoCalc", () => {
       },
     });
     const { record } = await client.record.getRecord({ app: appId, id });
-    const rows = record.items.value as Array<{ value: Record<string, { value: unknown }> }>;
+    const rows = record.items!.value as Array<{ value: Record<string, { value: unknown }> }>;
     expect(rows[0]!.value.calc_subtotal).toEqual({ type: "CALC", value: "220" });
     expect(rows[0]!.value.calc_is_sale).toEqual({ type: "CALC", value: "1" });
     expect(rows[0]!.value.text_label).toEqual({ type: "SINGLE_LINE_TEXT", value: "2 * 100" });

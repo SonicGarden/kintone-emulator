@@ -51,7 +51,7 @@ const nextRealAppId = (): number => {
   if (nextRealAppIndex >= ids.length) {
     throw new Error(
       `realKintone.appIds には ${ids.length} 個のアプリ ID しか指定されていません。` +
-        `1 つのテスト内で必要なアプリ数を確保するため、appIds の個数を増やしてください。`,
+      "1 つのテスト内で必要なアプリ数を確保するため、appIds の個数を増やしてください。",
     );
   }
   const id = ids[nextRealAppIndex]!;
@@ -145,10 +145,7 @@ export const createTestApp = async (
   params: CreateTestAppParams,
 ): Promise<CreateTestAppResult> => {
   if (!isUsingRealKintone()) {
-    const appId = await emulatorCreateApp(emulatorCreateBaseUrl(session), params);
-    // emulator の createApp は app だけ返すが、real との整合のため records の件数分ダミーは返さない。
-    // emulator の recordIds を使いたい場合は直接 /setup/app.json を呼ぶ。
-    return { appId, recordIds: [] };
+    return emulatorCreateApp(emulatorCreateBaseUrl(session), params);
   }
   return setupRealKintoneApp(params);
 };
@@ -313,15 +310,6 @@ const filterAddableFields = (
     const f = field as { type: string; fields?: Record<string, unknown>; lookup?: unknown };
     if (SYSTEM_FIELD_TYPES.has(f.type)) continue;
     if (f.type === "REFERENCE_TABLE") continue;
-    // ルックアップを含む SUBTABLE は、内部のルックアップだけ除外してから渡す
-    if (f.type === "SUBTABLE" && f.fields) {
-      const filteredFields: Record<string, unknown> = {};
-      for (const [subCode, subField] of Object.entries(f.fields)) {
-        if (!(subField as { lookup?: unknown }).lookup) filteredFields[subCode] = subField;
-      }
-      result[code] = { ...f, fields: filteredFields };
-      continue;
-    }
     result[code] = field;
   }
   return result;

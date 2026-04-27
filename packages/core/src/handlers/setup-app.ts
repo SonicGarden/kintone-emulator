@@ -5,7 +5,8 @@ import { dbSession } from "../db/client";
 import { findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
-import { errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
+import { errorFieldNotFound, errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
+import { validateLookupMappings } from "./lookup-validation";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, detectLocale } from "./validate";
 
@@ -49,6 +50,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
       : undefined;
 
     if (properties) {
+      const lookupIssue = validateLookupMappings([], properties);
+      if (lookupIssue) return errorFieldNotFound(lookupIssue.missingField, locale);
       const issue = validateFieldsForInsert([], properties);
       if (issue) {
         if (issue.kind === "format_enum") return errorInvalidCalcFormat(issue.key, locale);
