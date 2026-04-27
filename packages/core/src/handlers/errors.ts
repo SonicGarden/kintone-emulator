@@ -115,7 +115,7 @@ export const errorFieldNotFound = (fieldCode: string, locale: Locale = "ja") => 
 // 実 kintone では「ゲストパス × そのゲストスペースに属さないアプリ」など、
 // アクセス自体は可能だが対象リソースの閲覧権限がないケースで返る。
 export const errorNoPermission = (locale: Locale = "ja") => {
-  const message = locale === "ja" ? "権限がありません。" : "No privilege.";
+  const message = locale === "ja" ? "権限がありません。" : "No privilege to proceed.";
   return Response.json(
     { code: "CB_NO02", id: generateErrorId(), message },
     { status: 403 }

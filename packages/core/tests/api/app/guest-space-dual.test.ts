@@ -44,7 +44,11 @@ describeDualMode("ゲストスペース挙動 (dualMode)", () => {
   test("非ゲストパスでゲスト app を getApp すると GAIA_IL23 (400)", async () => {
     const res = await fetch(`${baseUrl}/k/v1/app.json?id=${guestApp.appId}`, { headers });
     expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe("GAIA_IL23");
+    const json = await res.json();
+    expect(json.code).toBe("GAIA_IL23");
+    expect(json.message).toBe(
+      "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。",
+    );
   });
 
   test("ゲストパスで spaceId 一致のゲスト app は 200 で取得できる", async () => {
@@ -64,7 +68,9 @@ describeDualMode("ゲストスペース挙動 (dualMode)", () => {
       { headers },
     );
     expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe("CB_NO02");
+    const json = await res.json();
+    expect(json.code).toBe("CB_NO02");
+    expect(json.message).toBe("権限がありません。");
   });
 
   test("ユーザー判定ロジック再現: getApps→guestSpaceId 指定で getApp", async () => {
