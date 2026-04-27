@@ -2,13 +2,13 @@ import { clearFailure, setFailure } from "../db/failure-injection";
 import type { HandlerArgs } from "./types";
 
 type Body = {
-  nth?: number;
+  skip?: number;
+  count?: number;
   status?: number;
   body?: string | object;
   contentType?: string;
   extraHeaders?: Record<string, string>;
   pathPattern?: string;
-  persistent?: boolean;
 };
 
 const inferContentType = (body: string | object): string =>
@@ -16,8 +16,11 @@ const inferContentType = (body: string | object): string =>
 
 export const post = async ({ request, params }: HandlerArgs): Promise<Response> => {
   const json = (await request.json()) as Body;
-  if (typeof json.nth !== "number" || json.nth < 1) {
-    return Response.json({ message: "nth must be a positive integer" }, { status: 400 });
+  if (json.skip !== undefined && (typeof json.skip !== "number" || json.skip < 0)) {
+    return Response.json({ message: "skip must be a non-negative integer" }, { status: 400 });
+  }
+  if (json.count !== undefined && (typeof json.count !== "number" || json.count < 1)) {
+    return Response.json({ message: "count must be a positive integer when specified" }, { status: 400 });
   }
   if (typeof json.status !== "number") {
     return Response.json({ message: "status is required" }, { status: 400 });
@@ -26,13 +29,13 @@ export const post = async ({ request, params }: HandlerArgs): Promise<Response> 
     return Response.json({ message: "body is required" }, { status: 400 });
   }
   setFailure(params.session, {
-    nth: json.nth,
+    skip: json.skip ?? 0,
+    count: json.count,
     status: json.status,
     body: json.body,
     contentType: json.contentType ?? inferContentType(json.body),
     extraHeaders: json.extraHeaders,
     pathPattern: json.pathPattern,
-    persistent: json.persistent,
   });
   return Response.json({ result: "ok" });
 };

@@ -4,9 +4,9 @@ import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
 type Body = {
-  nth?: number;
+  skip?: number;
+  count?: number;
   pathPattern?: string;
-  persistent?: boolean;
 };
 
 const messages = {
@@ -20,12 +20,16 @@ const CONCURRENCY_LIMIT = 100;
 
 export const post = async ({ request, params }: HandlerArgs): Promise<Response> => {
   const json = (await request.json()) as Body;
-  if (typeof json.nth !== "number" || json.nth < 1) {
-    return Response.json({ message: "nth must be a positive integer" }, { status: 400 });
+  if (json.skip !== undefined && (typeof json.skip !== "number" || json.skip < 0)) {
+    return Response.json({ message: "skip must be a non-negative integer" }, { status: 400 });
+  }
+  if (json.count !== undefined && (typeof json.count !== "number" || json.count < 1)) {
+    return Response.json({ message: "count must be a positive integer when specified" }, { status: 400 });
   }
   const locale = detectLocale(request.headers.get("Accept-Language"));
   setFailure(params.session, {
-    nth: json.nth,
+    skip: json.skip ?? 0,
+    count: json.count,
     status: 429,
     body: {
       code: "GAIA_TO04",
@@ -40,7 +44,6 @@ export const post = async ({ request, params }: HandlerArgs): Promise<Response> 
       "Cache-Control": "no-cache, no-store, must-revalidate",
     },
     pathPattern: json.pathPattern,
-    persistent: json.persistent,
   });
   return Response.json({ result: "ok" });
 };
