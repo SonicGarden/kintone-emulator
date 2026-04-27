@@ -1,7 +1,7 @@
-// dualMode で実 kintone と挙動を揃えるためのゲストスペース挙動テスト。
+// 実 kintone と挙動を揃えるためのゲストスペース挙動テスト (dualMode)。
 // 実機側は .env.real-kintone の VITE_KINTONE_TEST_SPACE_APP_IDS /
 // VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS（spaceId:appId 形式）で指定された
-// 既存のスペース・アプリを使う。emulator は createTestSpaceApp が同じ ID で都度作る。
+// 既存のスペース・アプリを使う。emulator は createTestSpaceApp が都度作る。
 
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { beforeAll, beforeEach, expect, test } from "vitest";
@@ -14,8 +14,8 @@ import {
   resetTestEnvironment,
 } from "../../real-kintone";
 
-describeDualMode("ゲストスペース挙動 (dualMode)", () => {
-  const SESSION = "guest-space-dual";
+describeDualMode("ゲストスペース挙動", () => {
+  const SESSION = "guest-space";
   let baseUrl: string;
   let client: KintoneRestAPIClient;
   let headers: Record<string, string>;
