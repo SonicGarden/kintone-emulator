@@ -186,7 +186,7 @@ export const get = ({ request, params }: HandlerArgs) => {
   const { app, rawQuery, fields } = parseListParams(request);
   const locale = detectLocale(request.headers.get("accept-language"));
 
-  if (app == null) {
+  if (!app) {
     return errorInvalidInput({ app: { messages: [errorMessages(locale).requiredField] } }, locale);
   }
 
