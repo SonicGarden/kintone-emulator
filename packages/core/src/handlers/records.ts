@@ -186,12 +186,14 @@ export const get = ({ request, params }: HandlerArgs) => {
   const { app, rawQuery, fields } = parseListParams(request);
   const locale = detectLocale(request.headers.get("accept-language"));
 
-  if (app != null) {
-    const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
-    if (guestErr) return guestErr;
+  if (app == null) {
+    return errorInvalidInput({ app: { messages: [errorMessages(locale).requiredField] } }, locale);
   }
 
-  const fieldRows = findFields(db, app!);
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
+
+  const fieldRows = findFields(db, app);
   const queryCtx = buildQueryContext(fieldRows);
 
   try {
@@ -200,7 +202,7 @@ export const get = ({ request, params }: HandlerArgs) => {
     if (limitError) return limitError;
 
     const compiled = compile(ast, queryCtx);
-    const rows = runListQuery(db, app!, compiled);
+    const rows = runListQuery(db, app, compiled);
     return Response.json({
       totalCount: rows.length.toString(),
       records: toResponseRecords(rows, fieldRows, fields),
