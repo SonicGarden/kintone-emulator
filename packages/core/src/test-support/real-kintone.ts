@@ -98,6 +98,20 @@ export const getTestAuth = ():
 export const getTestClient = (session: string): KintoneRestAPIClient =>
   new KintoneRestAPIClient({ baseUrl: getTestBaseUrl(session), auth: getTestAuth() });
 
+/**
+ * raw fetch 用の認証ヘッダー。SDK を経由せずに必須パラメーター欠落などの
+ * バリデーションをテストする際に使う。
+ * - real: X-Cybozu-Authorization (basic)
+ * - emulator: 認証未設定の場合は空（auth handler が素通し）
+ */
+export const getTestRequestHeaders = (): Record<string, string> => {
+  if (!isUsingRealKintone()) return {};
+  const cfg = getRealKintoneConfig();
+  return {
+    "X-Cybozu-Authorization": Buffer.from(`${cfg.user}:${cfg.password}`).toString("base64"),
+  };
+};
+
 // ============================================================
 // 公開 API: テスト環境リセット
 // ============================================================
