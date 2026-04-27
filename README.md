@@ -96,8 +96,8 @@ SUBTABLE 内 LOOKUP も同様に動作し、各行のキー値ごとに同じ行
 | POST | `/[session]/finalize` | テーブルの削除（テスト後に実行） |
 | POST | `/[session]/setup/app.json` | テスト用アプリの作成（`name`, `properties`, `layout`, `status`, `records` を指定可能）。レスポンスに `app`, `revision`, `recordIds` を返す。`properties` のシステムフィールド（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME）は明示していなければ自動補完される（既定コード: `レコード番号` / `作成日時` / `更新日時`） |
 | POST | `/[session]/setup/auth.json` | 認証ユーザーの登録（`username`, `password`）。1人以上登録すると認証が有効になる |
-| POST / DELETE | `/[session]/setup/failure.json` | 障害注入。`{nth, status, body, contentType?, extraHeaders?, pathPattern?}` で「現時点から N 回目のリクエストで指定レスポンスを返す」状態を仕込む（one-shot）。`body` が string なら `text/plain`、object なら `application/json` で返す。DELETE で発火前に解除 |
-| POST / DELETE | `/[session]/setup/failure/rate-limit.json` | 同時実行制限のショートカット。`{nth, pathPattern?}` を渡すと N 回目に実機準拠の 429 / `GAIA_TO04` / `X-ConcurrencyLimit-*` を返す |
+| POST / DELETE | `/[session]/setup/failure.json` | 障害注入。`{nth, status, body, contentType?, extraHeaders?, pathPattern?, persistent?}` で「現時点から N 回目のリクエストで指定レスポンスを返す」状態を仕込む。デフォルトは one-shot（発火後にクリア）。`persistent: true` で発火後も解除されるまで全マッチリクエストに対し返し続ける（メンテナンス中の再現に使える）。`body` が string なら `text/plain`、object なら `application/json` で返す。DELETE で解除 |
+| POST / DELETE | `/[session]/setup/failure/rate-limit.json` | 同時実行制限のショートカット。`{nth, pathPattern?, persistent?}` を渡すと N 回目に実機準拠の 429 / `GAIA_TO04` / `X-ConcurrencyLimit-*` を返す |
 
 `setup/failure*` は実機 kintone の LB レベルのエラー（503 / 429 等）の挙動をクライアント側で検証するためのテストフックです。実機の挙動とクライアント (`@kintone/rest-api-client`) の挙動の根拠は [`doc/kintone-behavior-notes.md`](doc/kintone-behavior-notes.md) と [`doc/rest-api-client-behavior.md`](doc/rest-api-client-behavior.md) を参照。
 
@@ -248,6 +248,20 @@ await expect(client.record.getRecord({ app, id: 1 })).rejects.toMatchObject({
   status: 429,
   code: "GAIA_TO04",
 });
+
+// メンテナンス中の再現: 解除されるまで全リクエストが 503 を返し続ける
+await fetch(`${BASE_URL}/setup/failure.json`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    nth: 1,
+    persistent: true,
+    status: 503,
+    body: "Service Unavailable",
+  }),
+});
+// ... 任意回数のリクエストがすべて 503
+await fetch(`${BASE_URL}/setup/failure.json`, { method: "DELETE" }); // 解除
 ```
 
 ## @sonicgarden/kintone-emulator をライブラリとして使う

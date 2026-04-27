@@ -101,6 +101,51 @@ describeEmulatorOnly("障害注入 (setup/failure)", () => {
       await expect(client.record.getRecords({ app: appId })).rejects.toThrow();
     });
 
+    test("persistent: true で複数回連続で発火し続ける", async () => {
+      await setupFailure({
+        nth: 1,
+        persistent: true,
+        status: 503,
+        body: "Service Unavailable",
+      });
+      for (let i = 0; i < 5; i++) {
+        const res = await fetch(`${BASE_URL}/k/v1/record.json?app=${appId}&id=1`);
+        expect(res.status).toBe(503);
+      }
+    });
+
+    test("persistent: true でも DELETE で解除できる", async () => {
+      await setupFailure({
+        nth: 1,
+        persistent: true,
+        status: 503,
+        body: "Service Unavailable",
+      });
+      const fail = await fetch(`${BASE_URL}/k/v1/record.json?app=${appId}&id=1`);
+      expect(fail.status).toBe(503);
+      await clearFailureRequest();
+      const ok = await fetch(`${BASE_URL}/k/v1/record.json?app=${appId}&id=1`);
+      expect(ok.status).toBe(200);
+    });
+
+    test("persistent: true は nth で発火を遅らせた後に継続する", async () => {
+      await setupFailure({
+        nth: 3,
+        persistent: true,
+        status: 503,
+        body: "Service Unavailable",
+      });
+      // 1, 2 回目は通常応答、3 回目以降は全部 503
+      for (let i = 0; i < 2; i++) {
+        const ok = await fetch(`${BASE_URL}/k/v1/record.json?app=${appId}&id=1`);
+        expect(ok.status).toBe(200);
+      }
+      for (let i = 0; i < 3; i++) {
+        const fail = await fetch(`${BASE_URL}/k/v1/record.json?app=${appId}&id=1`);
+        expect(fail.status).toBe(503);
+      }
+    });
+
     test("body が object のときは application/json として返り KintoneRestAPIError 経路になる", async () => {
       await setupFailure({
         nth: 1,

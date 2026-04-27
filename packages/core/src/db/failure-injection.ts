@@ -8,6 +8,8 @@ export type FailureInjection = {
   contentType: string;
   extraHeaders?: Record<string, string>;
   pathPattern?: string;
+  // true なら nth 到達後も残り続け、解除されるまで全マッチリクエストで発火し続ける
+  persistent?: boolean;
 };
 
 const sessionKey = (session: string | undefined): string => session ?? "<default>";
@@ -31,7 +33,8 @@ export const getFailure = (session: string | undefined): FailureInjection | unde
 // ハンドラー側で消費するためのヘルパー。
 // 1. 登録が無ければ undefined
 // 2. pathPattern が指定されていてマッチしないなら undefined (カウンタは触らない)
-// 3. nth を 1 デクリメントし、0 になれば消費して返す。残っていれば undefined
+// 3. nth まで到達していなければ 1 デクリメントして undefined
+// 4. nth に到達したら発火。persistent でなければクリア、persistent なら nth=0 のまま残し続ける
 export const consumeFailure = (
   session: string | undefined,
   pathname: string,
@@ -39,8 +42,14 @@ export const consumeFailure = (
   const failure = store.get(sessionKey(session));
   if (!failure) return undefined;
   if (failure.pathPattern && !pathname.includes(failure.pathPattern)) return undefined;
-  failure.nth -= 1;
-  if (failure.nth > 0) return undefined;
-  store.delete(sessionKey(session));
+  if (failure.nth > 1) {
+    failure.nth -= 1;
+    return undefined;
+  }
+  if (failure.persistent) {
+    failure.nth = 0;
+  } else {
+    store.delete(sessionKey(session));
+  }
   return failure;
 };

@@ -6,6 +6,7 @@ import { detectLocale } from "./validate";
 type Body = {
   nth?: number;
   pathPattern?: string;
+  persistent?: boolean;
 };
 
 const messages = {
@@ -39,6 +40,7 @@ export const post = async ({ request, params }: HandlerArgs): Promise<Response> 
       "Cache-Control": "no-cache, no-store, must-revalidate",
     },
     pathPattern: json.pathPattern,
+    persistent: json.persistent,
   });
   return Response.json({ result: "ok" });
 };

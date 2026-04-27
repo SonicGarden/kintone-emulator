@@ -8,6 +8,7 @@ type Body = {
   contentType?: string;
   extraHeaders?: Record<string, string>;
   pathPattern?: string;
+  persistent?: boolean;
 };
 
 const inferContentType = (body: string | object): string =>
@@ -31,6 +32,7 @@ export const post = async ({ request, params }: HandlerArgs): Promise<Response> 
     contentType: json.contentType ?? inferContentType(json.body),
     extraHeaders: json.extraHeaders,
     pathPattern: json.pathPattern,
+    persistent: json.persistent,
   });
   return Response.json({ result: "ok" });
 };
