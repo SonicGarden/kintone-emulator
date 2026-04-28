@@ -348,7 +348,7 @@ npx --package @sonicgarden/kintone-emulator-cli sg-kintone export-app \
 
 独自パーサー（`packages/core/src/query/`）でほぼすべての演算子・関数・オプションをサポート。実機挙動との主な差分:
 
-- `like` / `not like` は SQLite の LIKE `%...%` で部分一致として代用（実 kintone は単語検索・添付ファイル内検索など独自挙動あり）
+- `like` / `not like` は SQLite の LIKE `%...%` で部分一致として代用（実 kintone は単語検索・添付ファイル内検索など独自挙動あり）。さらに実 kintone は全文検索インデックスを**非同期で**作成するため、レコード登録直後の `like` 検索は 0 件で返ることがあり dualMode テストは flaky になる。本リポジトリでは `like` の dualMode テストを意図的に置かず、ユニットテスト（`packages/core/tests/query/`）に留めている（参考: [kintone の検索のしくみと注意事項](https://cybozu.dev/ja/kintone/tips/best-practices/data-acquisition-operation/kintone-search-mechanism-and-notes/)）
 - `LOGINUSER()` / `PRIMARY_ORGANIZATION()` はパーサー自体は対応しているが、ハンドラー層で認証ユーザー情報を `ExpandContext` に渡す仕組みが未実装のため、実行すると「要設定」エラー
 - 関連レコードの参照記法（`Company.Name` のような入れ子フィールド）は未対応
 - DATETIME と `TODAY()` などの範囲関数の組み合わせはサーバータイムゾーン依存（実機は JST 基準で「今日」を判定、エミュレーターはローカル TZ で判定）
