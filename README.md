@@ -174,25 +174,7 @@ pnpm test:e2e
 
 #### 外部プロジェクトから使う
 
-`@sonicgarden/kintone-emulator/test-support` を import すれば、他のプロジェクトでも同じ dualMode 切替が使えます。vitest 非依存で、jest / node:test 等でも動作します。env のパースには `parseAppIds` / `parseSpaceApps` ヘルパーが用意されているので、消費側は以下のように `configureTestEnv` を呼ぶだけで済みます:
-
-```ts
-import { configureTestEnv, parseAppIds, parseSpaceApps } from "@sonicgarden/kintone-emulator/test-support";
-
-configureTestEnv({
-  mode: import.meta.env.MODE,
-  realKintone: {
-    domain:         import.meta.env.VITE_KINTONE_TEST_DOMAIN ?? "",
-    user:           import.meta.env.VITE_KINTONE_TEST_USER ?? "",
-    password:       import.meta.env.VITE_KINTONE_TEST_PASSWORD ?? "",
-    appIds:         parseAppIds(import.meta.env.VITE_KINTONE_TEST_APP_IDS),
-    spaceApps:      parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_SPACE_APP_IDS),
-    guestSpaceApps: parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS),
-  },
-});
-```
-
-詳細・API 一覧・セットアップ手順は [`doc/test-support.md`](doc/test-support.md) 参照。
+`@sonicgarden/kintone-emulator/test-support` を import すれば、他のプロジェクトでも同じ dualMode 切替が使えます。vitest 非依存で、jest / node:test 等でも動作します。詳細・API 一覧・セットアップ手順は [`doc/test-support.md`](doc/test-support.md) 参照。
 
 ## セッションの使い方
 
