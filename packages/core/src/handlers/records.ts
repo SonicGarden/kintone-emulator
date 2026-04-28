@@ -12,7 +12,7 @@ import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
-import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeNumbers, validateRecord } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord } from "./validate";
 
 // ============================================================
 // フィールドコード
@@ -229,7 +229,7 @@ const prepareRecordsForInsert = (
     const lookupResult = applyLookups(fieldRows, withDefaults, { db: ctx.db, locale: ctx.locale });
     // 実 kintone の一括 API は 1 件目のルックアップエラーで即終了（errors に index 情報は含まれない）
     if (lookupResult.error) return { lookupError: lookupResult.error };
-    const normalized = normalizeNumbers(fieldRows, lookupResult.record);
+    const normalized = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
     prepared.push(normalized);
     const perRecordErrors = validateRecord(fieldRows, normalized, {
       db: ctx.db, appId: ctx.appId, locale: ctx.locale,
@@ -331,7 +331,7 @@ const prepareRecordsForUpdate = (
     const incoming = mergeSubtableRows(fieldRows, existingBody, item.record);
     const lookupResult = applyLookups(fieldRows, incoming, { db: ctx.db, locale: ctx.locale });
     if (lookupResult.error) return { error: lookupResult.error };
-    const merged = normalizeNumbers(fieldRows, { ...existingBody, ...lookupResult.record });
+    const merged = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, { ...existingBody, ...lookupResult.record }));
     const perRecordErrors = validateRecord(fieldRows, merged, {
       db: ctx.db, appId: ctx.appId, excludeId: target.id, locale: ctx.locale,
     });

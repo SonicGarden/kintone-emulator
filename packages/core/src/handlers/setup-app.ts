@@ -8,7 +8,7 @@ import { insertRecord } from "../db/records";
 import { errorFieldNotFound, errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
 import { validateLookupMappings } from "./lookup-validation";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, detectLocale } from "./validate";
+import { applyDefaults, detectLocale, normalizeDropDown } from "./validate";
 
 // 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
 // setup/app.json で properties が指定されていても、ユーザーが同じ type を明示していなければ自動補完する。
@@ -80,7 +80,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
         for (const record of body.records) {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
-          const withDefaults = applyDefaults(fieldRows, recordBody);
+          const withDefaults = normalizeDropDown(fieldRows, applyDefaults(fieldRows, recordBody));
           const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
           computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);

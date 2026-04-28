@@ -179,6 +179,40 @@ export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): Re
   return result;
 };
 
+// 実 kintone: DROP_DOWN は未選択を `value: null` で保存・返却する。
+//   - 未送信フィールド → `{ value: null }` を補完
+//   - 空文字列で送信   → null に正規化
+//   - SUBTABLE 内の DROP_DOWN にも同じ処理を適用（行が無い場合は何もしない）
+// 適用後の body は getRecord / getRecords でも `{ type: "DROP_DOWN", value: null }` として返る。
+export const normalizeDropDown = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
+  const result: RecordInput = { ...record };
+  for (const row of fieldRows) {
+    const def = JSON.parse(row.body) as FieldDef;
+
+    if (def.type === "DROP_DOWN") {
+      const cell = result[row.code];
+      if (cell == null) {
+        result[row.code] = { value: null };
+      } else if (cell.value === "" || cell.value == null) {
+        result[row.code] = { ...cell, value: null };
+      }
+      continue;
+    }
+
+    if (def.type === "SUBTABLE" && def.fields) {
+      const rows = result[row.code]?.value;
+      if (!Array.isArray(rows)) continue;
+      const subRows = subtableFieldsToRows(def.fields);
+      const newRows: SubtableRow[] = (rows as SubtableRow[]).map((r) => ({
+        ...r,
+        value: normalizeDropDown(subRows, r.value ?? {}),
+      }));
+      result[row.code] = { ...result[row.code], value: newRows };
+    }
+  }
+  return result;
+};
+
 // PUT 用: body.record 側の SUBTABLE 行を、既存レコード body 側の行と id でマッチングしてマージする。
 // 実 kintone の PUT 挙動:
 //   - 送信された id が既存行に一致 → 既存行の value と送信 value をマージ（送らない内部フィールドは既存値を保持）
