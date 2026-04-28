@@ -60,13 +60,14 @@ export const post = async ({ request, params }: HandlerArgs) => {
     }
 
     const inserted = db.transaction(() => {
-      const app = insertApp(
-        db,
-        body.name,
-        body.layout ? JSON.stringify(body.layout) : '[]',
-        body.status ? JSON.stringify(body.status) : undefined,
-        toPositiveInt(body.id)
-      );
+      const app = insertApp(db, {
+        name: body.name,
+        layout: body.layout ? JSON.stringify(body.layout) : '[]',
+        status: body.status ? JSON.stringify(body.status) : undefined,
+        id: toPositiveInt(body.id),
+        spaceId: toPositiveInt(body.spaceId),
+        threadId: toPositiveInt(body.threadId),
+      });
       if (!app) throw new Error('Failed to create app.');
 
       if (properties) {

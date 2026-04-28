@@ -3,7 +3,7 @@ node_modules
 /tmp
 .env
 .env.*
-!.env.*.sample
+!.env.*.example
 
 # build output
 /packages/server/build

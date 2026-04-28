@@ -4,6 +4,7 @@ import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
@@ -28,6 +29,9 @@ export const get = ({ request, params }: HandlerArgs) => {
     return errorInvalidInput(missing, locale);
   }
 
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
+
   const row = findRecord(db, app, id);
   if (!row) {
     return errorNotFoundRecord(id, locale);
@@ -50,6 +54,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
 
   const locale = detectLocale(request.headers.get("accept-language"));
+  const guestErr = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
   const fieldRows = findFields(db, body.app);
   const withDefaults = applyDefaults(fieldRows, body.record ?? {});
   const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
@@ -74,6 +80,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
 export const put = async ({ request, params }: HandlerArgs) => {
   const body = await request.json();
   const db = dbSession(params.session);
+
+  const guestErr = enforceGuestSpace(db, body.app, params.guestSpaceId, detectLocale(request.headers.get("accept-language")));
+  if (guestErr) return guestErr;
 
   let target: ReturnType<typeof findRecord>;
   if (body.updateKey) {

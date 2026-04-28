@@ -19,10 +19,14 @@
 | `getTestAuth()` | emulator: `{ apiToken: "test" }` / real: `{ username, password }` |
 | `getTestClient(session)` | 上記を組み合わせた `KintoneRestAPIClient` |
 | `createTestApp(session, params)` | emulator: `/setup/app.json`、real: `addFormFields + deploy + addRecords` を一貫した API で実行。`{ appId, recordIds }` を返す |
+| `createTestSpaceApp(session, params)` | スペース所属（通常 / ゲスト）アプリを準備。emulator は `setupSpace + createApp`、real は env の `spaceApps` / `guestSpaceApps` から指定 index を選んで setup。`{ appId, spaceId, recordIds }` を返す |
+| `getTestSpaceApps()` / `getTestGuestSpaceApps()` | env で渡された通常 / ゲストスペース所属アプリ一覧を返す |
 | `setupTestAuth(session, user, password)` | emulator 専用の `/setup/auth.json`（real では no-op） |
+| `getTestRequestHeaders()` | raw fetch 用の認証ヘッダー。real では `X-Cybozu-Authorization`、emulator では空オブジェクト。SDK を経由せず直接 API を叩くテストで使う |
 | `fieldProperty(code, type, attrs?)` | フィールド定義を作るヘルパー。type 別のデフォルト属性を補完した完全な定義を返す（実機 `getFormFields` の応答形と同じ shape）。`createTestApp` の `properties` などに渡せる |
 | `applyFieldDefaults(def)` | 既存のフィールド定義に type 別のデフォルトを補完。`fieldProperty` の下位ビルディングブロック |
-| `createBaseUrl` / `initializeSession` / `finalizeSession` / `setupAuth` / `createApp` | emulator 向けの下位プリミティブ |
+| `parseAppIds(raw)` / `parseSpaceApps(raw)` | env 文字列をパースするヘルパー。`"12,13,14"` → `number[]`、`"1:17,2:15"` → `SpaceAppEntry[]`。`configureTestEnv` に渡す前に使う |
+| `createBaseUrl` / `initializeSession` / `finalizeSession` / `setupAuth` / `setupSpace` / `createApp` | emulator 向けの下位プリミティブ |
 
 ### vitest 固有（`@sonicgarden/kintone-emulator/test-support/vitest`）
 
@@ -51,37 +55,57 @@ npm i -D @sonicgarden/kintone-emulator @kintone/rest-api-client
 ```ts
 // tests/setup.ts
 /// <reference types="vite/client" />
-import { configureTestEnv } from "@sonicgarden/kintone-emulator/test-support";
+import {
+  configureTestEnv,
+  parseAppIds,
+  parseSpaceApps,
+} from "@sonicgarden/kintone-emulator/test-support";
 
 configureTestEnv({
   mode: import.meta.env.MODE,                                // "test" | "real-kintone" など
   realKintone: {
-    domain:   import.meta.env.VITE_KINTONE_TEST_DOMAIN ?? "",
-    user:     import.meta.env.VITE_KINTONE_TEST_USER ?? "",
-    password: import.meta.env.VITE_KINTONE_TEST_PASSWORD ?? "",
-    appIds:   (import.meta.env.VITE_KINTONE_TEST_APP_IDS ?? "")
-      .split(",").map(Number).filter(Number.isFinite),
+    domain:         import.meta.env.VITE_KINTONE_TEST_DOMAIN ?? "",
+    user:           import.meta.env.VITE_KINTONE_TEST_USER ?? "",
+    password:       import.meta.env.VITE_KINTONE_TEST_PASSWORD ?? "",
+    appIds:         parseAppIds(import.meta.env.VITE_KINTONE_TEST_APP_IDS),
+    // ゲストスペース対応の dualMode テストを書く場合のみ必要
+    spaceApps:      parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_SPACE_APP_IDS),
+    guestSpaceApps: parseSpaceApps(import.meta.env.VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS),
   },
 });
 ```
 
 `vitest.config.ts` で `setupFiles: ["tests/setup.ts"]` を指定し、`.env.real-kintone` に VITE_KINTONE_TEST_* を書く。`vitest run --mode real-kintone` で real モード実行。
 
+env の値の形式:
+
+| 変数 | フォーマット | 例 | パース後 |
+|---|---|---|---|
+| `VITE_KINTONE_TEST_APP_IDS` | カンマ区切り数値 | `12,13,14` | `[12, 13, 14]` |
+| `VITE_KINTONE_TEST_SPACE_APP_IDS` | `spaceId:appId` のカンマ区切り | `1:17,1:18,3:20` | `[{spaceId:1,appId:17}, {spaceId:1,appId:18}, {spaceId:3,appId:20}]` |
+| `VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS` | 同上 | `2:15` | `[{spaceId:2,appId:15}]` |
+
 ### 2'. vitest 以外（jest / node:test 等）で使う例
 
 ```ts
 // jest --globalSetup
-import { configureTestEnv } from "@sonicgarden/kintone-emulator/test-support";
+import {
+  configureTestEnv,
+  parseAppIds,
+  parseSpaceApps,
+} from "@sonicgarden/kintone-emulator/test-support";
 
 export default async () => {
   configureTestEnv({
     mode: process.env.TEST_MODE === "real" ? "real-kintone" : "test",
     emulatorHost: `localhost:${process.env.TEST_PORT ?? "12345"}`,
     realKintone: {
-      domain:   process.env.KINTONE_DOMAIN!,
-      user:     process.env.KINTONE_USER!,
-      password: process.env.KINTONE_PASSWORD!,
-      appIds:   process.env.KINTONE_APP_IDS!.split(",").map(Number),
+      domain:         process.env.KINTONE_DOMAIN!,
+      user:           process.env.KINTONE_USER!,
+      password:       process.env.KINTONE_PASSWORD!,
+      appIds:         parseAppIds(process.env.KINTONE_APP_IDS),
+      spaceApps:      parseSpaceApps(process.env.KINTONE_SPACE_APP_IDS),
+      guestSpaceApps: parseSpaceApps(process.env.KINTONE_GUEST_SPACE_APP_IDS),
     },
   });
 };
@@ -180,6 +204,15 @@ real モードを使うには、テスト用アプリを事前に作成して `a
 - `appIds` には「1 つのテスト内で `createTestApp` が呼ばれる最大回数」を賄う個数を入れる（ルックアップ系は 2 つ必要）
 - プール内のアプリは最低限何か 1 つフィールドが作成された状態で、削除してよいフィールド・レコードだけを含んでいれば十分（テスト開始時にクリーンアップされる）
 - `createTestApp` の `appId` 割り当ては beforeEach で `resetAppAssignment()` を呼べば各テストで先頭から再割当される
+
+### スペース / ゲストスペース所属アプリ
+
+`createTestSpaceApp` を使う dualMode テストを書く場合は、追加で:
+- 通常スペースを 1 つ以上作成し、その中にテスト用アプリを 1 つ以上作る → `VITE_KINTONE_TEST_SPACE_APP_IDS=<spaceId>:<appId>` で指定
+- ゲストスペースを 1 つ以上作成し、その中にテスト用アプリを 1 つ以上作る → `VITE_KINTONE_TEST_GUEST_SPACE_APP_IDS=<spaceId>:<appId>` で指定
+- 同じスペース内に複数アプリを置く場合は `1:17,1:18` のようにカンマで並べる
+- `createTestSpaceApp({ kind, spaceIndex, appIndex })` の `spaceIndex` は spaceId のユニーク順、`appIndex` はその space 内での登場順。env が `2:15,2:16,4:20` の場合、`spaceIndex=0` は space 2、`spaceIndex=1` は space 4 を指す
+- emulator モードでは env が無くても動作する（`createTestSpaceApp` 側で動的に space を割り当てる）。env がある場合は同じ ID 構成を都度作って実機と挙動を揃える
 
 ## 実機挙動との差分
 
