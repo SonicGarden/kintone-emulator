@@ -93,6 +93,9 @@ const topLevelFieldExpr = (field: FieldRef, fieldTypes: FieldTypeMap): FieldExpr
     case "UPDATED_TIME":  return { expr: "updated_at", wrap: "datetime" };
     case "DATETIME":      return { expr: `body->>'$.${code}.value'`, wrap: "datetime" };
     case "DATE":          return { expr: `body->>'$.${code}.value'`, wrap: "date" };
+    // DROP_DOWN は未選択時に value が null / 未保存となるが、実 kintone では `in ("")`
+    // で未選択レコードがヒットする。COALESCE で空文字列に正規化して比較する
+    case "DROP_DOWN":     return { expr: `COALESCE(body->>'$.${code}.value', '')` };
     default:              return { expr: numericCast(`body->>'$.${code}.value'`, type ?? "") };
   }
 };
@@ -335,6 +338,9 @@ class Compiler {
     const values: Value[] = c.type === "in" ? c.values : c.type === "cmp" ? [c.value] : [];
     for (const v of values) {
       if (v.type !== "string") continue;
+      // DROP_DOWN は実 kintone でも `in ("")` / `not in ("", ...)` を許容し、
+      // 未選択（空文字列）レコードを検索できる。空文字列は選択肢検証から除外する
+      if (resolved.type === "DROP_DOWN" && v.value === "") continue;
       if (!options.has(v.value)) {
         throw new CompileError(
           `フィールド「${c.field.code}」の項目に「${v.value}」は存在しません。`,

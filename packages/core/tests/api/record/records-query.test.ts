@@ -218,3 +218,46 @@ describeDualMode("クエリのエラーレスポンス / 上限チェック", ()
     ).rejects.toMatchObject({ code: "GAIA_IQ10" });
   });
 });
+
+describeDualMode("DROP_DOWN: in (\"\") で未選択レコードを検索", () => {
+  const SESSION = "records-dropdown-empty-query";
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+    client = getTestClient(SESSION);
+    ({ appId } = await createTestApp(SESSION, {
+      name: "dropdown empty query",
+      properties: {
+        title: { type: "SINGLE_LINE_TEXT", code: "title", label: "title" },
+        dd: {
+          type: "DROP_DOWN", code: "dd", label: "dd",
+          options: {
+            a: { label: "a", index: "0" },
+            b: { label: "b", index: "1" },
+          },
+        },
+      },
+      records: [
+        { title: { value: "r1" }, dd: { value: "a" } },
+        { title: { value: "r2" }, dd: { value: "b" } },
+        { title: { value: "r3" }, dd: { value: null } },
+      ],
+    }));
+  });
+
+  test("dd in (\"\") で未選択レコードのみが返る", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'dd in ("")',
+    });
+    expect(records.map((r) => r.title!.value)).toEqual(["r3"]);
+  });
+
+  test("dd not in (\"\", \"a\") で未選択でも \"a\" でもないレコードが返る", async () => {
+    const { records } = await client.record.getRecords({
+      app: appId, query: 'dd not in ("", "a")',
+    });
+    expect(records.map((r) => r.title!.value)).toEqual(["r2"]);
+  });
+});
