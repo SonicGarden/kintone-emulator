@@ -10,6 +10,7 @@ import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
+import { applyInitialStatus, getStatusConfig, withStatusFieldRow, type StatusConfig } from "./process-status";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
 import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord } from "./validate";
@@ -193,7 +194,8 @@ export const get = ({ request, params }: HandlerArgs) => {
   const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
   if (guestErr) return guestErr;
 
-  const fieldRows = findFields(db, app);
+  const statusConfig = getStatusConfig(db, app);
+  const fieldRows = withStatusFieldRow(findFields(db, app), statusConfig);
   const queryCtx = buildQueryContext(fieldRows);
 
   try {
@@ -220,12 +222,13 @@ export const get = ({ request, params }: HandlerArgs) => {
 const prepareRecordsForInsert = (
   fieldRows: FieldRow[],
   records: Array<Record<string, { value?: unknown }>>,
-  ctx: { db: ReturnType<typeof dbSession>; appId: string; locale: "ja" | "en" },
+  ctx: { db: ReturnType<typeof dbSession>; appId: string; locale: "ja" | "en"; statusConfig: StatusConfig | null },
 ): { prepared: Array<Record<string, { value?: unknown }>>; errors: ValidationErrors } | { lookupError: Response } => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   const errors: ValidationErrors = {};
   for (let i = 0; i < records.length; i++) {
-    const withDefaults = applyDefaults(fieldRows, records[i]!);
+    const withStatus = applyInitialStatus(ctx.statusConfig, records[i]!);
+    const withDefaults = applyDefaults(fieldRows, withStatus);
     const lookupResult = applyLookups(fieldRows, withDefaults, { db: ctx.db, locale: ctx.locale });
     // 実 kintone の一括 API は 1 件目のルックアップエラーで即終了（errors に index 情報は含まれない）
     if (lookupResult.error) return { lookupError: lookupResult.error };
@@ -256,7 +259,8 @@ export const post = async ({ request, params }: HandlerArgs) => {
   }
 
   const fieldRows = findFields(db, body.app);
-  const prep = prepareRecordsForInsert(fieldRows, records, { db, appId: body.app, locale });
+  const statusConfig = getStatusConfig(db, body.app);
+  const prep = prepareRecordsForInsert(fieldRows, records, { db, appId: body.app, locale, statusConfig });
   if ("lookupError" in prep) return prep.lookupError;
   if (Object.keys(prep.errors).length > 0) return errorInvalidInput(prep.errors, locale);
 

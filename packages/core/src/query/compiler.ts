@@ -96,6 +96,7 @@ const topLevelFieldExpr = (field: FieldRef, fieldTypes: FieldTypeMap): FieldExpr
     // DROP_DOWN は未選択時に value が null / 未保存となるが、実 kintone では `in ("")`
     // で未選択レコードがヒットする。COALESCE で空文字列に正規化して比較する
     case "DROP_DOWN":     return { expr: `COALESCE(body->>'$.${code}.value', '')` };
+    case "STATUS":        return { expr: `body->>'$.${code}.value'` };
     default:              return { expr: numericCast(`body->>'$.${code}.value'`, type ?? "") };
   }
 };

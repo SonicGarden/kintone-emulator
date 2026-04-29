@@ -11,6 +11,7 @@ import * as initialize from "./handlers/initialize";
 import * as layout from "./handlers/layout";
 import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
+import * as recordStatus from "./handlers/record-status";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
 import * as setupAuth from "./handlers/setup-auth";
@@ -128,6 +129,18 @@ const routes: RouteEntry[] = [
     pattern: /^\/(?:([^/]+)\/)?setup\/failure\/rate-limit\.json$/,
     POST: setupFailureRateLimit.post,
     DELETE: setupFailureRateLimit.del,
+  },
+  {
+    pattern: K("record\\/status\\.json"),
+    guestSpaceIdGroup: 2,
+    PUT: recordStatus.put,
+    requiresAuth: true,
+  },
+  {
+    pattern: K("records\\/status\\.json"),
+    guestSpaceIdGroup: 2,
+    PUT: recordStatus.putBulk,
+    requiresAuth: true,
   },
   {
     pattern: K("record\\/comment\\.json"),
