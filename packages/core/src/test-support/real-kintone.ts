@@ -337,6 +337,9 @@ const RECORD_SYSTEM_FIELD_TYPES = new Set([
 // アプリごとの「前回セットアップしたフィールド定義のハッシュ」
 // ハッシュが変わっていない場合は deploy をスキップできる
 const lastSetupFieldsHashByAppId = new Map<number, string>();
+// プロセス管理（status）も同様にハッシュキャッシュ。
+// `params.status` が未指定のテストでは触らない（既存テストへの影響を避ける）
+const lastSetupStatusHashByAppId = new Map<number, string>();
 
 /** オブジェクトのキーを再帰的にソートして決定的な JSON 表現を得るためのヘルパー */
 const sortKeysDeep = (value: unknown): unknown => {
@@ -365,7 +368,9 @@ const setupRealKintoneAppWithId = async (
   // 1. レコード全削除
   await deleteAllRecords(client, appId);
 
-  // 2. フィールド定義が前回と完全一致する場合は skip
+  // 2. フィールド / プロセス管理を必要に応じて preview に push し、最後に 1 回 deploy する
+  let needsDeploy = false;
+
   if (params.properties) {
     const fieldsToAdd = filterAddableFields(params.properties);
     // ネストまで含めてキーをソートして文字列化することで、キー順の揺れと
@@ -376,9 +381,25 @@ const setupRealKintoneAppWithId = async (
       if (Object.keys(fieldsToAdd).length > 0) {
         await client.app.addFormFields({ app: appId, properties: fieldsToAdd as never });
       }
-      await deployApp(client, appId);
       lastSetupFieldsHashByAppId.set(appId, fieldsHash);
+      needsDeploy = true;
     }
+  }
+
+  if (params.status !== undefined) {
+    const statusHash = JSON.stringify(sortKeysDeep(params.status));
+    if (statusHash !== lastSetupStatusHashByAppId.get(appId)) {
+      await client.app.updateProcessManagement({
+        ...(params.status as Parameters<typeof client.app.updateProcessManagement>[0]),
+        app: appId,
+      });
+      lastSetupStatusHashByAppId.set(appId, statusHash);
+      needsDeploy = true;
+    }
+  }
+
+  if (needsDeploy) {
+    await deployApp(client, appId);
   }
 
   // 3. レコード一括追加（実 kintone では $id / システムフィールド / FILE は設定不可）

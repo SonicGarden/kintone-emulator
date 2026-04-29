@@ -13,22 +13,24 @@ import { getStatusConfig, isStatusEnabled, STATUS_FIELD_CODE, type StatusAction,
 import type { HandlerArgs } from "./types";
 import { detectLocale, type Locale } from "./validate";
 
+// メッセージは実機の固定文と一致させる（2026-04-30 確認）。
 const errorProcessNotEnabled = (locale: Locale) => {
   const message = locale === "ja"
-    ? "プロセス管理が有効化されていません。"
-    : "Process management is not enabled.";
+    ? "操作に失敗しました。プロセス管理機能が無効化されています。"
+    : "Your request failed. The process management feature has been disabled.";
   return Response.json(
     { code: "GAIA_ST02", id: generateErrorId(), message },
     { status: 400 },
   );
 };
 
-const errorInvalidAction = (actionName: string, locale: Locale) => {
+// from 不一致 / 未知のアクション。実機メッセージは action 名を含まず固定文。
+const errorInvalidAction = (_actionName: string, locale: Locale) => {
   const message = locale === "ja"
-    ? `指定したアクション（${actionName}）は実行できません。`
-    : `The specified action (${actionName}) cannot be executed.`;
+    ? "ステータスの変更に失敗しました。ほかのユーザーがステータス、またはステータスの設定を変更した可能性があります。"
+    : "Failed to update the status. The settings or the status itself may have been changed by someone.";
   return Response.json(
-    { code: "GAIA_ST01", id: generateErrorId(), message },
+    { code: "GAIA_IL03", id: generateErrorId(), message },
     { status: 400 },
   );
 };
