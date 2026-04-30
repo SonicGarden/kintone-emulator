@@ -52,11 +52,21 @@
 - [x] `engines.node` を `>=20.19.0` に
 - [x] 全テスト通過: typecheck / lint / test (474 pass) / build / e2e (296 pass) / dev サーバ起動
 
-### Phase 3（保留）
+### Phase 3: React 18 → 19 ✅
 
-- React 18 → 19: 必要性が出たら別タスク
+- [x] `react` `react-dom` を ^19.2.5 に
+- [x] `@types/react` を ^19.2.14 / `@types/react-dom` を ^19.2.3 に
+- [x] コードベースに非互換 API（propTypes/defaultProps/forwardRef 等）の使用は無し → コード変更不要
+- [x] typecheck / lint / test (474 pass) / build / e2e (296 pass) / dev サーバ通過
 
 ## 進捗ログ
+
+### 2026-04-30 Phase 3 完了
+
+- React 19 アップグレードガイド: https://react.dev/blog/2024/04/25/react-19-upgrade-guide
+- このリポジトリの React 利用は最小限（root.tsx の `Layout` と entry.client/server のみ）
+- 削除された API（propTypes / defaultProps / forwardRef / `ReactDOM.render` 等）は元々未使用
+- 依存バージョン更新のみで全テスト通過
 
 ### 2026-04-30 Phase 2 完了
 
