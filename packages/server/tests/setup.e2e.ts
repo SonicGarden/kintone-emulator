@@ -1,15 +1,26 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { createWriteStream, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { beforeAll, afterAll } from "vitest";
 
 const PORT = process.env.TEST_PORT ?? "12346";
+const LOG_FILE = resolve("node_modules/.cache/e2e-server.log");
 let serverProcess: ChildProcess;
 
 beforeAll(async () => {
+  mkdirSync(dirname(LOG_FILE), { recursive: true });
+  const logStream = createWriteStream(LOG_FILE, { flags: "w" });
+
   serverProcess = spawn("node_modules/.bin/react-router-serve", ["./build/server/index.js"], {
     env: { ...process.env, PORT },
-    stdio: ["pipe", "inherit", "inherit"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  serverProcess.stdout?.pipe(logStream);
+  serverProcess.stderr?.pipe(logStream);
+
+  // eslint-disable-next-line no-console
+  console.log(`[e2e] react-router-serve logs → ${LOG_FILE}`);
 
   await waitForServer(`http://localhost:${PORT}`);
 }, 30000);
