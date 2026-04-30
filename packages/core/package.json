@@ -39,12 +39,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "dedent": "^1.5.3"
+    "better-sqlite3": "^12.9.0",
+    "dedent": "^1.7.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.10.0",
     "vite": "^8.0.10"
   }
 }
