@@ -54,6 +54,14 @@ POST /k/v1/records.json?query=文字列__1行_ like "<生タブ>"
 
 → **エミュレーターでの完全再現は困難**。現状は SQLite の LIKE `%...%` で代用しているため挙動が異なることを README・ドキュメントに明記する。
 
+#### 実 kintone での `like` テストは flaky
+
+実 kintone の `like` / `not like` は **全文検索インデックスをバックグラウンドで非同期に作成** するため、レコード登録直後に `like` クエリを投げてもヒットしない（0 件で返る）ことがある。特に API による一括登録は大量データをキューに積みやすく、反映までの待ち時間が読めない。
+
+このため `createTestApp` でレコード投入直後に `like` を検証する **dualMode テストは flaky になる前提** で、本リポジトリでは `like` / `not like` の dualMode テストを意図的に置いていない。エミュレータ側の `like` 挙動はクエリパーサ／コンパイラのユニットテスト（`packages/core/tests/query/`）でのみ検証する。
+
+参考: [kintoneの検索のしくみと注意事項 - cybozu developer network](https://cybozu.dev/ja/kintone/tips/best-practices/data-acquisition-operation/kintone-search-mechanism-and-notes/)
+
 ### 空値判定
 
 - `is empty` / `is not empty` は MULTI_LINE_TEXT / RICH_TEXT / FILE でのみ利用可

@@ -90,6 +90,44 @@ describeDualMode("defaultValue / defaultNowValue の自動補完", () => {
     expect(record.txt).toMatchObject({ value: "初期" });
   });
 
+  test("DROP_DOWN: 未選択は value:null として保存・返却される（実 kintone 準拠）", async () => {
+    const { appId: ddAppId } = await createTestApp(SESSION, {
+      name: "drop_down null",
+      properties: {
+        dd: {
+          type: "DROP_DOWN",
+          code: "dd",
+          label: "dd",
+          options: { A: { label: "A", index: "0" }, B: { label: "B", index: "1" } },
+        },
+      },
+    });
+
+    // 未送信
+    const r1 = await client.record.addRecord({ app: ddAppId, record: {} });
+    const got1 = await client.record.getRecord({ app: ddAppId, id: r1.id });
+    expect(got1.record.dd).toEqual({ type: "DROP_DOWN", value: null });
+
+    // 明示的に value: "" → null に正規化
+    const r2 = await client.record.addRecord({
+      app: ddAppId,
+      // SDK の型は string なので as でキャストして空文字列を送る
+      record: { dd: { value: "" as string } },
+    });
+    const got2 = await client.record.getRecord({ app: ddAppId, id: r2.id });
+    expect(got2.record.dd).toEqual({ type: "DROP_DOWN", value: null });
+
+    // PUT で value: "" を送ったら null に正規化
+    const r3 = await client.record.addRecord({ app: ddAppId, record: { dd: { value: "A" } } });
+    await client.record.updateRecord({
+      app: ddAppId,
+      id: r3.id,
+      record: { dd: { value: "" as string } },
+    });
+    const got3 = await client.record.getRecord({ app: ddAppId, id: r3.id });
+    expect(got3.record.dd).toEqual({ type: "DROP_DOWN", value: null });
+  });
+
   test("一括追加でも defaultValue が適用される", async () => {
     const { appId: otherAppId } = await createTestApp(SESSION, {
       name: "setup default テスト",

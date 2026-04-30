@@ -138,6 +138,31 @@ describe("compile: in / not in", () => {
     })).toThrow("フィールド「radio」の項目に「unknown」は存在しません。");
   });
 
+  test("DROP_DOWN は in (\"\") を許容（未選択レコードの検索）", () => {
+    const c = compile(parseQuery('dd in ("")'), {
+      fieldTypes: { dd: "DROP_DOWN" },
+      fieldOptions: { dd: new Set(["a", "b"]) },
+    });
+    expect(c.where).toBe("COALESCE(body->>'$.dd.value', '') IN (?)");
+    expect(c.params).toEqual([""]);
+  });
+
+  test("DROP_DOWN は not in (\"\", ...) で空文字列と他の選択肢を併用できる", () => {
+    const c = compile(parseQuery('dd not in ("", "a")'), {
+      fieldTypes: { dd: "DROP_DOWN" },
+      fieldOptions: { dd: new Set(["a", "b"]) },
+    });
+    expect(c.where).toBe("COALESCE(body->>'$.dd.value', '') NOT IN (?, ?)");
+    expect(c.params).toEqual(["", "a"]);
+  });
+
+  test("DROP_DOWN 以外の選択肢フィールドでは空文字列も値検証で弾かれる", () => {
+    expect(() => compile(parseQuery('radio in ("")'), {
+      fieldTypes: { radio: "RADIO_BUTTON" },
+      fieldOptions: { radio: new Set(["a", "b"]) },
+    })).toThrow("フィールド「radio」の項目に「」は存在しません。");
+  });
+
   test("fieldOptions 未指定時は検証をスキップ（後方互換）", () => {
     const c = compile(parseQuery('cb in ("whatever")'), {
       fieldTypes: { cb: "CHECK_BOX" },

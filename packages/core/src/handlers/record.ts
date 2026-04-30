@@ -8,7 +8,7 @@ import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -60,7 +60,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const withDefaults = applyDefaults(fieldRows, body.record ?? {});
   const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
   if (lookupResult.error) return lookupResult.error;
-  const record = normalizeNumbers(fieldRows, lookupResult.record);
+  const record = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
@@ -107,7 +107,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const lookupResult = applyLookups(fieldRows, incomingRecord, { db, locale });
   if (lookupResult.error) return lookupResult.error;
   const beforeNormalize = { ...existingBody, ...lookupResult.record };
-  const mergedRecord = normalizeNumbers(fieldRows, beforeNormalize);
+  const mergedRecord = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, beforeNormalize));
 
   const errors = validateRecord(fieldRows, mergedRecord, {
     db,
