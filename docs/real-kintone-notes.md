@@ -48,16 +48,16 @@
 
 ### `updateProcessManagement` の入力制約
 
-- **先頭ステータス（index が最小の state）の `assignee` は厳格**:
-  - `type` は `"ONE"` のみ受理（`ALL` / `ANY` は CB_VA01）
-  - `entities` は **空配列**、または `[{ entity: { type: "FIELD_ENTITY", code: "作成者" } }]` のみ
+- **`states[name].assignee` は完全省略可**。省略した場合は実機がデフォルトで `{type:"ONE", entities:[{entity:{type:"FIELD_ENTITY", code:"作成者"}}]}` を適用する（API ドキュメント通り）
+- 明示的に `assignee` を書く場合の制約:
+  - **先頭ステータス（index が最小）**: `type` は `"ONE"` のみ、`entities` は空 or `[{entity:{type:"FIELD_ENTITY", code:"作成者"}}]` のみ
+  - 後続ステータスは `ONE` / `ALL` / `ANY` 自由
   - `CREATOR` 型エンティティは弾かれる
-- **後続ステータス**は `ONE` / `ALL` / `ANY` 自由、`FIELD_ENTITY: 作成者` を使うとレコード作成者を作業者にできる
 - `updateProcessManagement` は preview への push なので、最後に `deployApp` を呼ばないと反映されない（フィールド変更と同じデプロイにまとめれば 1 回で済む）
 
 ### アクション実行 API (`updateRecordStatus`) の制約
 
-- **`assignee` パラメーターは事実上必須**: 次ステータスの assignee 候補が解決できないと `GAIA_SA01` (「作業者を指定してください。」) で 400 エラー。先頭→後続の遷移など assignee が `FIELD_ENTITY` でも明示で渡したほうが確実
+- **`assignee` パラメーターは事実上必須**: 次ステータスの assignee 候補が解決できないと `GAIA_SA01` (「作業者を指定してください。」) で 400 エラー。state 側で assignee を省略してもデフォルトで `FIELD_ENTITY:作成者` が割り当てられるため、結果的にアクション実行時の `assignee` 引数は常に必要
 - **`from` 不一致時のエラーコードは `GAIA_IL03`**:
   - ja: 「ステータスの変更に失敗しました。ほかのユーザーがステータス、またはステータスの設定を変更した可能性があります。」
   - en: "Failed to update the status. The settings or the status itself may have been changed by someone."
@@ -78,10 +78,18 @@
 ### dualMode テストでの推奨形
 
 ```ts
-const FIRST_ASSIGNEE = { type: "ONE", entities: [] };
-const NEXT_ASSIGNEE = {
-  type: "ONE",
-  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
+// state.assignee は省略 (実機がデフォルト割当)
+const STATUS_CONFIG = {
+  enable: true,
+  states: {
+    未処理: { name: "未処理", index: "0" },
+    処理中: { name: "処理中", index: "1" },
+    完了:   { name: "完了",   index: "2" },
+  },
+  actions: [
+    { name: "処理開始",   from: "未処理", to: "処理中" },
+    { name: "完了にする", from: "処理中", to: "完了" },
+  ],
 };
-// アクション実行時: assignee: env.realKintone.user を必ず渡す
+// アクション実行時のみ assignee を渡す: { app, id, action, assignee: env.realKintone.user }
 ```

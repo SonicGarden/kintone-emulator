@@ -3,25 +3,19 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { getTestEnv } from "../../../src/test-support/config";
 import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
-// 実機ルール:
-//   - 先頭ステータス (index=0) の assignee.type は ONE のみ、entities は空 or 作成者フィールド
-//   - 後続ステータスは ONE/ALL/ANY 自由。FIELD_ENTITY: 作成者 を使うとレコード作成者が作業者になる
-// このため STATUS_CONFIG は実機が受理する形に統一する。
-const FIRST_ASSIGNEE = { type: "ONE", entities: [] };
-const NEXT_ASSIGNEE = {
-  type: "ONE",
-  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
-};
+// 実機は state.assignee を省略すると {type:"ONE", entities:[{FIELD_ENTITY:作成者}]} を
+// デフォルト適用するため、テストでは assignee を完全省略してシンプルに保つ。
+// (updateRecordStatus 側では assignee を必ず渡す: GAIA_SA01 を回避するため)
 const STATUS_CONFIG = {
   enable: true,
   states: {
-    未処理: { name: "未処理", index: "0", assignee: FIRST_ASSIGNEE },
-    処理中: { name: "処理中", index: "1", assignee: NEXT_ASSIGNEE },
-    完了:   { name: "完了",   index: "2", assignee: NEXT_ASSIGNEE },
+    未処理: { name: "未処理", index: "0" },
+    処理中: { name: "処理中", index: "1" },
+    完了:   { name: "完了",   index: "2" },
   },
   actions: [
-    { name: "処理開始",   from: "未処理", to: "処理中", filterCond: "" },
-    { name: "完了にする", from: "処理中", to: "完了",   filterCond: "" },
+    { name: "処理開始",   from: "未処理", to: "処理中" },
+    { name: "完了にする", from: "処理中", to: "完了" },
   ],
 };
 const DISABLED_STATUS = { enable: false };
