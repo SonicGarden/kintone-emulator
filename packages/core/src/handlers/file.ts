@@ -15,7 +15,9 @@ export const get = ({ request, params }: HandlerArgs) => {
     return errorNotFoundFile(fileKey, locale);
   }
 
-  return new Response(file.data, {
+  const body = new Uint8Array(file.data.byteLength);
+  body.set(file.data);
+  return new Response(body, {
     headers: {
       'Content-Type': file.content_type,
       'Content-Disposition': `attachment; filename="${file.filename}"`,

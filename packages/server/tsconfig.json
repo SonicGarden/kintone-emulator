@@ -22,7 +22,6 @@
     "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"],
       "@sonicgarden/kintone-emulator": ["../core/src/index.ts"],
