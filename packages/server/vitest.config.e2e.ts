@@ -5,7 +5,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   test: {
-    setupFiles: ["tests/setup.e2e.ts"],
+    globalSetup: ["tests/global-setup.e2e.ts"],
     include: ["../core/tests/api/**/*.test.ts"],
     pool: "forks",
     maxWorkers: 1,

@@ -2,37 +2,43 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { beforeAll, afterAll } from "vitest";
 
 const PORT = process.env.TEST_PORT ?? "12346";
-const LOG_FILE = resolve("node_modules/.cache/e2e-server.log");
-let serverProcess: ChildProcess;
+const LOG_FILE = resolve("tmp/e2e-server.log");
 
-beforeAll(async () => {
+export default async function setup() {
   mkdirSync(dirname(LOG_FILE), { recursive: true });
   const logStream = createWriteStream(LOG_FILE, { flags: "w" });
 
-  serverProcess = spawn("node_modules/.bin/react-router-serve", ["./build/server/index.js"], {
-    env: { ...process.env, PORT },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const serverProcess = spawn(
+    "node_modules/.bin/react-router-serve",
+    ["./build/server/index.js"],
+    {
+      env: { ...process.env, PORT },
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
   serverProcess.stdout?.pipe(logStream);
   serverProcess.stderr?.pipe(logStream);
 
   // eslint-disable-next-line no-console
   console.log(`[e2e] react-router-serve logs → ${LOG_FILE}`);
 
-  await waitForServer(`http://localhost:${PORT}`);
-}, 30000);
+  await waitForServer(`http://localhost:${PORT}`, serverProcess);
 
-afterAll(async () => {
-  await new Promise<void>((resolve) => {
-    serverProcess.once("exit", () => resolve());
-    serverProcess.kill();
-  });
-});
+  return async () => {
+    await new Promise<void>((resolve) => {
+      serverProcess.once("exit", () => resolve());
+      serverProcess.kill();
+    });
+  };
+}
 
-async function waitForServer(url: string, timeout = 30000): Promise<void> {
+async function waitForServer(
+  url: string,
+  serverProcess: ChildProcess,
+  timeout = 30000
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
 
