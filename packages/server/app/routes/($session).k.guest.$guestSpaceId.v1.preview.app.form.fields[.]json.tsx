@@ -1,7 +1,7 @@
-import type { ActionFunctionArgs } from "@remix-run/node";
 import { withAuth } from "@sonicgarden/kintone-emulator/handlers/auth";
 import { post, del } from "@sonicgarden/kintone-emulator/handlers/preview-fields";
 import { withFailureInjection } from "@sonicgarden/kintone-emulator/handlers/with-failure-injection";
+import type { ActionFunctionArgs } from "react-router";
 
 export const action = ({ request, params }: ActionFunctionArgs) => {
   switch (request.method) {

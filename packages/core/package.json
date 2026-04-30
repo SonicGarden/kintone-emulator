@@ -21,10 +21,12 @@
     }
   },
   "peerDependencies": {
-    "@kintone/rest-api-client": "^5.0.0"
+    "@kintone/rest-api-client": "^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
-    "@kintone/rest-api-client": { "optional": true }
+    "@kintone/rest-api-client": {
+      "optional": true
+    }
   },
   "files": [
     "dist"
@@ -34,17 +36,19 @@
     "clean": "rm -rf dist ./node_modules/.cache/eslint",
     "prepack": "pnpm build",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest --watch",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest --coverage --watch",
+    "test:report": "vite preview --open --outDir coverage/test-results",
+    "coverage:report": "vite preview --open --outDir coverage/coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
-    "dedent": "^1.5.3"
+    "better-sqlite3": "^12.9.0",
+    "dedent": "^1.7.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.0.0",
-    "vite": "^5.4.11"
+    "@types/node": "^22.10.0",
+    "vite": "^8.0.10"
   }
 }

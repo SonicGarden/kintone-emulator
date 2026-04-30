@@ -418,7 +418,7 @@ const deleteAllRecords = async (client: KintoneRestAPIClient, appId: number): Pr
   let offset = 0;
   const limit = 500;
   // 上限まで繰り返しで全 ID を収集
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const { records } = await client.record.getRecords({
       app: appId,

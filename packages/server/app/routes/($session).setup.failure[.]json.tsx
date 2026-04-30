@@ -1,5 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/node";
 import { del, post } from "@sonicgarden/kintone-emulator/handlers/setup-failure";
+import type { ActionFunctionArgs } from "react-router";
 
 export const action = ({ request, params }: ActionFunctionArgs) => {
   switch (request.method) {

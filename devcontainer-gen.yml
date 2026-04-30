@@ -74,6 +74,9 @@ allowed_domains:
       - kintone.help
   - group: Documents
     domains:
+      - react.dev
+      - reactrouter.com
+      - vite.dev
       - vitest.dev
 container_env:
   NODE_OPTIONS: "--max-old-space-size=4096 --dns-result-order=ipv4first"

@@ -7,8 +7,13 @@ node_modules
 
 # build output
 /packages/server/build
+/packages/server/.react-router
+/packages/server/tmp
 /packages/cli/dist/
 /packages/core/dist/
+
+# vitest reporter / coverage 出力
+/packages/*/coverage
 
 # Local agent memory
 # https://code.claude.com/docs/en/sub-agents#enable-persistent-memory
