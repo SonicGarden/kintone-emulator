@@ -1,17 +1,22 @@
 import type { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { beforeEach, describe, expect, test } from "vitest";
-import { getTestEnv } from "../../../src/test-support/config";
 import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
-// 実機は state.assignee を省略すると {type:"ONE", entities:[{FIELD_ENTITY:作成者}]} を
-// デフォルト適用するため、テストでは assignee を完全省略してシンプルに保つ。
-// (updateRecordStatus 側では assignee を必ず渡す: GAIA_SA01 を回避するため)
+// 実機は state.assignee を省略するとデフォルトで {type:"ONE", ...} を割り当てる。
+// type="ONE" は「次のユーザーから作業者を選択」なので updateRecordStatus 時に
+// assignee 引数が必須になってしまう。
+// 後続ステータスを type="ANY" (次のユーザーのうち一人を kintone が自動選択) にすると、
+// updateRecordStatus の assignee 引数を省略できる。先頭は ONE のみ受理されるため省略。
+const NEXT_ASSIGNEE = {
+  type: "ANY",
+  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
+};
 const STATUS_CONFIG = {
   enable: true,
   states: {
     未処理: { name: "未処理", index: "0" },
-    処理中: { name: "処理中", index: "1" },
-    完了:   { name: "完了",   index: "2" },
+    処理中: { name: "処理中", index: "1", assignee: NEXT_ASSIGNEE },
+    完了:   { name: "完了",   index: "2", assignee: NEXT_ASSIGNEE },
   },
   actions: [
     { name: "処理開始",   from: "未処理", to: "処理中" },
@@ -23,9 +28,6 @@ const DISABLED_STATUS = { enable: false };
 const PROPS = {
   title: { type: "SINGLE_LINE_TEXT", code: "title", label: "Title" },
 } as const;
-
-// アクション実行の assignee。実機は必須、エミュレーターは無視するので両モードで共通
-const getAssignee = () => getTestEnv().realKintone?.user ?? "test-user";
 
 describeDualMode("プロセス管理: アクション実行とクエリ", () => {
   const SESSION = "record-status-test";
@@ -57,7 +59,7 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
     test("単体アクション実行でステータスが遷移する", async () => {
       const id = recordIds[0]!;
       const r = await client.record.updateRecordStatus({
-        app: appId, id, action: "処理開始", assignee: getAssignee(),
+        app: appId, id, action: "処理開始",
       });
       // revision は遷移後に必ずインクリメントされる。
       // エミュレーターは +1、実機は +2（内部処理で 2 段階）になるため >= 2 で確認
@@ -72,7 +74,7 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
       let err: { code?: string; message?: string } | null = null;
       try {
         await client.record.updateRecordStatus({
-          app: appId, id: recordIds[0]!, action: "完了にする", assignee: getAssignee(),
+          app: appId, id: recordIds[0]!, action: "完了にする",
         });
       } catch (e) {
         err = e as { code?: string; message?: string };
@@ -86,7 +88,7 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
       const r = await client.record.updateRecordsStatus({
         app: appId,
         records: recordIds.slice(0, 2).map((id) => ({
-          id, action: "処理開始", assignee: getAssignee(),
+          id, action: "処理開始",
         })),
       });
       expect(r.records).toHaveLength(2);
@@ -100,8 +102,8 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
         await client.record.updateRecordsStatus({
           app: appId,
           records: [
-            { id: recordIds[0]!, action: "処理開始",   assignee: getAssignee() }, // 成功するはず
-            { id: recordIds[1]!, action: "完了にする", assignee: getAssignee() }, // 失敗
+            { id: recordIds[0]!, action: "処理開始" }, // 成功するはず
+            { id: recordIds[1]!, action: "完了にする" }, // 失敗
           ],
         });
       } catch (e) {
@@ -117,7 +119,7 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
     test("ステータスでクエリ検索できる (in / =)", async () => {
       // recordIds[0] のみ「処理中」へ遷移
       await client.record.updateRecordStatus({
-        app: appId, id: recordIds[0]!, action: "処理開始", assignee: getAssignee(),
+        app: appId, id: recordIds[0]!, action: "処理開始",
       });
 
       const inProgress = await client.record.getRecords({
@@ -155,7 +157,7 @@ describeDualMode("プロセス管理: アクション実行とクエリ", () => 
       let err: { code?: string; message?: string } | null = null;
       try {
         await client.record.updateRecordStatus({
-          app: appId, id: recordIds[0]!, action: "処理開始", assignee: getAssignee(),
+          app: appId, id: recordIds[0]!, action: "処理開始",
         });
       } catch (e) {
         err = e as { code?: string; message?: string };

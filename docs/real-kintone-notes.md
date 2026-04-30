@@ -55,9 +55,20 @@
   - `CREATOR` 型エンティティは弾かれる
 - `updateProcessManagement` は preview への push なので、最後に `deployApp` を呼ばないと反映されない（フィールド変更と同じデプロイにまとめれば 1 回で済む）
 
-### アクション実行 API (`updateRecordStatus`) の制約
+### アクション実行 API (`updateRecordStatus`) の `assignee` 必須条件
 
-- **`assignee` パラメーターは事実上必須**: 次ステータスの assignee 候補が解決できないと `GAIA_SA01` (「作業者を指定してください。」) で 400 エラー。state 側で assignee を省略してもデフォルトで `FIELD_ENTITY:作成者` が割り当てられるため、結果的にアクション実行時の `assignee` 引数は常に必要
+assignee.type の意味（[ドキュメント](https://cybozu.dev/ja/kintone/docs/rest-api/apps/settings/update-process-management-settings/) 準拠）:
+
+- **`ONE`** = 「次のユーザーから作業者を選択」 → 遷移時に `assignee` 引数で**選ぶ必要あり**
+- **`ANY`** = 「次のユーザーのうち一人」 → kintone が自動選択するので `assignee` **省略可**
+- **`ALL`** = 「次のユーザー全員」 → 全員に割り当てるので `assignee` **省略可**
+
+[`updateRecordStatus` ドキュメント](https://cybozu.dev/ja/kintone/docs/rest-api/records/update-status/) では assignee は条件必須:
+
+1. 変更先ステータスの作業者が `ONE` で選択可能なユーザーが存在する場合
+2. 最初のステータスに作業者が設定されていて、そこへ戻す場合
+
+**state.assignee を省略するとデフォルトで `{type:"ONE", entities:[{FIELD_ENTITY:作成者}]}` になる** ため、何も書かないと条件 1 に該当して assignee 必須。dualMode テストでは後続ステータスを `type:"ANY"` にして assignee 引数を省略している。
 - **`from` 不一致時のエラーコードは `GAIA_IL03`**:
   - ja: 「ステータスの変更に失敗しました。ほかのユーザーがステータス、またはステータスの設定を変更した可能性があります。」
   - en: "Failed to update the status. The settings or the status itself may have been changed by someone."
@@ -78,18 +89,22 @@
 ### dualMode テストでの推奨形
 
 ```ts
-// state.assignee は省略 (実機がデフォルト割当)
+// 後続ステータスを ANY にすれば updateRecordStatus 側で assignee を省略できる
+const NEXT_ASSIGNEE = {
+  type: "ANY",
+  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
+};
 const STATUS_CONFIG = {
   enable: true,
   states: {
-    未処理: { name: "未処理", index: "0" },
-    処理中: { name: "処理中", index: "1" },
-    完了:   { name: "完了",   index: "2" },
+    未処理: { name: "未処理", index: "0" }, // 先頭は省略 (デフォルト ONE+空)
+    処理中: { name: "処理中", index: "1", assignee: NEXT_ASSIGNEE },
+    完了:   { name: "完了",   index: "2", assignee: NEXT_ASSIGNEE },
   },
   actions: [
     { name: "処理開始",   from: "未処理", to: "処理中" },
     { name: "完了にする", from: "処理中", to: "完了" },
   ],
 };
-// アクション実行時のみ assignee を渡す: { app, id, action, assignee: env.realKintone.user }
+// updateRecordStatus({ app, id, action })  ← assignee 引数不要
 ```
