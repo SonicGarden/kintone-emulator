@@ -7,7 +7,8 @@ export default defineConfig({
     setupFiles: ["tests/setup.e2e.ts"],
     include: ["../core/tests/api/**/*.test.ts"],
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    isolate: false,
     env: { TEST_PORT: "12346" },
     alias: {
       "tests/": new URL("../core/tests/", import.meta.url).pathname,
