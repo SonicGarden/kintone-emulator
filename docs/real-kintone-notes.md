@@ -68,7 +68,13 @@ assignee.type の意味（[ドキュメント](https://cybozu.dev/ja/kintone/doc
 1. 変更先ステータスの作業者が `ONE` で選択可能なユーザーが存在する場合
 2. 最初のステータスに作業者が設定されていて、そこへ戻す場合
 
-**state.assignee を省略するとデフォルトで `{type:"ONE", entities:[{FIELD_ENTITY:作成者}]}` になる** ため、何も書かないと条件 1 に該当して assignee 必須。dualMode テストでは後続ステータスを `type:"ANY"` にして assignee 引数を省略している。
+**state.assignee を省略すると API デフォルトで `{type:"ONE", entities:[{FIELD_ENTITY:作成者}]}` になる** ため、何も書かないと条件 1 に該当して assignee 必須。
+
+**最も簡単な抜け道は `{type:"ONE", entities:[]}`**（kintone UI の「作業者を設定しない」相当）。`ONE` だが選択可能ユーザー 0 件なので条件 1 にも該当せず、assignee 引数を省略できる。dualMode テストではこの形を採用。
+
+### `getProcessManagement` レスポンスの `actions[].type`
+
+実機の `app/status.json` レスポンスでは各 action に `type: "PRIMARY"` フィールドが付く（リクエスト側では送らない読み取り専用）。エミュレーター側もレスポンス時に補完する。
 - **`from` 不一致時のエラーコードは `GAIA_IL03`**:
   - ja: 「ステータスの変更に失敗しました。ほかのユーザーがステータス、またはステータスの設定を変更した可能性があります。」
   - en: "Failed to update the status. The settings or the status itself may have been changed by someone."
@@ -89,17 +95,14 @@ assignee.type の意味（[ドキュメント](https://cybozu.dev/ja/kintone/doc
 ### dualMode テストでの推奨形
 
 ```ts
-// 後続ステータスを ANY にすれば updateRecordStatus 側で assignee を省略できる
-const NEXT_ASSIGNEE = {
-  type: "ANY",
-  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
-};
+// 全 state を {ONE, entities:[]} にすると updateRecordStatus で assignee 不要
+const EMPTY_ASSIGNEE = { type: "ONE", entities: [] };
 const STATUS_CONFIG = {
   enable: true,
   states: {
-    未処理: { name: "未処理", index: "0" }, // 先頭は省略 (デフォルト ONE+空)
-    処理中: { name: "処理中", index: "1", assignee: NEXT_ASSIGNEE },
-    完了:   { name: "完了",   index: "2", assignee: NEXT_ASSIGNEE },
+    未処理: { name: "未処理", index: "0", assignee: EMPTY_ASSIGNEE },
+    処理中: { name: "処理中", index: "1", assignee: EMPTY_ASSIGNEE },
+    完了:   { name: "完了",   index: "2", assignee: EMPTY_ASSIGNEE },
   },
   actions: [
     { name: "処理開始",   from: "未処理", to: "処理中" },

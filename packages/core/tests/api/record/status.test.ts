@@ -2,21 +2,18 @@ import type { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { beforeEach, describe, expect, test } from "vitest";
 import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
-// 実機は state.assignee を省略するとデフォルトで {type:"ONE", ...} を割り当てる。
-// type="ONE" は「次のユーザーから作業者を選択」なので updateRecordStatus 時に
-// assignee 引数が必須になってしまう。
-// 後続ステータスを type="ANY" (次のユーザーのうち一人を kintone が自動選択) にすると、
-// updateRecordStatus の assignee 引数を省略できる。先頭は ONE のみ受理されるため省略。
-const NEXT_ASSIGNEE = {
-  type: "ANY",
-  entities: [{ entity: { type: "FIELD_ENTITY", code: "作成者" } }],
-};
+// 全 state で assignee.entities を空にすると「ONE で選択可能なユーザーが存在しない」
+// 状態になり、updateRecordStatus の assignee 引数を省略できる
+// （UI の「作業者を設定しない」相当）。
+// 注: state.assignee を省略すると実機は API デフォルトで {ONE, FIELD_ENTITY:作成者} を
+// 割り当てるため、明示的に {ONE, entities:[]} を指定する必要がある。
+const EMPTY_ASSIGNEE = { type: "ONE", entities: [] };
 const STATUS_CONFIG = {
   enable: true,
   states: {
-    未処理: { name: "未処理", index: "0" },
-    処理中: { name: "処理中", index: "1", assignee: NEXT_ASSIGNEE },
-    完了:   { name: "完了",   index: "2", assignee: NEXT_ASSIGNEE },
+    未処理: { name: "未処理", index: "0", assignee: EMPTY_ASSIGNEE },
+    処理中: { name: "処理中", index: "1", assignee: EMPTY_ASSIGNEE },
+    完了:   { name: "完了",   index: "2", assignee: EMPTY_ASSIGNEE },
   },
   actions: [
     { name: "処理開始",   from: "未処理", to: "処理中" },
