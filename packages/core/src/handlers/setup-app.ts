@@ -7,6 +7,7 @@ import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
 import { errorFieldNotFound, errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
 import { validateLookupMappings } from "./lookup-validation";
+import { applyInitialStatus, type StatusConfig } from "./process-status";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, detectLocale, normalizeDropDown } from "./validate";
 
@@ -77,10 +78,12 @@ export const post = async ({ request, params }: HandlerArgs) => {
       const recordIds: string[] = [];
       if (Array.isArray(body.records)) {
         const fieldRows = findFields(db, app.id);
+        const statusConfig = body.status as StatusConfig | undefined;
         for (const record of body.records) {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
-          const withDefaults = normalizeDropDown(fieldRows, applyDefaults(fieldRows, recordBody));
+          const withStatus = applyInitialStatus(statusConfig ?? null, recordBody);
+          const withDefaults = normalizeDropDown(fieldRows, applyDefaults(fieldRows, withStatus));
           const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
           computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);

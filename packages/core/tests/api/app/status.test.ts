@@ -82,7 +82,9 @@ describeEmulatorOnly("プロセス管理の設定取得API", () => {
     expect(data.states["処理中"].assignee.entities).toHaveLength(1);
     expect(data.actions).toHaveLength(2);
     expect(data.actions[0].name).toBe("処理開始");
+    expect(data.actions[0].type).toBe("PRIMARY");
     expect(data.actions[1].name).toBe("完了にする");
+    expect(data.actions[1].type).toBe("PRIMARY");
   });
 
   test("存在しないアプリで GAIA_AP01 が返る", async () => {

@@ -31,5 +31,10 @@ export const get = ({ request, params }: HandlerArgs) => {
   if (guestErr) return guestErr;
 
   const { enable, states, actions, revision } = JSON.parse(row.status);
-  return Response.json({ enable, states, actions, revision });
+  // 実機の getProcessManagement レスポンスでは各 action に type: "PRIMARY" が付く。
+  // 入力側では送らないため、レスポンス時に補完する。
+  const actionsWithType = Array.isArray(actions)
+    ? actions.map((a) => ({ ...a, type: a.type ?? "PRIMARY" }))
+    : actions;
+  return Response.json({ enable, states, actions: actionsWithType, revision });
 };

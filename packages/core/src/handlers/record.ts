@@ -6,6 +6,7 @@ import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/r
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
+import { applyInitialStatus, getStatusConfig, withStatusFieldRow } from "./process-status";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
@@ -38,7 +39,8 @@ export const get = ({ request, params }: HandlerArgs) => {
   }
 
   const body: Record = JSON.parse(row.body);
-  const fieldRows = findFields(db, app);
+  const statusConfig = getStatusConfig(db, app);
+  const fieldRows = withStatusFieldRow(findFields(db, app), statusConfig);
   attachFieldTypes(body, fieldRows, {
     recordId: row.id,
     createdAt: row.created_at,
@@ -57,7 +59,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const guestErr = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
   if (guestErr) return guestErr;
   const fieldRows = findFields(db, body.app);
-  const withDefaults = applyDefaults(fieldRows, body.record ?? {});
+  const statusConfig = getStatusConfig(db, body.app);
+  const withStatus = applyInitialStatus(statusConfig, body.record ?? {});
+  const withDefaults = applyDefaults(fieldRows, withStatus);
   const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
   if (lookupResult.error) return lookupResult.error;
   const record = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
