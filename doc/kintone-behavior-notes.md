@@ -822,7 +822,148 @@ GET で qty を見ると value: ""
 
 ---
 
-## 10. その他観察
+## 10. ルックアップ（LOOKUP）
+
+スカラー系フィールド（`SINGLE_LINE_TEXT` / `NUMBER` / `LINK`）に `lookup` オブジェクトを付けることで、別アプリのフィールドを参照してキー一致するレコードから `fieldMappings` に従って値を自動コピーする機能。
+
+### フィールド定義の保存形式
+
+```json
+"prod_code": {
+  "type": "SINGLE_LINE_TEXT",
+  "code": "prod_code",
+  "label": "商品コード",
+  "required": false,
+  "lookup": {
+    "relatedApp": { "app": "<APP_ID>", "code": "" },
+    "relatedKeyField": "code",
+    "fieldMappings": [
+      { "field": "prod_name",  "relatedField": "name" },
+      { "field": "prod_price", "relatedField": "price" }
+    ],
+    "lookupPickerFields": ["code", "name"],
+    "filterCond": "",
+    "sort": "レコード番号 desc"
+  }
+}
+```
+
+### 書き込み時の挙動（POST / PUT）
+
+| ケース | 結果 |
+|---|---|
+| ルックアップキー一致 | コピー先 `fieldMappings[].field` が **サーバーで自動的に埋まる** |
+| コピー先フィールドに直接値を送信 | **無視される**（ルックアップキーの値で上書き、キー未送信ならコピー先は空で保存） |
+| キー不一致 | 400 `GAIA_LO04`（`errors` オブジェクト**無し**） |
+| キー空文字 / 未送信（POST） | 200、コピー先も空 |
+| PUT でキー変更 | **再コピー**（新キー先の値に置き換わる） |
+| PUT でキーを空文字に更新 | **コピー先もクリア** |
+| PUT でキー未送信 + 他フィールド更新 | コピー先は既存値のまま保持 |
+| マスター側レコードの値変更 | **ルックアップ側には伝播しない**（コピー時点のスナップショット） |
+| ルックアップフィールドが required + 欠落 | 通常の `CB_VA01 / 必須です。`（`record.<code>.value`） |
+| 一括 API（records.json POST/PUT）で 1 件以上不一致 | **最初の 1 件目だけ** `GAIA_LO04` で返る（他行の情報は含まれず、index 情報もなし）。全件ロールバック想定 |
+
+### エラーレスポンス
+
+HTTP 400、`code: "GAIA_LO04"`、`errors` 無し。
+
+| locale | message |
+|---|---|
+| ja | `フィールド「<fieldCode>」の値「<value>」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。` |
+| en | `A value <value> in the field <fieldCode> does not exist in the datasource app for lookup, or you do not have permission to view the app or the field.` |
+
+```
+POST /k/v1/record.json  body={app:<APP_ID>, record:{prod_code:{value:"P999"}}}  (ja)
+-> 400
+{
+  "code": "GAIA_LO04",
+  "id": "J4EyKZSSnVg5OYwfjhIc",
+  "message": "フィールド「prod_code」の値「P999」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。"
+}
+```
+
+### フィールド定義時の制約（保存時バリデーション）
+
+| 制約違反 | エラー |
+|---|---|
+| `relatedKeyField` に `$id` を指定 | `CB_VA01`、`errors["properties[<code>].lookup.relatedKeyField"]: "先頭に数字が使用されているか、使用できない記号、またはスペースが含まれているため保存できません..."`。代わりにレコード番号フィールドのフィールドコード（日本語環境では既定で `"レコード番号"`、後から変更も可能）を指定する |
+| 同じ `fieldMappings[].field` を複数の lookup で共有 | `CB_VA01`、`"コピー先のフィールドの設定が重複しています..."` |
+| 型違い fieldMapping（例: NUMBER → SINGLE_LINE_TEXT） | `CB_VA01`、`"指定したフィールドの組み合わせが正しくない、または指定できない種類のフィールドを指定しています。"` |
+| `filterCond` に不正な演算子 | `GAIA_IQ03` 等（本エミュレーターはスコープ外） |
+
+### レコード取得レスポンスの $id と RECORD_NUMBER フィールド
+
+実機は 1 レコード GET / 一覧 GET のレスポンスに以下の**両方**を含める:
+
+- `"$id"` 特殊キー: `{type: "__ID__", value: "<recordId>"}` ← **`type` は `RECORD_NUMBER` ではなく `__ID__`**
+- RECORD_NUMBER フィールドのフィールドコード（既定 `"レコード番号"`、カスタム可）: `{type: "RECORD_NUMBER", value: "<recordId>"}`
+
+つまり同じ値が 2 つのキーで返り、`$id` の `type` は `"__ID__"` という特別な識別子。
+
+```
+GET /k/v1/record.json?app=<APP_ID>&id=14
+-> {
+  "record": {
+    "レコード番号": {"type": "RECORD_NUMBER", "value": "14"},
+    "$id":         {"type": "__ID__",        "value": "14"},
+    "$revision":   {"type": "__REVISION__",  "value": "3"},
+    ...
+  }
+}
+```
+
+エミュレーターでは `attachFieldTypes(body, fieldRows, { recordId, createdAt, updatedAt })` が type 付与と以下のシステムフィールド補完を担当する:
+
+- RECORD_NUMBER（既定コード `レコード番号`）: `{type: "RECORD_NUMBER", value: "<id>"}`
+- CREATED_TIME（既定コード `作成日時`）: `{type: "CREATED_TIME", value: "YYYY-MM-DDTHH:MM:00Z"}`（**API 応答は分単位**、秒は常に `00`）
+- UPDATED_TIME（既定コード `更新日時`）: `{type: "UPDATED_TIME", value: "YYYY-MM-DDTHH:MM:00Z"}`（同上）
+
+実機は秒の異なるタイミング（例: `14:10:59` / `14:11:17` / `14:11:53`）で POST しても、返される値はすべて `"2026-04-23T14:11:00Z"` のように分単位に揃う。kintone の内部記憶が秒精度で持っているかどうかは REST API 経由では判別できない。エミュレーターは SQLite の `CURRENT_TIMESTAMP`（秒精度）を保存しているが、応答時に `setUTCSeconds(0, 0)` で分単位へ丸める。
+
+#### 補足: CALC で秒を取り出せるか試した結果
+
+CALC フィールドの expression `更新日時 - 作成日時`（format: NUMBER）で、POST → 70 秒後に PUT したレコードの差分を観察:
+
+- 実差: 70 秒（UTC 14:23:02 → 14:24:12）
+- API 応答: 作成日時 `14:23:00Z` / 更新日時 `14:24:00Z`
+- sec_check（差分）: **`"60"`**（= 1 分ぶん。秒精度なら 70 になるはず）
+
+つまり **CALC の datetime 演算も分単位で丸めた値同士で行われる**。REST API のどのルート（GET / CALC / DATE_FORMAT 等）からも秒情報は取り出せないので、実用上「秒情報は無いのと同じ」として扱ってよい。内部で秒を保存しているかどうかは REST API からは判定不可能。
+
+CREATED_TIME / UPDATED_TIME の値は SQLite の `records.created_at` / `records.updated_at`（`CURRENT_TIMESTAMP` で自動設定、PUT 時に `updated_at` を明示更新）を整形したもの。
+
+### RECORD_NUMBER を relatedKeyField にするケース
+
+- `relatedKeyField` に RECORD_NUMBER 型フィールドのフィールドコード（既定は `"レコード番号"`、英語環境なら `"Record_number"`、ユーザーが後から変更可能）を指定可
+- `$id` 文字列は不可
+- キー値として渡された数値で参照先アプリのレコード ID を直接検索
+- fieldMappings で `relatedField` に RECORD_NUMBER 型フィールドコードを指定すると、コピー先には参照先レコードの `$id` 相当の数値が入る
+- エミュレーター側は `lookup.ts` で参照先アプリのフィールド定義をチェックし、`RECORD_NUMBER` 型なら `records.id` カラムで検索、通常フィールドなら `body JSON` で検索に切り替えている
+
+→ **型違い fieldMapping はそもそもフィールド保存時に拒否される**ので、ランタイムで型変換を考える必要はない。
+
+### レコード取得時（GET）
+
+lookup フィールドは通常のスカラーとして返る。lookup 情報は `record.json` のレスポンスには含まれない:
+
+```json
+"prod_code": { "type": "SINGLE_LINE_TEXT", "value": "P001" }
+```
+
+lookup 定義を取り出したい場合は `/k/v1/app/form/fields.json` を使う。
+
+### 未確認 / スコープ外
+
+- `filterCond` の実際の絞り込み挙動（本エミュレーターの Phase 1 ではスコープ外）
+- `lookupPickerFields`（UI のみ、API 挙動に影響なし）
+- `relatedApp.code` の正確な挙動: これは参照先を**指定する**ものではなく、参照先アプリに[アプリコード](https://jp.kintone.help/k/ja/app/manage/appcode)が設定されていれば自動的にその値が入るだけの読み取り情報。参照先の特定は常に `relatedApp.app`（数値 ID）で行われる。参照先アプリ側でアプリコードを変更すると、ルックアップ側の `relatedApp.code` も自動追従する（エミュレーターではアプリコード機能自体が未実装のため追従しない）
+- SUBTABLE 内のルックアップ（kintone UI でも通常は設定不可）
+
+> 注: 以前は RECORD_NUMBER 参照も未対応だったが、実装済み（上記参照）。
+
+---
+
+## 11. その他観察
 
 ### preview/deploy のライフサイクル
 

@@ -54,7 +54,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "1",
@@ -83,7 +83,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "2",
@@ -168,11 +168,11 @@ describe("アプリのレコードAPI", () => {
     });
 
     const record100 = await client!.record.getRecord({ app: appId, id: 100 });
-    expect(record100.record.$id).toEqual({ value: "100", type: "RECORD_NUMBER" });
+    expect(record100.record.$id).toEqual({ value: "100", type: "__ID__" });
     expect(record100.record.title).toEqual({ value: "レコード100", type: "SINGLE_LINE_TEXT" });
 
     const record200 = await client!.record.getRecord({ app: appId, id: 200 });
-    expect(record200.record.$id).toEqual({ value: "200", type: "RECORD_NUMBER" });
+    expect(record200.record.$id).toEqual({ value: "200", type: "__ID__" });
     expect(record200.record.title).toEqual({ value: "レコード200", type: "SINGLE_LINE_TEXT" });
   });
 
@@ -266,7 +266,7 @@ describe("アプリのレコードAPI", () => {
       record: {
         $id: {
           value: result.id,
-          type: "RECORD_NUMBER",
+          type: "__ID__",
         },
         $revision: {
           value: "2",
@@ -1353,5 +1353,317 @@ describe("top-level NUMBER の正規化", () => {
     expect(json.errors["record[n].value"]).toEqual({
       messages: ["数字でなければなりません。"],
     });
+  });
+});
+
+describe("ルックアップ（LOOKUP）", () => {
+  const SESSION = "record-lookup";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let masterAppId: number;
+  let lookupAppId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+
+    // 参照元（マスター）アプリ: code (unique) / name / price
+    masterAppId = await createApp(BASE_URL, {
+      name: "商品マスター",
+      properties: {
+        code:  { type: "SINGLE_LINE_TEXT", code: "code",  label: "コード", unique: true },
+        name:  { type: "SINGLE_LINE_TEXT", code: "name",  label: "名前" },
+        price: { type: "NUMBER",           code: "price", label: "価格" },
+      },
+      records: [
+        { code: { value: "P001" }, name: { value: "りんご" }, price: { value: "100" } },
+        { code: { value: "P002" }, name: { value: "みかん" }, price: { value: "80" } },
+        { code: { value: "P003" }, name: { value: "ぶどう" }, price: { value: "300" } },
+      ],
+    });
+
+    // ルックアップ保持アプリ
+    lookupAppId = await createApp(BASE_URL, {
+      name: "注文",
+      properties: {
+        prod_code: {
+          type: "SINGLE_LINE_TEXT", code: "prod_code", label: "商品コード",
+          lookup: {
+            relatedApp: { app: String(masterAppId) },
+            relatedKeyField: "code",
+            fieldMappings: [
+              { field: "prod_name",  relatedField: "name" },
+              { field: "prod_price", relatedField: "price" },
+            ],
+            lookupPickerFields: ["code", "name"],
+            filterCond: "",
+            sort: "",
+          },
+        },
+        prod_name:  { type: "SINGLE_LINE_TEXT", code: "prod_name",  label: "商品名" },
+        prod_price: { type: "NUMBER",           code: "prod_price", label: "価格" },
+        qty:        { type: "NUMBER",           code: "qty",        label: "数量" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  const putRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("キー一致でコピー先が自動的に埋まる", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" }, qty: { value: "5" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_code).toMatchObject({ value: "P001" });
+    expect(record.prod_name).toMatchObject({ value: "りんご" });
+    expect(record.prod_price).toMatchObject({ value: "100" });
+    expect(record.qty).toMatchObject({ value: "5" });
+  });
+
+  test("キー不一致で 400 GAIA_LO04", async () => {
+    const r = await postRecord({ app: lookupAppId, record: { prod_code: { value: "P999" } } });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+    expect(json.message).toBe(
+      "フィールド「prod_code」の値「P999」が、ルックアップの参照先のフィールドにないか、またはアプリやフィールドの閲覧権限がありません。"
+    );
+    expect(json.errors).toBeUndefined();
+  });
+
+  test("Accept-Language: en で英語メッセージ", async () => {
+    const r = await fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Language": "en" },
+      body: JSON.stringify({ app: lookupAppId, record: { prod_code: { value: "P999" } } }),
+    });
+    const json = await r.json();
+    expect(json.message).toBe(
+      "A value P999 in the field prod_code does not exist in the datasource app for lookup, or you do not have permission to view the app or the field."
+    );
+  });
+
+  test("コピー先フィールドへの直接送信は無視される（ルックアップ結果で上書き）", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId,
+      record: {
+        prod_code: { value: "P001" },
+        prod_name: { value: "直接指定" },
+        prod_price: { value: "9999" },
+      },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_name).toMatchObject({ value: "りんご" });
+    expect(record.prod_price).toMatchObject({ value: "100" });
+  });
+
+  test("キー空文字 / 未送信でコピー先も空", async () => {
+    const r1 = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "" }, qty: { value: "1" } },
+    });
+    const rec1 = await client.record.getRecord({ app: lookupAppId, id: r1.id });
+    expect(rec1.record.prod_code).toMatchObject({ value: "" });
+    expect(rec1.record.prod_name).toMatchObject({ value: "" });
+    expect(rec1.record.prod_price).toMatchObject({ value: "" });
+
+    const r2 = await client.record.addRecord({
+      app: lookupAppId, record: { qty: { value: "2" } },
+    });
+    const rec2 = await client.record.getRecord({ app: lookupAppId, id: r2.id });
+    expect(rec2.record.prod_name?.value ?? "").toBe("");
+    expect(rec2.record.prod_price?.value ?? "").toBe("");
+  });
+
+  test("PUT でキー変更すると再コピーされる", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" } },
+    });
+    await client.record.updateRecord({
+      app: lookupAppId, id, record: { prod_code: { value: "P002" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_name).toMatchObject({ value: "みかん" });
+    expect(record.prod_price).toMatchObject({ value: "80" });
+  });
+
+  test("PUT でキーを空文字に更新するとコピー先もクリア", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" } },
+    });
+    await client.record.updateRecord({
+      app: lookupAppId, id, record: { prod_code: { value: "" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_name).toMatchObject({ value: "" });
+    expect(record.prod_price).toMatchObject({ value: "" });
+  });
+
+  test("PUT でキー未送信なら既存コピー先は保持", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" } },
+    });
+    await client.record.updateRecord({
+      app: lookupAppId, id, record: { qty: { value: "10" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_code).toMatchObject({ value: "P001" });
+    expect(record.prod_name).toMatchObject({ value: "りんご" });
+    expect(record.prod_price).toMatchObject({ value: "100" });
+    expect(record.qty).toMatchObject({ value: "10" });
+  });
+
+  test("PUT でキー不一致に変更すると 400 GAIA_LO04", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" } },
+    });
+    const r = await putRecord({
+      app: lookupAppId, id, record: { prod_code: { value: "P999" } },
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+  });
+
+  test("一括 addRecords で各行にルックアップが効く", async () => {
+    const { ids } = await client.record.addRecords({
+      app: lookupAppId, records: [
+        { prod_code: { value: "P001" } },
+        { prod_code: { value: "P003" } },
+      ],
+    });
+    const r1 = await client.record.getRecord({ app: lookupAppId, id: ids[0]! });
+    const r2 = await client.record.getRecord({ app: lookupAppId, id: ids[1]! });
+    expect(r1.record.prod_name).toMatchObject({ value: "りんご" });
+    expect(r2.record.prod_name).toMatchObject({ value: "ぶどう" });
+  });
+
+  test("一括 addRecords で 1 件でもキー不一致なら全件失敗（GAIA_LO04）", async () => {
+    const r = await fetch(`${BASE_URL}/k/v1/records.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: lookupAppId, records: [
+          { prod_code: { value: "P001" } },
+          { prod_code: { value: "P999" } },
+        ],
+      }),
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+
+    // ロールバック確認: P001 のレコードも保存されていない
+    const all = await client.record.getRecords({ app: lookupAppId });
+    expect(all.records).toHaveLength(0);
+  });
+
+  test("ルックアップ元マスターの値変更はルックアップ側に伝播しない（スナップショット）", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { prod_code: { value: "P001" } },
+    });
+    // マスターの P001 の name を書き換え
+    const { records: masters } = await client.record.getRecords({
+      app: masterAppId, query: 'code = "P001"',
+    });
+    await client.record.updateRecord({
+      app: masterAppId, id: masters[0]!.$id!.value as string,
+      record: { name: { value: "ピンクりんご" } },
+    });
+    // ルックアップ側は変わらない
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.prod_name).toMatchObject({ value: "りんご" });
+  });
+});
+
+describe("ルックアップ: relatedKeyField が RECORD_NUMBER", () => {
+  const SESSION = "record-lookup-recno";
+  let BASE_URL: string;
+  let client: KintoneRestAPIClient;
+  let masterAppId: number;
+  let lookupAppId: number;
+
+  beforeAll(() => { BASE_URL = createBaseUrl(SESSION); });
+  beforeEach(async () => {
+    await initializeSession(BASE_URL);
+    client = new KintoneRestAPIClient({ baseUrl: BASE_URL, auth: { apiToken: "test" } });
+
+    masterAppId = await createApp(BASE_URL, {
+      name: "商品マスター",
+      properties: {
+        name: { type: "SINGLE_LINE_TEXT", code: "name", label: "名前" },
+      },
+      records: [
+        { name: { value: "一番目" } },
+        { name: { value: "二番目" } },
+        { name: { value: "三番目" } },
+      ],
+    });
+
+    lookupAppId = await createApp(BASE_URL, {
+      name: "参照",
+      properties: {
+        by_no: {
+          type: "NUMBER", code: "by_no", label: "by_no",
+          lookup: {
+            relatedApp: { app: String(masterAppId) },
+            relatedKeyField: "レコード番号",
+            fieldMappings: [
+              { field: "copied_no", relatedField: "レコード番号" },
+              { field: "copied_name", relatedField: "name" },
+            ],
+            lookupPickerFields: ["レコード番号"],
+            filterCond: "",
+            sort: "",
+          },
+        },
+        copied_no:   { type: "NUMBER", code: "copied_no", label: "copied_no" },
+        copied_name: { type: "SINGLE_LINE_TEXT", code: "copied_name", label: "copied_name" },
+      },
+    });
+  });
+  afterEach(async () => { await finalizeSession(BASE_URL); });
+
+  const postRecord = (body: unknown) =>
+    fetch(`${BASE_URL}/k/v1/record.json`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+
+  test("レコード番号で参照先レコードを特定しコピーする", async () => {
+    // 2 番目のマスターレコード（name=二番目）をレコード番号で参照
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { by_no: { value: "2" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.copied_no).toMatchObject({ value: "2" });
+    expect(record.copied_name).toMatchObject({ value: "二番目" });
+  });
+
+  test("存在しないレコード番号で GAIA_LO04", async () => {
+    const r = await postRecord({
+      app: lookupAppId, record: { by_no: { value: "9999" } },
+    });
+    expect(r.status).toBe(400);
+    const json = await r.json();
+    expect(json.code).toBe("GAIA_LO04");
+  });
+
+  test("レコード番号キーを空で送るとコピー先もクリア", async () => {
+    const { id } = await client.record.addRecord({
+      app: lookupAppId, record: { by_no: { value: "1" } },
+    });
+    await client.record.updateRecord({
+      app: lookupAppId, id, record: { by_no: { value: "" } },
+    });
+    const { record } = await client.record.getRecord({ app: lookupAppId, id });
+    expect(record.copied_no).toMatchObject({ value: "" });
+    expect(record.copied_name).toMatchObject({ value: "" });
   });
 });
