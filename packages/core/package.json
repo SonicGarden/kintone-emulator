@@ -21,7 +21,7 @@
     }
   },
   "peerDependencies": {
-    "@kintone/rest-api-client": "^5.0.0"
+    "@kintone/rest-api-client": "^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
     "@kintone/rest-api-client": { "optional": true }
