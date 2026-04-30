@@ -40,7 +40,7 @@ export const post = async ({ request, params }: HandlerArgs): Promise<Response> 
   return Response.json({ result: "ok" });
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 export const del = ({ params }: HandlerArgs): Response => {
   clearFailure(params.session);
   return Response.json({ result: "ok" });

@@ -21,7 +21,7 @@ export default async function setup() {
   serverProcess.stdout?.pipe(logStream);
   serverProcess.stderr?.pipe(logStream);
 
-  // eslint-disable-next-line no-console
+   
   console.log(`[e2e] react-router-serve logs → ${LOG_FILE}`);
 
   await waitForServer(`http://localhost:${PORT}`, serverProcess);
