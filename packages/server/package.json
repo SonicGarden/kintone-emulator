@@ -18,7 +18,7 @@
     "@react-router/serve": "^7.14.2",
     "@sonicgarden/kintone-emulator": "workspace:*",
     "better-sqlite3": "^12.9.0",
-    "isbot": "^4.1.0",
+    "isbot": "^5.1.39",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router": "^7.14.2"
