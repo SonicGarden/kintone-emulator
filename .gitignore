@@ -7,6 +7,7 @@ node_modules
 
 # build output
 /packages/server/build
+/packages/server/.react-router
 /packages/cli/dist/
 /packages/core/dist/
 

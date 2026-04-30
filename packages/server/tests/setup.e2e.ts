@@ -6,7 +6,7 @@ const PORT = process.env.TEST_PORT ?? "12346";
 let serverProcess: ChildProcess;
 
 beforeAll(async () => {
-  serverProcess = spawn("node_modules/.bin/remix-serve", ["./build/server/index.js"], {
+  serverProcess = spawn("node_modules/.bin/react-router-serve", ["./build/server/index.js"], {
     env: { ...process.env, PORT },
     stdio: ["pipe", "inherit", "inherit"],
   });

@@ -1,4 +1,3 @@
-import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
 // vitest/vite のデフォルト挙動で `.env.<mode>` から VITE_ プレフィックス付きの
@@ -7,7 +6,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig(({ mode }) => {
   const isRealKintoneMode = mode === "real-kintone";
   return {
-    plugins: [tsconfigPaths()],
+    resolve: {
+      tsconfigPaths: true,
+    },
     test: {
       setupFiles: ["tests/setup.ts"],
       pool: "forks",

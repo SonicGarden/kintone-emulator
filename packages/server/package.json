@@ -5,26 +5,27 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "build": "pnpm typecheck && remix vite:build",
-    "clean": "rm -rf build ./node_modules/.cache/eslint",
-    "dev": "remix vite:dev",
+    "build": "pnpm typecheck && react-router build",
+    "clean": "rm -rf build ./node_modules/.cache/eslint .react-router",
+    "dev": "react-router dev",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
-    "start": "PORT=12345 HOST=0.0.0.0 remix-serve ./build/server/index.js",
+    "start": "PORT=12345 HOST=0.0.0.0 react-router-serve ./build/server/index.js",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@remix-run/node": "^2.17.4",
-    "@remix-run/react": "^2.17.4",
-    "@remix-run/serve": "^2.17.4",
+    "@react-router/node": "^7.14.2",
+    "@react-router/serve": "^7.14.2",
     "@sonicgarden/kintone-emulator": "workspace:*",
     "better-sqlite3": "^12.6.2",
     "isbot": "^4.1.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-router": "^7.14.2"
   },
   "devDependencies": {
-    "@remix-run/dev": "^2.17.4",
+    "@react-router/dev": "^7.14.2",
+    "@react-router/fs-routes": "^7.14.2",
     "@types/react": "^18.2.20",
     "@types/react-dom": "^18.2.7",
     "autoprefixer": "^10.4.19",
@@ -33,10 +34,9 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
-    "vite": "^6.4.2",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite": "^8.0.10"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.0"
   }
 }

@@ -34,30 +34,38 @@
 - [x] `pnpm test:e2e` 通過（296 passed）
 - [ ] `engines.node` の見直しは Phase 2 の Vite 7 化と一緒に
 
-### Phase 2: Remix → React Router v7 framework mode
+### Phase 2: Remix → React Router v7 framework mode ✅
 
-- [ ] 依存差し替え
-  - 削除: `@remix-run/node` `@remix-run/react` `@remix-run/serve` `@remix-run/dev`
-  - 追加: `react-router` `@react-router/node` `@react-router/serve` `@react-router/dev` `@react-router/fs-routes`
-- [ ] `vite.config.ts` の `vitePlugin as remix` → `reactRouter` from `@react-router/dev/vite`
-- [ ] `react-router.config.ts` を新規作成
-- [ ] `app/routes.ts` を作り `flatRoutes()` で現行の flat 規約を維持
-- [ ] `app/entry.server.tsx` を `ServerRouter` ベースに書き換え
-- [ ] `app/entry.client.tsx` を `HydratedRouter` ベースに書き換え
-- [ ] `app/root.tsx` の import を `react-router` へ
-- [ ] 全ルート（30+ファイル）の `@remix-run/node` import を `react-router` へ一括置換
-- [ ] `json()` ヘルパの非推奨対応（必要なら `data()` または `Response.json()` へ）
-- [ ] `package.json` の scripts を `react-router dev / build / serve` に変更
-- [ ] `tsconfig.json` の types 更新、`.react-router/types` 取り込み
-- [ ] vite を ^6 → ^7 に更新
-- [ ] 全テスト通過確認
+- [x] 依存差し替え（@remix-run/* → react-router / @react-router/*）
+- [x] `vite.config.ts` の `vitePlugin as remix` → `reactRouter`
+- [x] `react-router.config.ts` を新規作成
+- [x] `app/routes.ts` を作り `flatRoutes()` で flat 規約を維持
+- [x] `app/entry.server.tsx` を `ServerRouter` ベースに書き換え（`abortDelay` prop は v7 で消えたため削除）
+- [x] `app/entry.client.tsx` を `HydratedRouter` ベースに書き換え
+- [x] `app/root.tsx` の import を `react-router` へ
+- [x] 全ルート 32 ファイルの `@remix-run/node` import を `react-router` へ一括置換
+- [x] `package.json` の scripts を `react-router dev / build / serve` に変更
+- [x] `tsconfig.json` の types を `@react-router/node` に変更、`.react-router/types/**/*` を include
+- [x] `tests/setup.e2e.ts` の `remix-serve` → `react-router-serve`
+- [x] vite を ^6 → ^8.0.10 に更新（RR v7.14.2 dev は Vite 8 対応済み）
+- [x] `vite-tsconfig-paths` を削除し Vite 8 ネイティブの `resolve.tsconfigPaths: true` へ移行
+- [x] `engines.node` を `>=20.19.0` に
+- [x] 全テスト通過: typecheck / lint / test (474 pass) / build / e2e (296 pass) / dev サーバ起動
 
 ### Phase 3（保留）
 
-- Vite 7 → 8: `@react-router/dev` の Vite 8 対応待ち
 - React 18 → 19: 必要性が出たら別タスク
 
 ## 進捗ログ
+
+### 2026-04-30 Phase 2 完了
+
+- 公式の Remix → RR v7 移行ガイド: https://reactrouter.com/upgrading/remix を参考に進めた
+- `@react-router/dev@7.14.2` の peer は Vite `^5/6/7/8` を許容しているため、Phase 2 の中で Vite 8 まで一気に更新
+- Vite 8 がネイティブで tsconfig paths をサポートしている（`resolve.tsconfigPaths: true`）ため `vite-tsconfig-paths` パッケージを削除
+- `ServerRouter` の prop から `abortDelay` がなくなった（タイムアウトは `setTimeout(abort, ...)` で従来通り行われる）
+- E2E テストの起動スクリプトが `node_modules/.bin/remix-serve` を直叩きしていたため `react-router-serve` に変更
+- 全テスト・ビルド・E2E・dev サーバ通過
 
 ### 2026-04-30 Phase 1 完了
 
