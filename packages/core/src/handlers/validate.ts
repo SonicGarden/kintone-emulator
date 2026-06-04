@@ -179,6 +179,40 @@ export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): Re
   return result;
 };
 
+// 実 kintone: DROP_DOWN は未選択を `value: null` で保存・返却する。
+//   - 未送信フィールド → `{ value: null }` を補完
+//   - 空文字列で送信   → null に正規化
+//   - SUBTABLE 内の DROP_DOWN にも同じ処理を適用（行が無い場合は何もしない）
+// 適用後の body は getRecord / getRecords でも `{ type: "DROP_DOWN", value: null }` として返る。
+export const normalizeDropDown = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
+  const result: RecordInput = { ...record };
+  for (const row of fieldRows) {
+    const def = JSON.parse(row.body) as FieldDef;
+
+    if (def.type === "DROP_DOWN") {
+      const cell = result[row.code];
+      if (cell == null) {
+        result[row.code] = { value: null };
+      } else if (cell.value === "" || cell.value == null) {
+        result[row.code] = { ...cell, value: null };
+      }
+      continue;
+    }
+
+    if (def.type === "SUBTABLE" && def.fields) {
+      const rows = result[row.code]?.value;
+      if (!Array.isArray(rows)) continue;
+      const subRows = subtableFieldsToRows(def.fields);
+      const newRows: SubtableRow[] = (rows as SubtableRow[]).map((r) => ({
+        ...r,
+        value: normalizeDropDown(subRows, r.value ?? {}),
+      }));
+      result[row.code] = { ...result[row.code], value: newRows };
+    }
+  }
+  return result;
+};
+
 // PUT 用: body.record 側の SUBTABLE 行を、既存レコード body 側の行と id でマッチングしてマージする。
 // 実 kintone の PUT 挙動:
 //   - 送信された id が既存行に一致 → 既存行の value と送信 value をマージ（送らない内部フィールドは既存値を保持）
@@ -275,19 +309,22 @@ const validateRequired = (fields: ParsedField[], record: RecordInput, errors: Va
   }
 };
 
-const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "MULTI_LINE_TEXT", "LINK"]);
+// MULTI_LINE_TEXT は実機の設定画面でも maxLength / minLength を指定できず、
+// API レベルでも検証されない。ここからは除外する
+const LENGTH_TYPES = new Set(["SINGLE_LINE_TEXT", "LINK"]);
 
 const validateLengths = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages, prefix: string) => {
   for (const { code, def } of fields) {
     if (!LENGTH_TYPES.has(def.type)) continue;
-    const v = record[code]?.value;
-    if (typeof v !== "string" || v === "") continue;
+    const raw = record[code]?.value;
+    const strValue = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
     const max = def.maxLength != null && def.maxLength !== "" ? Number(def.maxLength) : null;
     const min = def.minLength != null && def.minLength !== "" ? Number(def.minLength) : null;
-    if (max != null && v.length > max) {
+    // 実機準拠: minLength は未送信 / 空文字でも検証する。maxLength は空のときはスキップ
+    if (strValue !== "" && max != null && strValue.length > max) {
       addError(errors, `${prefix}.${code}.value`, m.maxLength(max + 1));
     }
-    if (min != null && v.length < min) {
+    if (min != null && strValue.length < min) {
       addError(errors, `${prefix}.${code}.value`, m.minLength(min - 1));
     }
   }
@@ -353,10 +390,13 @@ const validateUnique = (
   m: Messages,
   ctx: ValidateContext
 ) => {
-  // unique は top-level のみ（SUBTABLE 内では実 kintone でも unique 設定不可）
+  // unique は top-level かつ、実機が unique 属性を保持する 5 タイプに限定:
+  //   SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME
+  // 実機の UI / addFormFields API では他タイプに unique: true を送っても
+  // silently drop される（加えて TIME / CALC / LOOKUP は UI からも設定不可）
   for (const { code, def } of fields) {
     if (!def.unique) continue;
-    if (VALUES_KEY_TYPES[def.type]) continue;
+    if (!UNIQUE_TYPES.has(def.type)) continue;
     const v = record[code]?.value;
     if (typeof v !== "string" || v === "") continue;
     const rows = findRecordsByKey(ctx.db, ctx.appId, code, v);
@@ -366,6 +406,14 @@ const validateUnique = (
     }
   }
 };
+
+const UNIQUE_TYPES = new Set([
+  "SINGLE_LINE_TEXT",
+  "NUMBER",
+  "LINK",
+  "DATE",
+  "DATETIME",
+]);
 
 // SUBTABLE 各行の内部フィールドに対して required / 長さ / 範囲 / options を再帰検証
 const validateSubtables = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages) => {
@@ -411,7 +459,7 @@ export const validateRecord = (
 
 // DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を kintone の CREATED_TIME / UPDATED_TIME 形式に整形。
 // 実 kintone は秒を 00 に丸めた ISO 8601 UTC（"YYYY-MM-DDTHH:MM:00Z"）で返す。
-const formatKintoneDateTime = (sqlTime: string): string => {
+export const formatKintoneDateTime = (sqlTime: string): string => {
   const d = new Date(sqlTime.replace(" ", "T") + "Z");
   d.setUTCSeconds(0, 0);
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");

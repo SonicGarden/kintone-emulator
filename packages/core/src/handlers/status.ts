@@ -4,6 +4,7 @@
 import { findApp } from "../db/apps";
 import { dbSession } from "../db/client";
 import { errorInvalidInput, errorMessages, errorNotFoundApp } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
@@ -21,11 +22,19 @@ export const get = ({ request, params }: HandlerArgs) => {
     return errorInvalidInput({ app: { messages: [m.mustBeAtLeastOne] } }, locale);
   }
 
-  const row = findApp(dbSession(params.session), appId);
+  const db = dbSession(params.session);
+  const row = findApp(db, appId);
   if (!row) {
     return errorNotFoundApp(appId, locale);
   }
+  const guestErr = enforceGuestSpace(db, appId, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const { enable, states, actions, revision } = JSON.parse(row.status);
-  return Response.json({ enable, states, actions, revision });
+  // 実機の getProcessManagement レスポンスでは各 action に type: "PRIMARY" が付く。
+  // 入力側では送らないため、レスポンス時に補完する。
+  const actionsWithType = Array.isArray(actions)
+    ? actions.map((a) => ({ ...a, type: a.type ?? "PRIMARY" }))
+    : actions;
+  return Response.json({ enable, states, actions: actionsWithType, revision });
 };

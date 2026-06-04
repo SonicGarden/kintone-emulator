@@ -1,18 +1,19 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("app-form-test-session");
 });
 
-describe("アプリのフォームフィールドAPI", () => {
+describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
   let appId: number;
 
   beforeEach(async () => {
     await initializeSession(BASE_URL);
-    appId = await createApp(BASE_URL, { name: "テストアプリ" });
+    appId = (await createApp(BASE_URL, { name: "テストアプリ" })).appId;
   });
 
   afterEach(async () => {
@@ -48,6 +49,13 @@ describe("アプリのフォームフィールドAPI", () => {
       code: "test",
       label: "Test",
       noLabel: false,
+      required: false,
+      minLength: "",
+      maxLength: "",
+      expression: "",
+      hideExpression: false,
+      unique: false,
+      defaultValue: "",
     });
     await client.app.deleteFormFields({
       app: appId,

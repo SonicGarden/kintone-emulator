@@ -1,10 +1,15 @@
+import { computeCalcFields } from "../calc/compute";
+import { validateFieldsForInsert } from "../calc/field-validation";
 import { insertApp } from "../db/apps";
 import { dbSession } from "../db/client";
 import { findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
+import { errorFieldNotFound, errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
+import { validateLookupMappings } from "./lookup-validation";
+import { applyInitialStatus, type StatusConfig } from "./process-status";
 import type { HandlerArgs } from "./types";
-import { applyDefaults } from "./validate";
+import { applyDefaults, detectLocale, normalizeDropDown } from "./validate";
 
 // 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
 // setup/app.json で properties が指定されていても、ユーザーが同じ type を明示していなければ自動補完する。
@@ -37,30 +42,50 @@ const toPositiveInt = (value: unknown): number | undefined => {
 
 export const post = async ({ request, params }: HandlerArgs) => {
   try {
+    const locale = detectLocale(request.headers.get("accept-language"));
     const body = await request.json();
     const db = dbSession(params.session);
 
+    const properties = body.properties
+      ? withDefaultSystemFields(body.properties as FieldProperties)
+      : undefined;
+
+    if (properties) {
+      const lookupIssue = validateLookupMappings([], properties);
+      if (lookupIssue) return errorFieldNotFound(lookupIssue.missingField, locale);
+      const issue = validateFieldsForInsert([], properties);
+      if (issue) {
+        if (issue.kind === "format_enum") return errorInvalidCalcFormat(issue.key, locale);
+        return errorInvalidFormula(issue.fieldLabel, issue.detailMessage, locale);
+      }
+    }
+
     const inserted = db.transaction(() => {
-      const app = insertApp(
-        db,
-        body.name,
-        body.layout ? JSON.stringify(body.layout) : '[]',
-        body.status ? JSON.stringify(body.status) : undefined,
-        toPositiveInt(body.id)
-      );
+      const app = insertApp(db, {
+        name: body.name,
+        layout: body.layout ? JSON.stringify(body.layout) : '[]',
+        status: body.status ? JSON.stringify(body.status) : undefined,
+        id: toPositiveInt(body.id),
+        spaceId: toPositiveInt(body.spaceId),
+        threadId: toPositiveInt(body.threadId),
+      });
       if (!app) throw new Error('Failed to create app.');
 
-      if (body.properties) {
-        insertFields(db, app.id, withDefaultSystemFields(body.properties as FieldProperties));
+      if (properties) {
+        insertFields(db, app.id, properties);
       }
 
       const recordIds: string[] = [];
       if (Array.isArray(body.records)) {
         const fieldRows = findFields(db, app.id);
+        const statusConfig = body.status as StatusConfig | undefined;
         for (const record of body.records) {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
-          const withDefaults = applyDefaults(fieldRows, recordBody);
+          const withStatus = applyInitialStatus(statusConfig ?? null, recordBody);
+          const withDefaults = normalizeDropDown(fieldRows, applyDefaults(fieldRows, withStatus));
+          const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+          computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
           if (!insertedRecord) throw new Error('Failed to create record.');
           recordIds.push(insertedRecord.id.toString());

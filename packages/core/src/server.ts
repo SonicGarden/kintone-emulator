@@ -11,11 +11,16 @@ import * as initialize from "./handlers/initialize";
 import * as layout from "./handlers/layout";
 import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
+import * as recordStatus from "./handlers/record-status";
 import * as records from "./handlers/records";
 import * as setupApp from "./handlers/setup-app";
 import * as setupAuth from "./handlers/setup-auth";
+import * as setupFailure from "./handlers/setup-failure";
+import * as setupFailureRateLimit from "./handlers/setup-failure-rate-limit";
+import * as setupSpace from "./handlers/setup-space";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
+import { withFailureInjection } from "./handlers/with-failure-injection";
 
 type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
 
@@ -26,7 +31,12 @@ type RouteEntry = {
   PUT?: RouteHandler;
   DELETE?: RouteHandler;
   requiresAuth?: boolean;
+  guestSpaceIdGroup?: number;
 };
+
+// k/v1 配下のパスは optional に /guest/{N} を許容する。group 1: session, group 2: guestSpaceId
+const K = (suffix: string) =>
+  new RegExp(`^\\/(?:([^/]+)\\/)?k(?:\\/guest\\/(\\d+))?\\/v1\\/${suffix}$`);
 
 const routes: RouteEntry[] = [
   {
@@ -38,14 +48,16 @@ const routes: RouteEntry[] = [
     POST: finalize.post,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\.json$/,
+    pattern: K("record\\.json"),
+    guestSpaceIdGroup: 2,
     GET: record.get,
     POST: record.post,
     PUT: record.put,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/records\.json$/,
+    pattern: K("records\\.json"),
+    guestSpaceIdGroup: 2,
     GET: records.get,
     POST: records.post,
     PUT: records.put,
@@ -53,38 +65,45 @@ const routes: RouteEntry[] = [
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\.json$/,
+    pattern: K("app\\.json"),
+    guestSpaceIdGroup: 2,
     GET: appRoute.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/apps\.json$/,
+    pattern: K("apps\\.json"),
+    guestSpaceIdGroup: 2,
     GET: appsRoute.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/status\.json$/,
+    pattern: K("app\\/status\\.json"),
+    guestSpaceIdGroup: 2,
     GET: status.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/fields\.json$/,
+    pattern: K("app\\/form\\/fields\\.json"),
+    guestSpaceIdGroup: 2,
     GET: fields.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/app\/form\/layout\.json$/,
+    pattern: K("app\\/form\\/layout\\.json"),
+    guestSpaceIdGroup: 2,
     GET: layout.get,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/preview\/app\/form\/fields\.json$/,
+    pattern: K("preview\\/app\\/form\\/fields\\.json"),
+    guestSpaceIdGroup: 2,
     POST: previewFields.post,
     DELETE: previewFields.del,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/file\.json$/,
+    pattern: K("file\\.json"),
+    guestSpaceIdGroup: 2,
     GET: file.get,
     POST: file.post,
     requiresAuth: true,
@@ -98,13 +117,41 @@ const routes: RouteEntry[] = [
     POST: setupAuth.post,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comment\.json$/,
+    pattern: /^\/(?:([^/]+)\/)?setup\/space\.json$/,
+    POST: setupSpace.post,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?setup\/failure\.json$/,
+    POST: setupFailure.post,
+    DELETE: setupFailure.del,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?setup\/failure\/rate-limit\.json$/,
+    POST: setupFailureRateLimit.post,
+    DELETE: setupFailureRateLimit.del,
+  },
+  {
+    pattern: K("record\\/status\\.json"),
+    guestSpaceIdGroup: 2,
+    PUT: recordStatus.put,
+    requiresAuth: true,
+  },
+  {
+    pattern: K("records\\/status\\.json"),
+    guestSpaceIdGroup: 2,
+    PUT: recordStatus.putBulk,
+    requiresAuth: true,
+  },
+  {
+    pattern: K("record\\/comment\\.json"),
+    guestSpaceIdGroup: 2,
     POST: comment.post,
     DELETE: comment.del,
     requiresAuth: true,
   },
   {
-    pattern: /^\/(?:([^/]+)\/)?k\/v1\/record\/comments\.json$/,
+    pattern: K("record\\/comments\\.json"),
+    guestSpaceIdGroup: 2,
     GET: comment.get,
     requiresAuth: true,
   },
@@ -138,7 +185,7 @@ async function sendWebResponse(
   if (webRes.body) {
     const reader = webRes.body.getReader();
     try {
-      // eslint-disable-next-line no-constant-condition
+       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -177,17 +224,20 @@ async function handler(
       const url = `http://localhost${req.url}`;
       const webReq = await toWebRequest(req, url);
 
-      if (route.requiresAuth) {
-        const authResult = authenticate(webReq, session);
-        if (authResult) {
-          await sendWebResponse(authResult, res);
-          return;
+      // 実機 kintone の LB レベルのエラー (503/429 等) は auth より手前で発生するため、
+      // failure injection を auth より先に評価する。
+      const authedHandler: RouteHandler = (args) => {
+        if (route.requiresAuth) {
+          const authResult = authenticate(args.request, session);
+          if (authResult) return authResult;
         }
-      }
-
-      const webRes = await routeHandler({
+        return routeHandler(args);
+      };
+      const wrapped = route.requiresAuth ? withFailureInjection(authedHandler) : authedHandler;
+      const guestSpaceId = route.guestSpaceIdGroup != null ? match[route.guestSpaceIdGroup] : undefined;
+      const webRes = await wrapped({
         request: webReq,
-        params: { session },
+        params: { session, guestSpaceId },
       });
       await sendWebResponse(webRes, res);
     } catch (e) {

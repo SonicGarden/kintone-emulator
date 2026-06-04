@@ -1,8 +1,9 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 const TEST_FILE_PATH = fileURLToPath(new URL("./test.txt", import.meta.url));
 
@@ -11,7 +12,7 @@ beforeAll(() => {
   BASE_URL = createBaseUrl("file-test-session");
 });
 
-describe("アプリのフォームフィールドAPI", () => {
+describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });

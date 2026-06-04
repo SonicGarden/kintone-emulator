@@ -2,13 +2,9 @@ import crypto from "node:crypto";
 import { dbSession } from "../db/client";
 import { isAuthEnabled, verifyUser } from "../db/users";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 const generateId = () => crypto.randomBytes(15).toString("base64url");
-
-const isJapanese = (request: Request) => {
-  const lang = request.headers.get("Accept-Language") ?? "";
-  return lang.startsWith("ja");
-};
 
 const messages = {
   loginRequired: {
@@ -21,18 +17,19 @@ const messages = {
   },
 } as const;
 
+const requestLocale = (request: Request) =>
+  detectLocale(request.headers.get("Accept-Language"));
+
 const loginRequiredResponse = (request: Request) => {
-  const lang = isJapanese(request) ? "ja" : "en";
   return Response.json(
-    { message: messages.loginRequired[lang], id: generateId(), code: "CB_AU01" },
+    { message: messages.loginRequired[requestLocale(request)], id: generateId(), code: "CB_AU01" },
     { status: 401 }
   );
 };
 
 const authFailedResponse = (request: Request) => {
-  const lang = isJapanese(request) ? "ja" : "en";
   return Response.json(
-    { message: messages.authFailed[lang], id: generateId(), code: "CB_WA01" },
+    { message: messages.authFailed[requestLocale(request)], id: generateId(), code: "CB_WA01" },
     { status: 401 }
   );
 };

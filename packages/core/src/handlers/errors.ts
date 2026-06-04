@@ -77,6 +77,62 @@ export const errorNotFoundComment = (locale: Locale = "ja") =>
     { status: 400 }
   );
 
+// 計算式バリデーションエラー（deploy 時相当）。実機は:
+//   [400] [GAIA_IL01]
+//   message: "フィールド「<label>」の計算式が正しくありません。(エラーの内容：<detail>)"
+// errors オブジェクトは付かない。
+export const errorInvalidFormula = (
+  fieldLabel: string,
+  detailMessage: string,
+  locale: Locale = "ja",
+) => {
+  const message = locale === "ja"
+    ? `フィールド「${fieldLabel}」の計算式が正しくありません。(エラーの内容：${detailMessage})`
+    : `The formula in the field '${fieldLabel}' is invalid. (Reason: ${detailMessage})`;
+  return Response.json(
+    { code: "GAIA_IL01", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
+// CALC の format が enum にない場合のエラー（addFormFields 相当）。
+export const errorInvalidCalcFormat = (key: string, locale: Locale = "ja") =>
+  errorInvalidInput({ [key]: { messages: [MESSAGES[locale].enumValue] } }, locale);
+
+// addFormFields 時に LOOKUP の fieldMappings.field が同一リクエスト内 +
+// 既存フィールドのいずれにも存在しない場合に返るエラー。
+export const errorFieldNotFound = (fieldCode: string, locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? `指定されたフィールド（code: ${fieldCode}）が見つかりません。`
+    : `The specified field (code: ${fieldCode}) is not found.`;
+  return Response.json(
+    { code: "GAIA_FC01", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
+// 権限なしエラー（HTTP 403, CB_NO02）。
+// 実 kintone では「ゲストパス × そのゲストスペースに属さないアプリ」など、
+// アクセス自体は可能だが対象リソースの閲覧権限がないケースで返る。
+export const errorNoPermission = (locale: Locale = "ja") => {
+  const message = locale === "ja" ? "権限がありません。" : "No privilege to proceed.";
+  return Response.json(
+    { code: "CB_NO02", id: generateErrorId(), message },
+    { status: 403 }
+  );
+};
+
+// ゲストスペース内のアプリへ非ゲストパスでアクセスしたときのエラー（HTTP 400, GAIA_IL23）
+export const errorGuestSpacePathRequired = (locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? "ゲストスペース内のアプリを操作する場合は、リクエストの送信先を「/k/guest/（ゲストスペースのID）/v1/...」にします。"
+    : "When you operate an app in a guest space, please send the request to '/k/guest/(guest space ID)/v1/...'.";
+  return Response.json(
+    { code: "GAIA_IL23", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
 // ルックアップのキー不一致（HTTP 400、errors オブジェクトは付かない）
 export const errorLookupNotFound = (fieldCode: string, value: string, locale: Locale = "ja") => {
   const message = locale === "ja"

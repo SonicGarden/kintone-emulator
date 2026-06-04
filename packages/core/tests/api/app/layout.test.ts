@@ -1,13 +1,14 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("layout-test-session");
 });
 
-describe("フォームレイアウト取得API", () => {
+describeEmulatorOnly("フォームレイアウト取得API", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });
@@ -22,7 +23,7 @@ describe("フォームレイアウト取得API", () => {
       auth: { apiToken: "test" },
     });
 
-    const appId = await createApp(BASE_URL, { name: "レイアウトなしアプリ" });
+    const appId = (await createApp(BASE_URL, { name: "レイアウトなしアプリ" })).appId;
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual([]);
@@ -48,7 +49,7 @@ describe("フォームレイアウト取得API", () => {
       },
     ];
 
-    const appId = await createApp(BASE_URL, { name: "レイアウトありアプリ", layout });
+    const appId = (await createApp(BASE_URL, { name: "レイアウトありアプリ", layout })).appId;
 
     const layoutResult = await client.app.getFormLayout({ app: appId });
     expect(layoutResult.layout).toEqual(layout);
