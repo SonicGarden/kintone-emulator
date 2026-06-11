@@ -7,9 +7,11 @@ import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors"
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow } from "./process-status";
+import { buildFormattedRecord } from "./record-format";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
+import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 type Record = {
   [fieldCode: string]: KintoneRecordField.OneOf;
@@ -74,6 +76,16 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
   }
+
+  const webhookRecord = buildFormattedRecord(db, body.app, inserted.id);
+  if (webhookRecord) {
+    await dispatchWebhookEvent(
+      db,
+      { event: "ADD_RECORD", appId: body.app, recordId: inserted.id, record: webhookRecord },
+      webhookUrlOptions(request, params.session),
+    );
+  }
+
   return Response.json({
     id: inserted.id.toString(),
     revision: inserted.revision.toString(),
@@ -130,6 +142,16 @@ export const put = async ({ request, params }: HandlerArgs) => {
   if (!updated) {
     return errorNotFoundRecord(target.id, locale);
   }
+
+  const webhookRecord = buildFormattedRecord(db, body.app, updated.id);
+  if (webhookRecord) {
+    await dispatchWebhookEvent(
+      db,
+      { event: "UPDATE_RECORD", appId: body.app, recordId: updated.id, record: webhookRecord },
+      webhookUrlOptions(request, params.session),
+    );
+  }
+
   return Response.json({
     id: updated.id.toString(),
     revision: updated.revision.toString(),

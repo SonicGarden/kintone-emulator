@@ -10,6 +10,7 @@ import { validateLookupMappings } from "./lookup-validation";
 import { applyInitialStatus, type StatusConfig } from "./process-status";
 import type { HandlerArgs } from "./types";
 import { applyDefaults, detectLocale, normalizeDropDown } from "./validate";
+import { parseWebhookEntries, replaceWebhooks } from "./webhook";
 
 // 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
 // setup/app.json で properties が指定されていても、ユーザーが同じ type を明示していなければ自動補完する。
@@ -60,6 +61,16 @@ export const post = async ({ request, params }: HandlerArgs) => {
       }
     }
 
+    // webhooks はアプリ作成と同時に登録できる（setup/webhook.json と同形式）
+    let webhookEntries: ReturnType<typeof parseWebhookEntries> | null = null;
+    if (body.webhooks !== undefined) {
+      const parsed = parseWebhookEntries(body.webhooks);
+      if ("error" in parsed) {
+        return Response.json({ message: parsed.error }, { status: 400 });
+      }
+      webhookEntries = parsed;
+    }
+
     const inserted = db.transaction(() => {
       const app = insertApp(db, {
         name: body.name,
@@ -73,6 +84,10 @@ export const post = async ({ request, params }: HandlerArgs) => {
 
       if (properties) {
         insertFields(db, app.id, properties);
+      }
+
+      if (webhookEntries && "entries" in webhookEntries) {
+        replaceWebhooks(db, app.id, webhookEntries.entries);
       }
 
       const recordIds: string[] = [];

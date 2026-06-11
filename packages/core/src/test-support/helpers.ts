@@ -65,6 +65,7 @@ export const createApp = async (
     records?: unknown[];
     spaceId?: number;
     threadId?: number;
+    webhooks?: { url: string; events: string[] }[];
   },
 ): Promise<CreateAppResult> => {
   const response = await fetch(`${baseUrl}/setup/app.json`, {

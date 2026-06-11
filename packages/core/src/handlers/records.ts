@@ -11,9 +11,11 @@ import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors"
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow, type StatusConfig } from "./process-status";
+import { buildFormattedRecord } from "./record-format";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
 import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord } from "./validate";
+import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 // ============================================================
 // フィールドコード
@@ -264,11 +266,11 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if ("lookupError" in prep) return prep.lookupError;
   if (Object.keys(prep.errors).length > 0) return errorInvalidInput(prep.errors, locale);
 
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   try {
     const result = db.transaction(() => {
       const ids: string[] = [];
       const revisions: string[] = [];
-      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       for (const rec of prep.prepared) {
         computeCalcFields(fieldRows, rec, { createdAt: now, updatedAt: now });
         const inserted = insertRecord(db, body.app, rec);
@@ -278,6 +280,18 @@ export const post = async ({ request, params }: HandlerArgs) => {
       }
       return { ids, revisions };
     })();
+
+    // 配信はトランザクションの外（コミット後）。一括追加はレコード毎に1通。
+    const urlOpts = webhookUrlOptions(request, params.session);
+    for (const recordId of result.ids) {
+      const webhookRecord = buildFormattedRecord(db, body.app, recordId);
+      if (!webhookRecord) continue;
+      await dispatchWebhookEvent(
+        db,
+        { event: "ADD_RECORD", appId: body.app, recordId, record: webhookRecord },
+        urlOpts,
+      );
+    }
     return Response.json(result);
   } catch {
     return Response.json({ message: "Failed to create records." }, { status: 500 });
@@ -366,10 +380,10 @@ export const put = async ({ request, params }: HandlerArgs) => {
   if ("error" in prep) return prep.error;
   if (Object.keys(prep.errors).length > 0) return errorInvalidInput(prep.errors, locale);
 
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   try {
     const result = db.transaction(() => {
       const updated: Array<{ id: string; revision: string }> = [];
-      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
       for (const { targetId, createdAt, merged } of prep.prepared) {
         computeCalcFields(fieldRows, merged, {
           createdAt: formatKintoneDateTime(createdAt),
@@ -381,6 +395,18 @@ export const put = async ({ request, params }: HandlerArgs) => {
       }
       return { records: updated };
     })();
+
+    // 配信はトランザクションの外（コミット後）。一括更新はレコード毎に1通。
+    const urlOpts = webhookUrlOptions(request, params.session);
+    for (const { id: recordId } of result.records) {
+      const webhookRecord = buildFormattedRecord(db, body.app, recordId);
+      if (!webhookRecord) continue;
+      await dispatchWebhookEvent(
+        db,
+        { event: "UPDATE_RECORD", appId: body.app, recordId, record: webhookRecord },
+        urlOpts,
+      );
+    }
     return Response.json(result);
   } catch {
     return Response.json({ message: "Failed to update records." }, { status: 500 });
@@ -393,7 +419,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
 // NOTE: kintone APIは `revisions` パラメーターで楽観的ロックをサポートするが、
 // このエミュレーターでは無視する。
-export const del = ({ request, params }: HandlerArgs) => {
+export const del = async ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
   const url = new URL(request.url);
 
@@ -420,5 +446,12 @@ export const del = ({ request, params }: HandlerArgs) => {
     if (!findRecord(db, app, id)) return errorNotFoundRecord(id, locale);
   }
   deleteRecords(db, app, ids);
+
+  // 配信は削除後。DELETE_RECORD はレコード本体不要（recordId のみ）。一括削除はレコード毎に1通。
+  const urlOpts = webhookUrlOptions(request, params.session);
+  for (const recordId of ids) {
+    await dispatchWebhookEvent(db, { event: "DELETE_RECORD", appId: app, recordId }, urlOpts);
+  }
+
   return Response.json({});
 };
