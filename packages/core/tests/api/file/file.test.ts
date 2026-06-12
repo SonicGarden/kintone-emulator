@@ -64,17 +64,23 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
     });
 
     const { record } = await client.record.getRecord({ app: appId, id });
-    const value = (record.添付ファイル as { value: unknown[] }).value;
+    const value = (record.添付ファイル as { value: { fileKey: string }[] }).value;
     const targetFile = readFileSync(TEST_FILE_PATH);
 
+    // fileKey はアップロード時のキーから振り替えられる（実 kintone 仕様）
+    expect(value[0]!.fileKey).not.toBe(uploadResult.fileKey);
     expect(value).toEqual([
       {
         contentType: "text/plain",
-        fileKey: uploadResult.fileKey,
+        fileKey: value[0]!.fileKey,
         name: "test.txt",
         size: String(targetFile.byteLength),
       },
     ]);
+
+    // 振り替え後のダウンロードキーでファイルを取得できる
+    const downloaded = await client.file.downloadFile({ fileKey: value[0]!.fileKey });
+    expect(new Uint8Array(downloaded)).toStrictEqual(new Uint8Array(targetFile));
   });
 
   test("存在しないファイルをGETすると GAIA_BL01 が返る", async () => {

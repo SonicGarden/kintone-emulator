@@ -4,7 +4,7 @@ import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
-import { enrichFileFields } from "./file-enrich";
+import { enrichFileFields, resolveUploadKeys } from "./file-enrich";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow } from "./process-status";
@@ -72,6 +72,9 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
   if (errors) return validationErrorResponse(errors, locale);
 
+  // FILE: アップロードキー → ダウンロードキー へ振り替えてから保存
+  resolveUploadKeys(db, record, fieldRows);
+
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   computeCalcFields(fieldRows, record, { createdAt: now, updatedAt: now });
   const inserted = insertRecord(db, body.app, record);
@@ -134,6 +137,9 @@ export const put = async ({ request, params }: HandlerArgs) => {
     locale,
   });
   if (errors) return validationErrorResponse(errors, locale);
+
+  // FILE: 新規添付のアップロードキーを振り替え（既存の download_key はそのまま保持）
+  resolveUploadKeys(db, mergedRecord, fieldRows);
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   computeCalcFields(fieldRows, mergedRecord, {
