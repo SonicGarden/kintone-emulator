@@ -8,6 +8,7 @@ import { ParseError, TokenizeError, compile, parseQuery } from "../query";
 import type { CompileContext, FieldOptionsMap, FieldTypeMap, Query, SubtableFieldMap } from "../query";
 import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { enrichFileFields } from "./file-enrich";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow, type StatusConfig } from "./process-status";
@@ -149,7 +150,7 @@ const runListQuery = (
 };
 
 /** DB レコード行を API レスポンス形式のフィールド付きオブジェクトに変換 */
-const toResponseRecords = (rows: RecordRow[], fieldRows: FieldRow[], fields: string[]) =>
+const toResponseRecords = (db: ReturnType<typeof dbSession>, rows: RecordRow[], fieldRows: FieldRow[], fields: string[]) =>
   rows.map((record) => {
     const body = JSON.parse(record.body);
     attachFieldTypes(body, fieldRows, {
@@ -157,6 +158,7 @@ const toResponseRecords = (rows: RecordRow[], fieldRows: FieldRow[], fields: str
       createdAt: record.created_at,
       updatedAt: record.updated_at,
     });
+    enrichFileFields(db, body, fieldRows);
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) delete body[key];
@@ -209,7 +211,7 @@ export const get = ({ request, params }: HandlerArgs) => {
     const rows = runListQuery(db, app, compiled);
     return Response.json({
       totalCount: rows.length.toString(),
-      records: toResponseRecords(rows, fieldRows, fields),
+      records: toResponseRecords(db, rows, fieldRows, fields),
     });
   } catch (e) {
     return queryErrorResponse(e, locale);

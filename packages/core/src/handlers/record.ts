@@ -4,6 +4,7 @@ import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { enrichFileFields } from "./file-enrich";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow } from "./process-status";
@@ -48,6 +49,7 @@ export const get = ({ request, params }: HandlerArgs) => {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
+  enrichFileFields(db, body, fieldRows);
   body['$id'] = { value: row.id.toString(), type: '__ID__' };
   body['$revision'] = { value: row.revision.toString(), type: '__REVISION__' };
   return Response.json({ record: body });
