@@ -3,25 +3,23 @@ import { all } from "./client";
 
 export type FileRow = { data: Buffer; content_type: string; filename: string };
 
-// ダウンロード用。実 kintone 同様にダウンロードキーを受け付けるが、
-// アップロード直後（レコード未添付）の一時キーでの取得も許可する。
+// ダウンロード用。実 kintone 同様、ダウンロードキー（レコード取得APIで得たキー）のみ受け付ける。
+// アップロード時の一時キー（upload_key）ではダウンロードできない。
 export const findFile = (db: Database.Database, fileKey: string | null) =>
   all<FileRow>(
     db,
-    `SELECT data, content_type, filename FROM files WHERE download_key = ? OR upload_key = ?`,
-    fileKey,
+    `SELECT data, content_type, filename FROM files WHERE download_key = ?`,
     fileKey
   )[0];
 
 export type FileMeta = { content_type: string; filename: string; size: number };
 
 // レコード取得時の FILE フィールド enrich 用。BLOB のバイト長を size として返す。
-// レコード body にはダウンロードキーが保存されるが、念のため両キーで引く。
+// レコード body にはダウンロードキーが保存されるため download_key で引く。
 export const findFileMeta = (db: Database.Database, fileKey: string | null) =>
   all<FileMeta>(
     db,
-    `SELECT content_type, filename, LENGTH(data) AS size FROM files WHERE download_key = ? OR upload_key = ?`,
-    fileKey,
+    `SELECT content_type, filename, LENGTH(data) AS size FROM files WHERE download_key = ?`,
     fileKey
   )[0];
 

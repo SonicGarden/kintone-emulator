@@ -21,7 +21,7 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
     await finalizeSession(BASE_URL);
   });
 
-  test("アプリにフィールドを追加し、確認し、削除できる", async () => {
+  test("アップロード用 fileKey ではダウンロードできない（実 kintone 仕様）", async () => {
     const client = new KintoneRestAPIClient({
       baseUrl: BASE_URL,
       auth: {
@@ -34,11 +34,14 @@ describeEmulatorOnly("アプリのフォームフィールドAPI", () => {
       },
     });
 
-    const result = await client.file.downloadFile({
-      fileKey: uploadResult.fileKey,
-    });
-    const targetFile = readFileSync(TEST_FILE_PATH);
-    expect(new Uint8Array(result)).toStrictEqual(new Uint8Array(targetFile));
+    // アップロードAPIが返すのは一時保管領域のキー。ダウンロードAPIでは使えず、
+    // レコードに添付して取得したダウンロードキーが必要。
+    const response = await fetch(
+      `${BASE_URL}/k/v1/file.json?fileKey=${encodeURIComponent(uploadResult.fileKey)}`,
+    );
+    expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_BL01");
   });
 
   test("FILE フィールドはレコード取得時に contentType / name / size が補完される", async () => {
