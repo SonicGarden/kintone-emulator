@@ -22,10 +22,10 @@ import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 // ============================================================
 
 // フィールドコードとして許容する非 ASCII 文字の Unicode 範囲:
-//   々-〆 : 繰り返し記号「々」「〆」
-//   ぀-ヿ : ひらがな + カタカナ のブロック
-//   一-鿿 : 基本 CJK 漢字ブロック
-//   ＀-￯ : 全角英数字・記号・半角カナ等
+//   \u3005-\u3006 : 繰り返し記号「々」「〆」
+//   \u3040-\u30ff : ひらがな + カタカナ のブロック
+//   \u4e00-\u9fff : 基本 CJK 漢字ブロック
+//   \uff00-\uffef : 全角英数字・記号・半角カナ等
 export const NON_ASCII_FIELD_CODE_CHARS = "\\u3005-\\u3006\\u3040-\\u30ff\\u4e00-\\u9fff\\uff00-\\uffef";
 
 // フィールドコード全体の許容文字集合（updateKey.field の SQL injection ガード用）
