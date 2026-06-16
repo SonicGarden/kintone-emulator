@@ -194,6 +194,29 @@ describe("アプリのレコード一覧のAPI", () => {
       });
       expect(records.totalCount).toEqual("2");
     });
+    test("予約語で始まるフィールド名で検索できる", async () => {
+      await client!.app.addFormFields({
+        app: 1,
+        properties: {
+          orderNumber: {
+            type: "SINGLE_LINE_TEXT",
+            code: "orderNumber",
+            label: "Order Number",
+          },
+        },
+      });
+      await client!.record.addRecord({
+        app: 1,
+        record: {
+          orderNumber: { value: "A001" },
+        },
+      });
+      const records = await client!.record.getRecords({
+        app: 1,
+        query: "orderNumber = \"A001\"",
+      });
+      expect(records.totalCount).toEqual("1");
+    });
     test('"で囲った値で検索する', async () => {
       const records = await client!.record.getRecords({
         app: 1,

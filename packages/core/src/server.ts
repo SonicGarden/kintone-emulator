@@ -16,6 +16,7 @@ import * as setupApp from "./handlers/setup-app";
 import * as setupAuth from "./handlers/setup-auth";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
+import { withLogging } from "./handlers/logging";
 
 type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
 
@@ -183,7 +184,7 @@ async function handler(
         }
       }
 
-      const webRes = await routeHandler({
+      const webRes = await withLogging(routeHandler)({
         request: webReq,
         params: { session },
       });

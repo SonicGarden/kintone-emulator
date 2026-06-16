@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { dbSession } from "../db/client";
 import { isAuthEnabled, verifyUser } from "../db/users";
+import { withLogging } from "./logging";
 import type { HandlerArgs } from "./types";
 
 const generateId = () => crypto.randomBytes(15).toString("base64url");
@@ -65,10 +66,11 @@ export const authenticate = (
   return null;
 };
 
-export const withAuth =
-  (handler: (args: HandlerArgs) => Response | Promise<Response>) =>
-  (args: HandlerArgs): Response | Promise<Response> => {
+export const withAuth = (
+  handler: (args: HandlerArgs) => Response | Promise<Response>,
+) =>
+  withLogging((args: HandlerArgs): Response | Promise<Response> => {
     const authResult = authenticate(args.request, args.params.session);
     if (authResult) return authResult;
     return handler(args);
-  };
+  });

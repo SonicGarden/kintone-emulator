@@ -73,10 +73,12 @@ const generateRecords = ({ recordResult, fieldTypes, fields }: {
   });
 };
 
-const hasWhereClause = (query: string) =>
-  !query.trim().toLowerCase().startsWith('order')
-  && !query.trim().toLowerCase().startsWith('limit')
-  && !query.trim().toLowerCase().startsWith('offset');
+const hasWhereClause = (query: string) => {
+  const q = query.trim();
+  return !/^order\s+by\b/i.test(q)
+    && !/^limit\b/i.test(q)
+    && !/^offset\b/i.test(q);
+};
 
 const replaceUniCodeField = (query: string) => {
   const includedJp = /(?<!['"\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf])\w*[\u30a0-\u30ff\u3040-\u309f\u3005-\u3006\u30e0-\u9fcf]+\w*(?!['"])/g;
