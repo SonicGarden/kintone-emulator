@@ -6,6 +6,7 @@ import {
   createApp,
   setupAuth,
 } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 const SESSION = "auth-test";
 let BASE_URL: string;
@@ -14,7 +15,7 @@ beforeAll(() => {
   BASE_URL = createBaseUrl(SESSION);
 });
 
-describe("パスワード認証", () => {
+describeEmulatorOnly("パスワード認証", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });
@@ -93,6 +94,25 @@ describe("パスワード認証", () => {
       expect(body.message).toBe(authFailMessage);
       expect(body.id).toMatch(/^[A-Za-z0-9_-]+$/);
     });
+  });
+
+  test("Accept-Language ヘッダーなしは日本語メッセージ（実機準拠）", async () => {
+    await setupAuth(BASE_URL, "admin", "password");
+    const noHeader = await fetch(`${BASE_URL}/k/v1/app.json?id=1`);
+    expect(noHeader.status).toBe(401);
+    const noHeaderBody = await noHeader.json();
+    expect(noHeaderBody.code).toBe("CB_AU01");
+    expect(noHeaderBody.message).toBe("ログインしてください。");
+
+    const wrongPass = await fetch(`${BASE_URL}/k/v1/app.json?id=1`, {
+      headers: { "X-Cybozu-Authorization": btoa("admin:wrong") },
+    });
+    expect(wrongPass.status).toBe(401);
+    const wrongPassBody = await wrongPass.json();
+    expect(wrongPassBody.code).toBe("CB_WA01");
+    expect(wrongPassBody.message).toBe(
+      "ユーザーのパスワード認証に失敗しました。「X-Cybozu-Authorization」ヘッダーの値が正しくありません。"
+    );
   });
 
   test("レスポンスのidは毎回異なる", async () => {

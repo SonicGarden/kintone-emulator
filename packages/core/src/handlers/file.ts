@@ -1,15 +1,23 @@
 import { dbSession } from "../db/client";
 import { findFile, insertFile } from "../db/files";
+import { errorInvalidInput, errorMessages, errorNotFoundFile } from "./errors";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 export const get = ({ request, params }: HandlerArgs) => {
+  const locale = detectLocale(request.headers.get("accept-language"));
   const fileKey = new URL(request.url).searchParams.get('fileKey');
+  if (!fileKey) {
+    return errorInvalidInput({ fileKey: { messages: [errorMessages(locale).requiredField] } }, locale);
+  }
   const file = findFile(dbSession(params.session), fileKey);
   if (!file) {
-    return Response.json({ message: 'File not found.' }, { status: 404 });
+    return errorNotFoundFile(fileKey, locale);
   }
 
-  return new Response(file.data, {
+  const body = new Uint8Array(file.data.byteLength);
+  body.set(file.data);
+  return new Response(body, {
     headers: {
       'Content-Type': file.content_type,
       'Content-Disposition': `attachment; filename="${file.filename}"`,

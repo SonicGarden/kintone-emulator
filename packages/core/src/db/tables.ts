@@ -57,8 +57,19 @@ const CREATE_TABLE_APPS = dedent`
     record_id_seq INTEGER DEFAULT 0,
     layout JSON DEFAULT '[]',
     status JSON DEFAULT '{"enable":false,"states":null,"actions":null,"revision":"3"}',
+    space_id INTEGER,
+    thread_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
+const CREATE_TABLE_SPACES = dedent`
+  CREATE TABLE IF NOT EXISTS spaces (
+    id INTEGER PRIMARY KEY,
+    is_guest INTEGER NOT NULL DEFAULT 0,
+    name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `;
 
@@ -71,6 +82,17 @@ const CREATE_TABLE_USERS = dedent`
   )
 `;
 
+// Webhook 登録（テスト用設定）。events は ["ADD_RECORD", ...] の JSON 配列。
+const CREATE_TABLE_WEBHOOKS = dedent`
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id INTEGER PRIMARY KEY,
+    app_id INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    events JSON NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`;
+
 export const createTables = (db: Database.Database) => {
   db.exec(CREATE_TABLE_FIELDS);
   db.exec(CREATE_TABLE_RECORDS);
@@ -78,6 +100,8 @@ export const createTables = (db: Database.Database) => {
   db.exec(CREATE_TABLE_APPS);
   db.exec(CREATE_TABLE_COMMENTS);
   db.exec(CREATE_TABLE_USERS);
+  db.exec(CREATE_TABLE_SPACES);
+  db.exec(CREATE_TABLE_WEBHOOKS);
 };
 
 export const dropTables = (db: Database.Database) => {
@@ -87,4 +111,6 @@ export const dropTables = (db: Database.Database) => {
   db.exec("DROP TABLE IF EXISTS apps");
   db.exec("DROP TABLE IF EXISTS comments");
   db.exec("DROP TABLE IF EXISTS users");
+  db.exec("DROP TABLE IF EXISTS spaces");
+  db.exec("DROP TABLE IF EXISTS webhooks");
 };

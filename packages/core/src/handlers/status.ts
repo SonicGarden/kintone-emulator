@@ -3,25 +3,38 @@
 
 import { findApp } from "../db/apps";
 import { dbSession } from "../db/client";
+import { errorInvalidInput, errorMessages, errorNotFoundApp } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
 
 export const get = ({ request, params }: HandlerArgs) => {
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const m = errorMessages(locale);
   const url = new URL(request.url);
   const appParam = url.searchParams.get('app');
   if (!appParam) {
-    return Response.json({ message: 'app is required.' }, { status: 400 });
+    return errorInvalidInput({ app: { messages: [m.requiredField] } }, locale);
   }
 
   const appId = Number(appParam);
   if (!Number.isInteger(appId) || appId <= 0) {
-    return Response.json({ message: 'app must be a positive integer.' }, { status: 400 });
+    return errorInvalidInput({ app: { messages: [m.mustBeAtLeastOne] } }, locale);
   }
 
-  const row = findApp(dbSession(params.session), appId);
+  const db = dbSession(params.session);
+  const row = findApp(db, appId);
   if (!row) {
-    return Response.json({ message: 'App not found.' }, { status: 404 });
+    return errorNotFoundApp(appId, locale);
   }
+  const guestErr = enforceGuestSpace(db, appId, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const { enable, states, actions, revision } = JSON.parse(row.status);
-  return Response.json({ enable, states, actions, revision });
+  // 実機の getProcessManagement レスポンスでは各 action に type: "PRIMARY" が付く。
+  // 入力側では送らないため、レスポンス時に補完する。
+  const actionsWithType = Array.isArray(actions)
+    ? actions.map((a) => ({ ...a, type: a.type ?? "PRIMARY" }))
+    : actions;
+  return Response.json({ enable, states, actions: actionsWithType, revision });
 };

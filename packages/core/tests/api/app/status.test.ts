@@ -1,12 +1,13 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
+import { describeEmulatorOnly } from "../../real-kintone";
 
 let BASE_URL: string;
 beforeAll(() => {
   BASE_URL = createBaseUrl("status-test-session");
 });
 
-describe("プロセス管理の設定取得API", () => {
+describeEmulatorOnly("プロセス管理の設定取得API", () => {
   beforeEach(async () => {
     await initializeSession(BASE_URL);
   });
@@ -16,7 +17,7 @@ describe("プロセス管理の設定取得API", () => {
   });
 
   test("プロセス管理未設定のアプリではデフォルト値が返る", async () => {
-    const appId = await createApp(BASE_URL, { name: "テストアプリ" });
+    const appId = (await createApp(BASE_URL, { name: "テストアプリ" })).appId;
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=${appId}`);
     expect(response.ok).toBe(true);
 
@@ -66,10 +67,10 @@ describe("プロセス管理の設定取得API", () => {
       revision: "10",
     };
 
-    const appId = await createApp(BASE_URL, {
+    const appId = (await createApp(BASE_URL, {
       name: "プロセス管理アプリ",
       status: statusConfig,
-    });
+    })).appId;
 
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=${appId}`);
     expect(response.ok).toBe(true);
@@ -81,26 +82,38 @@ describe("プロセス管理の設定取得API", () => {
     expect(data.states["処理中"].assignee.entities).toHaveLength(1);
     expect(data.actions).toHaveLength(2);
     expect(data.actions[0].name).toBe("処理開始");
+    expect(data.actions[0].type).toBe("PRIMARY");
     expect(data.actions[1].name).toBe("完了にする");
+    expect(data.actions[1].type).toBe("PRIMARY");
   });
 
-  test("存在しないアプリで404が返る", async () => {
+  test("存在しないアプリで GAIA_AP01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=99999`);
     expect(response.status).toBe(404);
+    const json = await response.json();
+    expect(json.code).toBe("GAIA_AP01");
   });
 
-  test("appパラメータ未指定で400が返る", async () => {
+  test("appパラメータ未指定で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ app: { messages: ["必須です。"] } });
   });
 
-  test("appパラメータが非整数で400が返る", async () => {
+  test("appパラメータが非整数で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=abc`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.code).toBe("CB_VA01");
+    expect(json.errors).toEqual({ app: { messages: ["最小でも1以上です。"] } });
   });
 
-  test("appパラメータが0で400が返る", async () => {
+  test("appパラメータが0で CB_VA01 が返る", async () => {
     const response = await fetch(`${BASE_URL}/k/v1/app/status.json?app=0`);
     expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.errors.app.messages).toContain("最小でも1以上です。");
   });
 });

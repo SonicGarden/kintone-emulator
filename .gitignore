@@ -2,11 +2,18 @@ node_modules
 /.cache
 /tmp
 .env
+.env.*
+!.env.*.example
 
 # build output
 /packages/server/build
+/packages/server/.react-router
+/packages/server/tmp
 /packages/cli/dist/
 /packages/core/dist/
+
+# vitest reporter / coverage 出力
+/packages/*/coverage
 
 # Local agent memory
 # https://code.claude.com/docs/en/sub-agents#enable-persistent-memory
@@ -17,3 +24,12 @@ node_modules
 
 # Directory for issues to be processed by agent
 /.issues
+
+.pnpm-store
+
+.claude/settings.local.json
+.claude/.plans
+
+.devcontainer/.ssh_authorized_keys
+.devcontainer/.tmux.conf
+.claude/

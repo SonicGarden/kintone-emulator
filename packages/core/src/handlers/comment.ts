@@ -1,26 +1,38 @@
 import { dbSession } from "../db/client";
 import { countComments, deleteComment, findComments, findRecordExists, insertComment } from "../db/comments";
+import { errorInvalidInput, errorMessages, errorNotFoundComment, errorNotFoundRecord } from "./errors";
+import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
+import { detectLocale } from "./validate";
+import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const m = errorMessages(locale);
   const url = new URL(request.url);
 
   const app = url.searchParams.get("app");
   const record = url.searchParams.get("record");
 
   if (!app || !record) {
-    return Response.json({ message: "app and record are required." }, { status: 400 });
+    const missing: { [key: string]: { messages: string[] } } = {};
+    if (!app) missing.app = { messages: [m.requiredField] };
+    if (!record) missing.record = { messages: [m.requiredField] };
+    return errorInvalidInput(missing, locale);
   }
+
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {
-    return Response.json({ message: "Record not found" }, { status: 404 });
+    return errorNotFoundRecord(record, locale);
   }
 
   const orderParam = url.searchParams.get("order") ?? "desc";
   if (orderParam !== "asc" && orderParam !== "desc") {
-    return Response.json({ message: "order must be 'asc' or 'desc'." }, { status: 400 });
+    return errorInvalidInput({ order: { messages: [m.enumValue] } }, locale);
   }
   const order = orderParam;
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0") || 0);
@@ -58,14 +70,25 @@ type CommentBody = {
 export const post = async ({ request, params }: HandlerArgs) => {
   const body: CommentBody = await request.json();
   const db = dbSession(params.session);
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const m = errorMessages(locale);
+
+  const missing: { [key: string]: { messages: string[] } } = {};
+  if (body.app == null) missing.app = { messages: [m.requiredField] };
+  if (body.record == null) missing.record = { messages: [m.requiredField] };
+  if (body.comment == null) missing.comment = { messages: [m.requiredField] };
+  if (Object.keys(missing).length > 0) return errorInvalidInput(missing, locale);
+
+  const guestErr = enforceGuestSpace(db, body.app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
 
   const record = findRecordExists(db, body.app, body.record);
   if (!record) {
-    return Response.json({ message: "Record not found" }, { status: 404 });
+    return errorNotFoundRecord(body.record, locale);
   }
 
   if (typeof body.comment !== "object") {
-    return Response.json({ message: "Invalid comment" }, { status: 400 });
+    return errorInvalidInput({ comment: { messages: [m.requiredField] } }, locale);
   }
 
   const inserted = insertComment(
@@ -78,29 +101,58 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (!inserted) {
     return Response.json({ message: 'Failed to create comment.' }, { status: 500 });
   }
+
+  // comment ペイロードは comment.json GET と同形式に揃える
+  await dispatchWebhookEvent(
+    db,
+    {
+      event: "ADD_RECORD_COMMENT",
+      appId: body.app,
+      recordId: body.record,
+      commentId: inserted.id.toString(),
+      comment: {
+        id: inserted.id.toString(),
+        text: body.comment.text,
+        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        creator: { code: "", name: "" },
+        mentions: body.comment.mentions ?? [],
+      },
+    },
+    webhookUrlOptions(request, params.session),
+  );
+
   return Response.json({ id: inserted.id.toString() });
 };
 
 export const del = ({ request, params }: HandlerArgs) => {
+  const locale = detectLocale(request.headers.get("accept-language"));
+  const m = errorMessages(locale);
   const url = new URL(request.url);
   const app = url.searchParams.get("app");
   const record = url.searchParams.get("record");
   const commentId = url.searchParams.get("comment");
 
   if (!app || !record || !commentId) {
-    return Response.json({ message: "app, record, comment are required." }, { status: 400 });
+    const missing: { [key: string]: { messages: string[] } } = {};
+    if (!app) missing.app = { messages: [m.requiredField] };
+    if (!record) missing.record = { messages: [m.requiredField] };
+    if (!commentId) missing.comment = { messages: [m.requiredField] };
+    return errorInvalidInput(missing, locale);
   }
 
   const db = dbSession(params.session);
 
+  const guestErr = enforceGuestSpace(db, app, params.guestSpaceId, locale);
+  if (guestErr) return guestErr;
+
   const recordRow = findRecordExists(db, app, record);
   if (!recordRow) {
-    return Response.json({ message: "Record not found" }, { status: 404 });
+    return errorNotFoundRecord(record, locale);
   }
 
   const deleted = deleteComment(db, app, record, commentId);
   if (!deleted) {
-    return Response.json({ message: "Comment not found." }, { status: 404 });
+    return errorNotFoundComment(locale);
   }
   return Response.json({});
 };
