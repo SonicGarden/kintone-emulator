@@ -5,6 +5,7 @@
 import type Database from "better-sqlite3";
 import { findFields } from "../db/fields";
 import { findRecord } from "../db/records";
+import { enrichFileFields } from "./file-enrich";
 import { getStatusConfig, withStatusFieldRow } from "./process-status";
 import { attachFieldTypes } from "./validate";
 
@@ -27,6 +28,7 @@ export const buildFormattedRecord = (
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
+  enrichFileFields(db, body, fieldRows);
   body["$id"] = { value: row.id.toString(), type: "__ID__" };
   body["$revision"] = { value: row.revision.toString(), type: "__REVISION__" };
   return body;

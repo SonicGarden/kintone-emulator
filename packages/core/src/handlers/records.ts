@@ -8,6 +8,7 @@ import { ParseError, TokenizeError, compile, parseQuery } from "../query";
 import type { CompileContext, FieldOptionsMap, FieldTypeMap, Query, SubtableFieldMap } from "../query";
 import { CompileError } from "../query/compiler";
 import { errorInvalidInput, errorMessages, errorNotFoundRecord } from "./errors";
+import { enrichFileFields, resolveUploadKeys } from "./file-enrich";
 import { enforceGuestSpace } from "./guest-space";
 import { applyLookups } from "./lookup";
 import { applyInitialStatus, getStatusConfig, withStatusFieldRow, type StatusConfig } from "./process-status";
@@ -149,7 +150,7 @@ const runListQuery = (
 };
 
 /** DB レコード行を API レスポンス形式のフィールド付きオブジェクトに変換 */
-const toResponseRecords = (rows: RecordRow[], fieldRows: FieldRow[], fields: string[]) =>
+const toResponseRecords = (db: ReturnType<typeof dbSession>, rows: RecordRow[], fieldRows: FieldRow[], fields: string[]) =>
   rows.map((record) => {
     const body = JSON.parse(record.body);
     attachFieldTypes(body, fieldRows, {
@@ -157,6 +158,7 @@ const toResponseRecords = (rows: RecordRow[], fieldRows: FieldRow[], fields: str
       createdAt: record.created_at,
       updatedAt: record.updated_at,
     });
+    enrichFileFields(db, body, fieldRows);
     if (fields.length > 0) {
       for (const key in body) {
         if (!fields.includes(key)) delete body[key];
@@ -209,7 +211,7 @@ export const get = ({ request, params }: HandlerArgs) => {
     const rows = runListQuery(db, app, compiled);
     return Response.json({
       totalCount: rows.length.toString(),
-      records: toResponseRecords(rows, fieldRows, fields),
+      records: toResponseRecords(db, rows, fieldRows, fields),
     });
   } catch (e) {
     return queryErrorResponse(e, locale);
@@ -235,6 +237,8 @@ const prepareRecordsForInsert = (
     // 実 kintone の一括 API は 1 件目のルックアップエラーで即終了（errors に index 情報は含まれない）
     if (lookupResult.error) return { lookupError: lookupResult.error };
     const normalized = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
+    // FILE: アップロードキー → ダウンロードキー へ振り替えてから保存
+    resolveUploadKeys(ctx.db, normalized, fieldRows);
     prepared.push(normalized);
     const perRecordErrors = validateRecord(fieldRows, normalized, {
       db: ctx.db, appId: ctx.appId, locale: ctx.locale,
@@ -350,6 +354,8 @@ const prepareRecordsForUpdate = (
     const lookupResult = applyLookups(fieldRows, incoming, { db: ctx.db, locale: ctx.locale });
     if (lookupResult.error) return { error: lookupResult.error };
     const merged = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, { ...existingBody, ...lookupResult.record }));
+    // FILE: 新規添付のアップロードキーを振り替え（既存の download_key はそのまま保持）
+    resolveUploadKeys(ctx.db, merged, fieldRows);
     const perRecordErrors = validateRecord(fieldRows, merged, {
       db: ctx.db, appId: ctx.appId, excludeId: target.id, locale: ctx.locale,
     });

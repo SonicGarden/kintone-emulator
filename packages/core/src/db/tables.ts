@@ -32,6 +32,8 @@ const CREATE_TABLE_FILES = dedent`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     filename TEXT,
     content_type TEXT,
+    upload_key TEXT,
+    download_key TEXT,
     data BLOB
   )
 `;
