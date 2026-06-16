@@ -10,8 +10,10 @@ import { findRecord, updateRecord } from "../db/records";
 import { errorInvalidInput, errorMessages, errorNotFoundApp, errorNotFoundRecord, generateErrorId } from "./errors";
 import { enforceGuestSpace } from "./guest-space";
 import { getStatusConfig, isStatusEnabled, STATUS_FIELD_CODE, type StatusAction, type StatusConfig } from "./process-status";
+import { buildFormattedRecord } from "./record-format";
 import type { HandlerArgs } from "./types";
 import { detectLocale, type Locale } from "./validate";
+import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 // メッセージは実機の固定文と一致させる（2026-04-30 確認）。
 const errorProcessNotEnabled = (locale: Locale) => {
@@ -90,6 +92,16 @@ export const put = async ({ request, params }: HandlerArgs) => {
 
   const result = transitionRecord(db, String(body.app), String(body.id), body.action, config, locale);
   if ("error" in result) return result.error;
+
+  const webhookRecord = buildFormattedRecord(db, body.app, result.id);
+  if (webhookRecord) {
+    await dispatchWebhookEvent(
+      db,
+      { event: "UPDATE_STATUS", appId: body.app, recordId: result.id, record: webhookRecord },
+      webhookUrlOptions(request, params.session),
+    );
+  }
+
   return Response.json({ revision: result.revision });
 };
 
@@ -135,6 +147,19 @@ export const putBulk = async ({ request, params }: HandlerArgs) => {
       }
       return out;
     })();
+
+    // 配信はトランザクションの外（コミット後）。一括ステータス変更はレコード毎に1通。
+    const urlOpts = webhookUrlOptions(request, params.session);
+    for (const { id: recordId } of updated) {
+      const webhookRecord = buildFormattedRecord(db, body.app, recordId);
+      if (!webhookRecord) continue;
+      await dispatchWebhookEvent(
+        db,
+        { event: "UPDATE_STATUS", appId: body.app, recordId, record: webhookRecord },
+        urlOpts,
+      );
+    }
+
     return Response.json({ records: updated });
   } catch (e) {
     if (e instanceof BulkAbort) return e.response;

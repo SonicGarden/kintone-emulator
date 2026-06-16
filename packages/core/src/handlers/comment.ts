@@ -4,6 +4,7 @@ import { errorInvalidInput, errorMessages, errorNotFoundComment, errorNotFoundRe
 import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
+import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
@@ -100,6 +101,26 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (!inserted) {
     return Response.json({ message: 'Failed to create comment.' }, { status: 500 });
   }
+
+  // comment ペイロードは comment.json GET と同形式に揃える
+  await dispatchWebhookEvent(
+    db,
+    {
+      event: "ADD_RECORD_COMMENT",
+      appId: body.app,
+      recordId: body.record,
+      commentId: inserted.id.toString(),
+      comment: {
+        id: inserted.id.toString(),
+        text: body.comment.text,
+        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        creator: { code: "", name: "" },
+        mentions: body.comment.mentions ?? [],
+      },
+    },
+    webhookUrlOptions(request, params.session),
+  );
+
   return Response.json({ id: inserted.id.toString() });
 };
 

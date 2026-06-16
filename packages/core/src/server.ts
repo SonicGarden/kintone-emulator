@@ -20,6 +20,7 @@ import * as setupFailureRateLimit from "./handlers/setup-failure-rate-limit";
 import * as setupSpace from "./handlers/setup-space";
 import * as status from "./handlers/status";
 import type { HandlerArgs } from "./handlers/types";
+import * as webhook from "./handlers/webhook";
 import { withFailureInjection } from "./handlers/with-failure-injection";
 
 type RouteHandler = (args: HandlerArgs) => Response | Promise<Response>;
@@ -129,6 +130,11 @@ const routes: RouteEntry[] = [
     pattern: /^\/(?:([^/]+)\/)?setup\/failure\/rate-limit\.json$/,
     POST: setupFailureRateLimit.post,
     DELETE: setupFailureRateLimit.del,
+  },
+  {
+    pattern: /^\/(?:([^/]+)\/)?setup\/webhook\.json$/,
+    POST: webhook.post,
+    DELETE: webhook.del,
   },
   {
     pattern: K("record\\/status\\.json"),
