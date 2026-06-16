@@ -9,6 +9,7 @@ import * as file from "./handlers/file";
 import * as finalize from "./handlers/finalize";
 import * as initialize from "./handlers/initialize";
 import * as layout from "./handlers/layout";
+import { withLogging } from "./handlers/logging";
 import * as previewFields from "./handlers/preview-fields";
 import * as record from "./handlers/record";
 import * as recordStatus from "./handlers/record-status";
@@ -191,7 +192,7 @@ async function sendWebResponse(
   if (webRes.body) {
     const reader = webRes.body.getReader();
     try {
-       
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -241,7 +242,7 @@ async function handler(
       };
       const wrapped = route.requiresAuth ? withFailureInjection(authedHandler) : authedHandler;
       const guestSpaceId = route.guestSpaceIdGroup != null ? match[route.guestSpaceIdGroup] : undefined;
-      const webRes = await wrapped({
+      const webRes = await withLogging(wrapped)({
         request: webReq,
         params: { session, guestSpaceId },
       });
