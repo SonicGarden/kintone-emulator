@@ -163,6 +163,18 @@ describeDualMode("アプリのレコードコメントAPI", () => {
       ]);
     });
 
+    test("createdAtがISO 8601 UTC形式（YYYY-MM-DDTHH:MM:SSZ）で返る", async () => {
+      await client.record.addRecordComment({
+        app: appId, record: recordId, comment: { text: "コメント" },
+      });
+
+      const result = await client.record.getRecordComments({
+        app: appId, record: recordId,
+      });
+
+      expect(result.comments[0]!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    });
+
     test("コメントが0件の場合は空配列が返る", async () => {
       const result = await client.record.getRecordComments({
         app: appId, record: recordId,
