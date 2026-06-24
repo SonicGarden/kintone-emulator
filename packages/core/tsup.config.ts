@@ -7,6 +7,7 @@ export default defineConfig({
     "src/handlers/*.ts",
     "src/db/*.ts",
     "src/test-support/*.ts",
+    "src/hook-test/index.ts",
   ],
   format: ["esm"],
   dts: true,

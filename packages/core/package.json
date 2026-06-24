@@ -15,6 +15,10 @@
       "types": "./dist/test-support/vitest.d.ts",
       "import": "./dist/test-support/vitest.js"
     },
+    "./hook-test": {
+      "types": "./dist/hook-test/index.d.ts",
+      "import": "./dist/hook-test/index.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
