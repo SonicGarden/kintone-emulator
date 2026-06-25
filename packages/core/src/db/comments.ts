@@ -42,9 +42,9 @@ export const insertComment = (
   message: string,
   mentions: unknown[]
 ) =>
-  all<{ id: number }>(
+  all<{ id: number; createdAt: string }>(
     db,
-    "INSERT INTO comments (app_id, record_id, message, mentions) VALUES (?, ?, ?, ?) RETURNING id",
+    "INSERT INTO comments (app_id, record_id, message, mentions) VALUES (?, ?, ?, ?) RETURNING id, created_at as createdAt",
     appId,
     recordId,
     message,

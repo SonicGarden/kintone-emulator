@@ -3,7 +3,7 @@ import { countComments, deleteComment, findComments, findRecordExists, insertCom
 import { errorInvalidInput, errorMessages, errorNotFoundComment, errorNotFoundRecord } from "./errors";
 import { enforceGuestSpace } from "./guest-space";
 import type { HandlerArgs } from "./types";
-import { detectLocale } from "./validate";
+import { detectLocale, formatIsoDateTime } from "./validate";
 import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 export const get = ({ request, params }: HandlerArgs) => {
@@ -44,7 +44,7 @@ export const get = ({ request, params }: HandlerArgs) => {
   const comments = rows.map((row) => ({
     id: row.id.toString(),
     text: row.message,
-    createdAt: row.createdAt ?? "",
+    createdAt: formatIsoDateTime(row.createdAt ?? ""),
     creator: { code: "", name: "" },
     mentions: JSON.parse(row.mentions),
   }));
@@ -113,7 +113,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
       comment: {
         id: inserted.id.toString(),
         text: body.comment.text,
-        createdAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        createdAt: formatIsoDateTime(inserted.createdAt),
         creator: { code: "", name: "" },
         mentions: body.comment.mentions ?? [],
       },

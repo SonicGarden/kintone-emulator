@@ -457,11 +457,23 @@ export const validateRecord = (
   return Object.keys(errors).length > 0 ? errors : null;
 };
 
+// DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を Date に変換する内部ヘルパー。
+const sqlTimeToDate = (sqlTime: string): Date => new Date(sqlTime.replace(" ", "T") + "Z");
+
 // DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を kintone の CREATED_TIME / UPDATED_TIME 形式に整形。
 // 実 kintone は秒を 00 に丸めた ISO 8601 UTC（"YYYY-MM-DDTHH:MM:00Z"）で返す。
 export const formatKintoneDateTime = (sqlTime: string): string => {
-  const d = new Date(sqlTime.replace(" ", "T") + "Z");
+  const d = sqlTimeToDate(sqlTime);
   d.setUTCSeconds(0, 0);
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+};
+
+// DB の DATETIME（"YYYY-MM-DD HH:MM:SS" UTC）を秒を保持したまま ISO 8601 UTC
+// （"YYYY-MM-DDTHH:MM:SSZ"）に整形。コメントの投稿時刻など秒精度が必要な用途で使う。
+// 不正な入力（空文字・想定外フォーマット）の場合は throw せず元の値をそのまま返す。
+export const formatIsoDateTime = (sqlTime: string): string => {
+  const d = sqlTimeToDate(sqlTime);
+  if (Number.isNaN(d.getTime())) return sqlTime;
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 };
 
