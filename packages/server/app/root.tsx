@@ -4,6 +4,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useMatches,
 } from "react-router";
 import type { LinksFunction } from "react-router";
 
@@ -22,7 +23,33 @@ export const links: LinksFunction = () => [
   },
 ];
 
+type JsItem =
+  | { type: "URL"; url: string }
+  | { type: "FILE"; file: { fileKey: string; name: string } };
+
+type RouteDataWithCustomize = {
+  customizeJs?: JsItem[];
+  session?: string | null;
+};
+
+function useCustomizeScripts(): string[] {
+  const matches = useMatches();
+  return matches.flatMap((match) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (match as any).data as RouteDataWithCustomize | null;
+    if (!data?.customizeJs?.length) return [];
+    const prefix = data.session ? `${data.session}/` : "";
+    return data.customizeJs.map((item) =>
+      item.type === "URL"
+        ? item.url
+        : `/${prefix}k/v1/file.json?fileKey=${item.file.fileKey}`
+    );
+  });
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const customizeScripts = useCustomizeScripts();
+
   return (
     <html lang="en">
       <head>
@@ -30,6 +57,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {customizeScripts.map((src) => (
+          <script key={src} src={src} />
+        ))}
       </head>
       <body>
         {children}

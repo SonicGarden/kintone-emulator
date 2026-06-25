@@ -1,4 +1,5 @@
-import { deleteApp, findApp, updateApp } from "@sonicgarden/kintone-emulator/db/apps";
+import crypto from "node:crypto";
+import { deleteApp, findApp, findCustomize, updateApp, updateCustomize } from "@sonicgarden/kintone-emulator/db/apps";
 import { dbSession } from "@sonicgarden/kintone-emulator/db/client";
 import {
   deleteFields,
@@ -6,8 +7,10 @@ import {
   insertFields,
   updateField,
 } from "@sonicgarden/kintone-emulator/db/fields";
+import { insertFile } from "@sonicgarden/kintone-emulator/db/files";
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, data, redirect, useLoaderData, useLocation } from "react-router";
+import { CustomizeTab } from "../components/CustomizeTab";
 import { FormTab } from "../components/FormTab";
 import { SettingsTab } from "../components/SettingsTab";
 import { SiteHeader } from "../components/SiteHeader";
@@ -43,7 +46,8 @@ export const loader = ({ params, request }: LoaderFunctionArgs) => {
     if (!app) throw data(null, { status: 404 });
     const fieldRows = findFields(db, appId);
     const fields = fieldRows.map((row) => JSON.parse(row.body) as Record<string, unknown>);
-    return { app, fields, session: params.session ?? null };
+    const customize = findCustomize(db, appId);
+    return { app, fields, customize, session: params.session ?? null };
   } catch (e) {
     if (e instanceof Response || (e != null && typeof e === "object" && "status" in e)) throw e;
     throw data(null, { status: 404 });
@@ -60,6 +64,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const method = String(form.get("_method") ?? "");
   const session = params.session;
 
+  // アプリ設定タブ
   if (method === "DELETE_APP") {
     deleteApp(db, appId);
     return redirect(`/${session ? `${session}/` : ""}k/`);
@@ -72,6 +77,38 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return redirect(request.url);
   }
 
+  // カスタマイズタブ
+  if (method === "ADD_CUSTOMIZE_URL") {
+    const jsUrl = String(form.get("url") ?? "").trim();
+    if (!jsUrl) return data({ error: "URLを入力してください" }, { status: 400 });
+    const customize = findCustomize(db, appId);
+    customize.desktop.js.push({ type: "URL", url: jsUrl });
+    updateCustomize(db, appId, customize);
+    return redirect(request.url);
+  }
+
+  if (method === "ADD_CUSTOMIZE_FILE") {
+    const file = form.get("js_file") as File | null;
+    if (!file || file.size === 0) return data({ error: "ファイルを選択してください" }, { status: 400 });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const uploadKey = crypto.randomUUID();
+    const downloadKey = crypto.randomBytes(24).toString("hex");
+    insertFile(db, file.name, buffer, file.type || "application/javascript", uploadKey, downloadKey);
+    const customize = findCustomize(db, appId);
+    customize.desktop.js.push({ type: "FILE", file: { fileKey: downloadKey, name: file.name } });
+    updateCustomize(db, appId, customize);
+    return redirect(request.url);
+  }
+
+  if (method === "DELETE_CUSTOMIZE_JS") {
+    const index = Number(form.get("index"));
+    const customize = findCustomize(db, appId);
+    customize.desktop.js.splice(index, 1);
+    updateCustomize(db, appId, customize);
+    return redirect(request.url);
+  }
+
+  // フォームタブ
   if (method === "DELETE") {
     const code = String(form.get("code") ?? "").trim();
     if (!code) return data({ error: "code が必要です" }, { status: 400 });
@@ -110,13 +147,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 const TABS = [
   { hash: "#section=form", label: "フォーム" },
+  { hash: "#section=customize", label: "カスタマイズ" },
   { hash: "#section=settings", label: "設定" },
 ] as const;
 
+type TabKey = "form" | "customize" | "settings";
+
+const hashToTab = (hash: string): TabKey => {
+  if (hash === "#section=settings") return "settings";
+  if (hash === "#section=customize") return "customize";
+  return "form";
+};
+
 export default function AppFormFlow() {
-  const { app, fields, session } = useLoaderData<typeof loader>();
+  const { app, fields, customize, session } = useLoaderData<typeof loader>();
   const location = useLocation();
-  const activeTab = location.hash === "#section=settings" ? "settings" : "form";
+  const activeTab = hashToTab(location.hash);
 
   const listUrl = `/${session ? `${session}/` : ""}k/`;
   const appDetailUrl = `/${session ? `${session}/` : ""}k/${app.id}/`;
@@ -139,7 +185,7 @@ export default function AppFormFlow() {
 
         <div className="flex border-b border-gray-200 mb-6">
           {TABS.map((tab) => {
-            const isActive = activeTab === (tab.hash === "#section=settings" ? "settings" : "form");
+            const isActive = activeTab === hashToTab(tab.hash);
             return (
               <Link
                 key={tab.hash}
@@ -156,7 +202,9 @@ export default function AppFormFlow() {
           })}
         </div>
 
-        {activeTab === "form" ? <FormTab fields={fields} /> : <SettingsTab app={app} />}
+        {activeTab === "form" && <FormTab fields={fields} />}
+        {activeTab === "customize" && <CustomizeTab customizeJs={customize.desktop?.js ?? []} />}
+        {activeTab === "settings" && <SettingsTab app={app} />}
       </main>
     </div>
   );

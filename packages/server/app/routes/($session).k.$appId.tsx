@@ -1,4 +1,4 @@
-import { findApp } from "@sonicgarden/kintone-emulator/db/apps";
+import { findApp, findCustomize } from "@sonicgarden/kintone-emulator/db/apps";
 import { dbSession } from "@sonicgarden/kintone-emulator/db/client";
 import { findFields } from "@sonicgarden/kintone-emulator/db/fields";
 import { findRecords } from "@sonicgarden/kintone-emulator/db/records";
@@ -26,7 +26,9 @@ export const loader = ({ params }: LoaderFunctionArgs) => {
       body: JSON.parse(row.body) as Record<string, { value: unknown }>,
     }));
 
-    return { app, fields, records, session: params.session ?? null };
+    const customize = findCustomize(db, app.id);
+    const customizeJs = customize.desktop?.js ?? [];
+    return { app, fields, records, customizeJs, session: params.session ?? null };
   } catch (e) {
     if (e instanceof Response || (e != null && typeof e === "object" && "status" in e)) throw e;
     throw data(null, { status: 404 });
@@ -63,7 +65,7 @@ export default function AppRecordList() {
         <div className="box-gaia">
           <div className="box-inner-gaia">
             <div className="view-list-data-gaia overflow-x-auto">
-              <RecordListTable fields={fields} records={records} formUrl={formUrl} />
+              <RecordListTable fields={fields} records={records} formUrl={formUrl} appId={app.id} session={session} />
             </div>
           </div>
         </div>

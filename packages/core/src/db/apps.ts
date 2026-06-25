@@ -1,12 +1,22 @@
 import type Database from "better-sqlite3";
 import { all, run } from "./client";
 
+export type JsItem =
+  | { type: "URL"; url: string }
+  | { type: "FILE"; file: { fileKey: string; name: string } };
+
+export type CustomizeConfig = {
+  desktop: { js: JsItem[]; css: string[] };
+  mobile: { js: JsItem[]; css: string[] };
+};
+
 export type AppRow = {
   id: number;
   name: string;
   revision: number;
   layout: string;
   status: string;
+  customize: string;
   space_id: number | null;
   thread_id: number | null;
   created_at: string;
@@ -21,7 +31,7 @@ type FindAppsOptions = {
   offset: number;
 };
 
-const APP_COLUMNS = `id, name, revision, layout, status, space_id, thread_id, created_at, updated_at`;
+const APP_COLUMNS = `id, name, revision, layout, status, customize, space_id, thread_id, created_at, updated_at`;
 
 export const findApp = (db: Database.Database, id: number) =>
   all<AppRow>(db, `SELECT ${APP_COLUMNS} FROM apps WHERE id = ?`, id)[0];
@@ -84,6 +94,20 @@ export const deleteApp = (db: Database.Database, id: number) => {
     run(db, `DELETE FROM apps WHERE id = ?`, id);
   })();
 };
+
+const EMPTY_CUSTOMIZE: CustomizeConfig = { desktop: { js: [], css: [] }, mobile: { js: [], css: [] } };
+
+export const findCustomize = (db: Database.Database, appId: number): CustomizeConfig => {
+  const app = findApp(db, appId);
+  try {
+    return JSON.parse(app?.customize ?? "{}") as CustomizeConfig;
+  } catch {
+    return EMPTY_CUSTOMIZE;
+  }
+};
+
+export const updateCustomize = (db: Database.Database, appId: number, customize: CustomizeConfig) =>
+  run(db, `UPDATE apps SET customize = ? WHERE id = ?`, JSON.stringify(customize), appId);
 
 export const insertApp = (db: Database.Database, options: InsertAppOptions) => {
   const { name, layout, status = DEFAULT_STATUS, id, spaceId, threadId } = options;
