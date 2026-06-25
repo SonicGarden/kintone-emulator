@@ -2,6 +2,7 @@ import { findApp, findCustomize } from "@sonicgarden/kintone-emulator/db/apps";
 import { dbSession } from "@sonicgarden/kintone-emulator/db/client";
 import { findFields } from "@sonicgarden/kintone-emulator/db/fields";
 import { findRecords } from "@sonicgarden/kintone-emulator/db/records";
+import { useEffect } from "react";
 import type { LoaderFunctionArgs, MetaFunction } from "react-router";
 import { Link, data, useLoaderData } from "react-router";
 import { RecordListTable } from "../components/RecordListTable";
@@ -37,6 +38,22 @@ export const loader = ({ params }: LoaderFunctionArgs) => {
 
 export default function AppRecordList() {
   const { app, fields, records, session } = useLoaderData<typeof loader>();
+
+  useEffect(() => {
+    window.__kintoneAppId = app.id;
+    window.kintone?.events.fire("app.record.index.show", {
+      type: "app.record.index.show",
+      appId: app.id,
+      viewId: 0,
+      viewName: "default",
+      viewType: "list",
+      offset: 0,
+      size: records.length,
+      date: null,
+      records: records.map((r) => r.body),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const listUrl = `/${session ? `${session}/` : ""}k/`;
   const formUrl = `/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=form`;
   const settingsUrl = `/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=settings`;
