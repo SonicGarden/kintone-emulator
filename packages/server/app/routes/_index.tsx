@@ -1,5 +1,5 @@
-import { createTables } from "@sonicgarden/kintone-emulator/db/tables";
 import { dbSession } from "@sonicgarden/kintone-emulator/db/client";
+import { createTables } from "@sonicgarden/kintone-emulator/db/tables";
 import type { ActionFunctionArgs, MetaFunction } from "react-router";
 import { Form, redirect } from "react-router";
 

@@ -59,7 +59,16 @@ export default function AppDetail() {
           アプリ設定
         </h1>
         <p className="text-base text-gray-600 mb-1">{app.name}</p>
-        <p className="text-sm text-gray-400 mb-6">アプリID: {app.id}</p>
+        <p className="text-sm text-gray-400 mb-4">アプリID: {app.id}</p>
+
+        <div className="flex gap-3 mb-6">
+          <Link
+            to={`/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=form`}
+            className="text-sm text-blue-600 border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-50"
+          >
+            フォームの設定
+          </Link>
+        </div>
 
         <section className="bg-white rounded border border-gray-200 p-6 mb-4">
           <h2 className="text-base font-medium text-gray-700 mb-4">アプリ名の変更</h2>
