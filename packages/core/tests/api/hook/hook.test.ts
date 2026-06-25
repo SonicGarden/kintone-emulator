@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
-import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 import { createKintoneStub } from "../../../src/hook-test";
+import { createApp, createBaseUrl, finalizeSession, initializeSession } from "../../helpers";
 
 const SESSION = "hook-test";
 let BASE_URL: string;
