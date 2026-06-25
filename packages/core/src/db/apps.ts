@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { all } from "./client";
+import { all, run } from "./client";
 
 export type AppRow = {
   id: number;
@@ -65,6 +65,24 @@ type InsertAppOptions = {
   id?: number;
   spaceId?: number;
   threadId?: number;
+};
+
+export const updateApp = (db: Database.Database, id: number, { name }: { name: string }) =>
+  run(
+    db,
+    `UPDATE apps SET name = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    name,
+    id
+  );
+
+export const deleteApp = (db: Database.Database, id: number) => {
+  db.transaction(() => {
+    run(db, `DELETE FROM comments WHERE app_id = ?`, id);
+    run(db, `DELETE FROM records WHERE app_id = ?`, id);
+    run(db, `DELETE FROM fields WHERE app_id = ?`, id);
+    run(db, `DELETE FROM webhooks WHERE app_id = ?`, id);
+    run(db, `DELETE FROM apps WHERE id = ?`, id);
+  })();
 };
 
 export const insertApp = (db: Database.Database, options: InsertAppOptions) => {
