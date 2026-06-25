@@ -1,7 +1,11 @@
-import { deleteApp, findApp, updateApp } from "@sonicgarden/kintone-emulator/db/apps";
+import { findApp } from "@sonicgarden/kintone-emulator/db/apps";
 import { dbSession } from "@sonicgarden/kintone-emulator/db/client";
-import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
-import { Form, Link, data, redirect, useLoaderData } from "react-router";
+import { findFields } from "@sonicgarden/kintone-emulator/db/fields";
+import { findRecords } from "@sonicgarden/kintone-emulator/db/records";
+import type { LoaderFunctionArgs, MetaFunction } from "react-router";
+import { Link, data, useLoaderData } from "react-router";
+import { RecordListTable } from "../components/RecordListTable";
+import { SiteHeader } from "../components/SiteHeader";
 
 export const meta: MetaFunction = () => [{ title: "kintone emulator" }];
 
@@ -10,102 +14,60 @@ export const loader = ({ params }: LoaderFunctionArgs) => {
     const db = dbSession(params.session);
     const app = findApp(db, Number(params.appId));
     if (!app) throw data(null, { status: 404 });
-    return { app, session: params.session ?? null };
+
+    const fieldRows = findFields(db, app.id);
+    const fields = fieldRows
+      .map((row) => JSON.parse(row.body) as { type: string; code: string; label: string })
+      .filter((f) => f.type !== "LABEL");
+
+    const recordRows = findRecords(db, String(app.id));
+    const records = recordRows.map((row) => ({
+      id: row.id,
+      body: JSON.parse(row.body) as Record<string, { value: unknown }>,
+    }));
+
+    return { app, fields, records, session: params.session ?? null };
   } catch (e) {
-    // data() で throw した 404 はそのまま再スロー
     if (e instanceof Response || (e != null && typeof e === "object" && "status" in e)) throw e;
     throw data(null, { status: 404 });
   }
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const db = dbSession(params.session);
-  const appId = Number(params.appId);
-  const form = await request.formData();
-  const method = form.get("_method");
-  const session = params.session;
+export default function AppRecordList() {
+  const { app, fields, records, session } = useLoaderData<typeof loader>();
   const listUrl = `/${session ? `${session}/` : ""}k/`;
-
-  if (method === "DELETE") {
-    deleteApp(db, appId);
-    return redirect(listUrl);
-  }
-
-  const name = String(form.get("name") ?? "").trim();
-  if (!name) return data({ error: "アプリ名を入力してください" }, { status: 400 });
-  updateApp(db, appId, { name });
-  return redirect(listUrl);
-};
-
-export default function AppDetail() {
-  const { app, session } = useLoaderData<typeof loader>();
-  const listUrl = `/${session ? `${session}/` : ""}k/`;
+  const formUrl = `/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=form`;
+  const settingsUrl = `/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=settings`;
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white border-b border-gray-300 px-6 py-3 flex items-center gap-4">
-        <span className="text-lg font-semibold text-gray-800">kintone</span>
-        {session && (
-          <span className="text-sm text-gray-500">session: {session}</span>
-        )}
-      </header>
-
-      <main className="px-6 py-6 max-w-xl">
-        <Link to={listUrl} className="text-sm text-blue-600 hover:underline">
-          ← アプリ一覧へ
-        </Link>
-
-        <h1 className="text-xl font-semibold text-gray-700 mt-4 mb-1">
-          アプリ設定
-        </h1>
-        <p className="text-base text-gray-600 mb-1">{app.name}</p>
-        <p className="text-sm text-gray-400 mb-4">アプリID: {app.id}</p>
-
-        <div className="flex gap-3 mb-6">
+    <div className="min-h-screen bg-gray-50">
+      <SiteHeader session={session} logoHref={listUrl}>
+        <span className="text-sm text-gray-700 font-medium ml-2">{app.name}</span>
+        <div className="gaia-argoui-app-menu ml-auto flex gap-3">
           <Link
-            to={`/${session ? `${session}/` : ""}k/admin/app/flow?app=${app.id}#section=form`}
-            className="text-sm text-blue-600 border border-blue-300 rounded px-3 py-1.5 hover:bg-blue-50"
+            to={formUrl}
+            className="text-xs text-gray-500 border border-gray-300 rounded px-2.5 py-1 hover:bg-gray-50"
           >
             フォームの設定
           </Link>
+          <Link
+            to={settingsUrl}
+            className="gaia-argoui-app-menu-settings text-xs text-gray-500 border border-gray-300 rounded px-2.5 py-1 hover:bg-gray-50"
+          >
+            アプリ設定
+          </Link>
         </div>
+      </SiteHeader>
 
-        <section className="bg-white rounded border border-gray-200 p-6 mb-4">
-          <h2 className="text-base font-medium text-gray-700 mb-4">アプリ名の変更</h2>
-          <Form method="post" key={app.revision} className="flex gap-2">
-            <input type="hidden" name="_method" value="PUT" />
-            <input
-              type="text"
-              name="name"
-              defaultValue={app.name}
-              required
-              className="border border-gray-300 rounded px-3 py-2 text-sm flex-1"
-            />
-            <button
-              type="submit"
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
-            >
-              保存
-            </button>
-          </Form>
-        </section>
-
-        <section className="bg-white rounded border border-red-200 p-6">
-          <h2 className="text-base font-medium text-red-600 mb-2">アプリの削除</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            関連するレコード・フィールド・コメントもすべて削除されます。
-          </p>
-          <Form method="post">
-            <input type="hidden" name="_method" value="DELETE" />
-            <button
-              type="submit"
-              className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
-            >
-              削除する
-            </button>
-          </Form>
-        </section>
-      </main>
+      <div className="contents-gaia px-6 py-6">
+        <div className="box-gaia">
+          <div className="box-inner-gaia">
+            <div className="view-list-data-gaia overflow-x-auto">
+              <RecordListTable fields={fields} records={records} formUrl={formUrl} />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -17,29 +17,29 @@ test("アプリ作成フォームで新規アプリを追加できる", async ({
   await expect(page.getByText("テストアプリ")).toBeVisible();
 });
 
-test("アプリカードをクリックすると詳細ページに遷移する", async ({ request, page }) => {
-  await request.post(`/${SESSION}/setup/app.json`, { data: { name: "詳細テストアプリ" } });
+test("アプリカードをクリックするとレコード一覧ページに遷移する", async ({ request, page }) => {
+  const res = await request.post(`/${SESSION}/setup/app.json`, { data: { name: "詳細テストアプリ" } });
+  const { app: appId } = await res.json() as { app: string };
   await page.goto(`/${SESSION}/k/`);
   await page.getByText("詳細テストアプリ").click();
-  await expect(page.getByRole("heading", { name: "アプリ設定" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/${SESSION}/k/${appId}`));
 });
 
 test("アプリ名を編集できる", async ({ request, page }) => {
-  await request.post(`/${SESSION}/setup/app.json`, { data: { name: "旧名前" } });
-  await page.goto(`/${SESSION}/k/`);
-  await page.getByText("旧名前").click();
+  const res = await request.post(`/${SESSION}/setup/app.json`, { data: { name: "旧名前" } });
+  const { app: appId } = await res.json() as { app: string };
+  await page.goto(`/${SESSION}/k/admin/app/flow?app=${appId}#section=settings`);
   await page.locator('input[name="name"]').fill("新しい名前");
   await page.getByRole("button", { name: "保存" }).click();
-  // 保存後は一覧ページへリダイレクトされ、更新されたアプリ名が表示される
   await page.waitForURL(`**/${SESSION}/k/`);
   await expect(page.getByText("新しい名前")).toBeVisible();
   await expect(page.getByText("旧名前")).not.toBeVisible();
 });
 
 test("アプリを削除すると一覧に戻りアプリが消える", async ({ request, page }) => {
-  await request.post(`/${SESSION}/setup/app.json`, { data: { name: "削除対象アプリ" } });
-  await page.goto(`/${SESSION}/k/`);
-  await page.getByText("削除対象アプリ").click();
+  const res = await request.post(`/${SESSION}/setup/app.json`, { data: { name: "削除対象アプリ" } });
+  const { app: appId } = await res.json() as { app: string };
+  await page.goto(`/${SESSION}/k/admin/app/flow?app=${appId}#section=settings`);
   await page.getByRole("button", { name: "削除する" }).click();
   await expect(page).toHaveURL(new RegExp(`/${SESSION}/k/$`));
   await expect(page.getByText("削除対象アプリ")).not.toBeVisible();
