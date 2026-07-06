@@ -433,7 +433,40 @@ const deleteAllRecords = async (client: KintoneRestAPIClient, appId: number): Pr
     offset += limit;
   }
   for (let i = 0; i < allIds.length; i += 100) {
-    await client.record.deleteRecords({ app: appId, ids: allIds.slice(i, i + 100) });
+    await deleteRecordsTolerant(client, appId, allIds.slice(i, i + 100));
+  }
+};
+
+/**
+ * レコードを一括削除する。kintone の読み取りレプリカには結果整合性ラグがあり、
+ * getRecords が既に削除済みの $id を返すことがある。その ID を含むバッチを
+ * deleteRecords に渡すと、バッチ全体が GAIA_RE01（指定レコードが見つからない / 404）で
+ * 失敗する（deleteRecords はアトミックで、1 件でも存在しないと全体が失敗する）。
+ * これが beforeEach のリセット時に不定期のフレークを起こす。
+ *
+ * 一括削除が GAIA_RE01 になった場合は 1 件ずつ削除にフォールバックし、
+ * 既に存在しない ID（＝既に削除済み）は握りつぶす。こうすることで、実際に
+ * 残っているレコードだけを確実に削除しつつ、ラグ由来の 404 を無視できる。
+ */
+const deleteRecordsTolerant = async (
+  client: KintoneRestAPIClient,
+  appId: number,
+  ids: number[],
+): Promise<void> => {
+  if (ids.length === 0) return;
+  try {
+    await client.record.deleteRecords({ app: appId, ids });
+  } catch (e) {
+    if ((e as { code?: string }).code !== "GAIA_RE01") throw e;
+    // バッチ内にレプリカラグ由来の「既に削除済み」ID が混ざっている。
+    // 1 件ずつ削除し、既に無い ID の GAIA_RE01 だけ握りつぶす。
+    for (const id of ids) {
+      try {
+        await client.record.deleteRecords({ app: appId, ids: [id] });
+      } catch (inner) {
+        if ((inner as { code?: string }).code !== "GAIA_RE01") throw inner;
+      }
+    }
   }
 };
 
