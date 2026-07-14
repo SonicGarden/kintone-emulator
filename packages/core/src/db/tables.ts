@@ -59,6 +59,7 @@ const CREATE_TABLE_APPS = dedent`
     record_id_seq INTEGER DEFAULT 0,
     layout JSON DEFAULT '[]',
     status JSON DEFAULT '{"enable":false,"states":null,"actions":null,"revision":"3"}',
+    customize JSON DEFAULT '{"desktop":{"js":[],"css":[]},"mobile":{"js":[],"css":[]}}',
     space_id INTEGER,
     thread_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

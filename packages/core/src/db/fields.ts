@@ -35,3 +35,17 @@ export const deleteFields = (db: Database.Database, appId: string | number, code
     }
   })();
 };
+
+export const updateField = (
+  db: Database.Database,
+  appId: string | number,
+  code: string,
+  patch: Record<string, unknown>
+) =>
+  run(
+    db,
+    `UPDATE fields SET body = json_patch(body, ?) WHERE app_id = ? AND code = ?`,
+    JSON.stringify(patch),
+    appId,
+    code
+  );

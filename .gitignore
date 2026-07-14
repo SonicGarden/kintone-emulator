@@ -15,6 +15,10 @@ node_modules
 # vitest reporter / coverage 出力
 /packages/*/coverage
 
+# Playwright test artifacts
+/packages/server/test-results/
+/packages/server/playwright-report/
+
 # Local agent memory
 # https://code.claude.com/docs/en/sub-agents#enable-persistent-memory
 /.claude/agent-memory-local

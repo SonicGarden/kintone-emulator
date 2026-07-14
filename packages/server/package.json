@@ -11,6 +11,7 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "PORT=12345 HOST=0.0.0.0 react-router-serve ./build/server/index.js",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "test:ui": "playwright test",
     "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
@@ -24,11 +25,12 @@
     "react-router": "^7.14.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@react-router/dev": "^7.14.2",
     "@react-router/fs-routes": "^7.14.2",
+    "@tailwindcss/vite": "^4.2.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@tailwindcss/vite": "^4.2.4",
     "tailwindcss": "^4.2.4",
     "vite": "^8.0.10"
   },
