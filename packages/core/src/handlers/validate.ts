@@ -483,6 +483,39 @@ export type RecordMeta = {
   updatedAt?: string;
 };
 
+// getRecord / getRecords 応答では、実 kintone と同じくレコードに値が保存されていない
+// フィールドも「フィールドタイプ別の空値」で補完して返す。
+//   - 文字列系（SINGLE_LINE_TEXT / NUMBER / CALC / LINK / RADIO_BUTTON / DATETIME 等） → ""
+//   - null 系（DROP_DOWN / DATE / TIME）                                    → null
+//   - 配列系（CHECK_BOX / FILE / USER_SELECT / SUBTABLE 等）                → []
+// ※ DATE / TIME は null だが DATETIME は "" を返す（実 kintone の挙動を実機で確認済み。
+//    SDK 型でも DATETIME の value だけ `string`、DATE / TIME は `string | null`）。
+// このマップに含めないタイプは補完対象外:
+//   - 値を持たないレイアウト系（LABEL / SPACER / HR / GROUP / REFERENCE_TABLE）
+//   - システム管理でここでは補完しないもの（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME は
+//     meta 経由で別途補完、CREATOR / MODIFIER / STATUS / STATUS_ASSIGNEE / CATEGORY はエミュ未モデル）
+// ファクトリ関数で毎回新しい配列/値を返し、セル間で参照を共有しないようにする。
+const EMPTY_VALUE_FACTORIES: Record<string, () => unknown> = {
+  SINGLE_LINE_TEXT: () => "",
+  MULTI_LINE_TEXT: () => "",
+  RICH_TEXT: () => "",
+  NUMBER: () => "",
+  CALC: () => "",
+  LINK: () => "",
+  RADIO_BUTTON: () => "",
+  DATETIME: () => "",
+  DROP_DOWN: () => null,
+  DATE: () => null,
+  TIME: () => null,
+  CHECK_BOX: () => [],
+  MULTI_SELECT: () => [],
+  FILE: () => [],
+  USER_SELECT: () => [],
+  ORGANIZATION_SELECT: () => [],
+  GROUP_SELECT: () => [],
+  SUBTABLE: () => [],
+};
+
 // getRecord / getRecords 応答で各フィールドに type を注入するヘルパー。
 // - SUBTABLE の場合は行内の各フィールドにも type を注入する
 // - meta が渡された場合、システムフィールド（RECORD_NUMBER / CREATED_TIME / UPDATED_TIME）の
@@ -510,6 +543,12 @@ export const attachFieldTypes = (
       body[row.code] = { type: "CREATED_TIME", value: formatKintoneDateTime(meta.createdAt) };
     } else if (def.type === "UPDATED_TIME" && meta.updatedAt != null) {
       body[row.code] = { type: "UPDATED_TIME", value: formatKintoneDateTime(meta.updatedAt) };
+    } else {
+      // 値が保存されていないフィールドは、タイプ別の空値で補完する（実 kintone 準拠）
+      const emptyValue = EMPTY_VALUE_FACTORIES[def.type];
+      if (emptyValue) {
+        body[row.code] = { type: def.type, value: emptyValue() };
+      }
     }
   }
   for (const code of Object.keys(body)) {
