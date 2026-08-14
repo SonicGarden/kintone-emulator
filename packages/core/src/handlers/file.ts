@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import { dbSession } from "../db/client";
 import { findFile, insertFile } from "../db/files";
 import { attachmentContentDisposition } from "./content-disposition";
-import { errorInvalidInput, errorMessages, errorNotFoundFile } from "./errors";
+import {
+  errorInvalidInput,
+  errorInvalidRequest,
+  errorInvalidUploadRequest,
+  errorMessages,
+  errorNotFoundFile,
+} from "./errors";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
@@ -33,8 +39,27 @@ export const get = ({ request, params }: HandlerArgs) => {
 };
 
 export const post = async ({ request, params }: HandlerArgs) => {
-  const formData = await request.formData();
-  const file = formData.get('file') as File;
+  const locale = detectLocale(request.headers.get("accept-language"));
+
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    // multipart として読めないリクエストは実 kintone と同じ 400 GAIA_HM02 で弾く。
+    // 素通しすると undici の TypeError がそのまま漏れて 500 になり、実機と食い違う。
+    // Node クライアントでこれを踏むのは主にファイル名にダブルクォートが入ったとき
+    // （form-data パッケージが `filename="..."` をエスケープせず組み立てるため）。
+    //
+    // この分岐は「壊れた multipart なら undici が必ず例外を投げる」ことに依存している。
+    // 将来 undici が黙って部分的な FormData を返すようになると、GAIA_HM02 ではなく
+    // 下の CB_IL02 に落ちる（500 にはならないので fail-closed 側には倒れる）。
+    return errorInvalidUploadRequest(locale);
+  }
+
+  const file = formData.get('file');
+  if (file === null || typeof file === 'string') {
+    return errorInvalidRequest(locale);
+  }
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const uploadKey = generateUploadKey();

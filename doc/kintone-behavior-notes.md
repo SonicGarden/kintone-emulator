@@ -1094,6 +1094,10 @@ POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
 
 - Node.js `fetch` は `accept-language: *` を自動付与する
 - ヘッダー無しとして扱いたいロジックでは `"*"` もデフォルト扱いにする必要がある
+- ただし**実機は `*` を en に倒す**（検証日時 2026-08-14。ユーザーの表示言語設定は
+  「Webブラウザーの設定に従う」で、ヘッダーを一切送らない axios 経由だと ja が返る）。
+  エミュレーターの `detectLocale` は `*` を ja 扱いにするので**ここは乖離している**。
+  dual-mode テストでメッセージ本文を比較する場合は `Accept-Language` を明示すること
 
 ### 添付ファイルダウンロードの `Content-Disposition`（検証日時 2026-08-14）
 
@@ -1107,9 +1111,8 @@ POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
 - 長い名前は複数の encoded-word に分割される。「枠いっぱいまで詰めて折る」のではなく
   **収まるまで文字列を半分ずつに割る**（JavaMail `MimeUtility.encodeWord` の `doEncode` と同じ挙動。
   枠は `75 - 7 - len("UTF-8")` = 63 バイト）ので、末尾の語だけ他より長くなる
-- ダブルクォートを含むファイル名はアップロードの時点で
-  `400 GAIA_HM02 アップロードするHTTPリクエストの形式が正しくありません。` になる。
-  そのためヘッダー側でダブルクォートをエスケープする必要が生じない
+- 生のダブルクォートを含むファイル名はそもそも保存され得ない（下記「アップロードの
+  リクエスト形式エラー」参照）ので、ヘッダー側でエスケープする必要が生じない
 - `Content-Type` は保存時のものに `;charset=utf-8` が付く（例 `text/plain;charset=utf-8`）。
   エミュレーターは保存した MIME タイプをそのまま返しており、ここは未追従
 
@@ -1139,6 +1142,47 @@ attachment; filename="=?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= =?UTF-8?B?44G
 
 > 実機は encoded-word 間を折り返し（CRLF + SP）で区切っているが、Node の `fetch` で受けると
 > 単一の空白に正規化される。RFC 2047 上どちらも linear-white-space 区切りとして等価。
+
+### 添付ファイルアップロードのリクエスト形式エラー（検証日時 2026-08-14）
+
+`POST /k/v1/file.json` は失敗の段階によって 2 つのコードを返し分ける。
+
+**multipart として解釈できない → `400 GAIA_HM02`**
+
+| ケース |
+|---|
+| `Content-Type` が multipart でない（例 `application/json`） |
+| `boundary` が本文と一致しない |
+| part ヘッダーの quoted-string が壊れている（`filename="double"quote.txt"`） |
+
+```
+{"code":"GAIA_HM02","id":"...","message":"アップロードするHTTPリクエストの形式が正しくありません。HTTPリクエストはマルチパート形式である必要があります。"}
+{"code":"GAIA_HM02","id":"...","message":"The HTTP request format to upload a file is not valid. The HTTP request must be in multipart format."}
+```
+
+**multipart としては読めたが `file` を取り出せない → `400 CB_IL02`**
+
+`file` パートが無い / `file` がファイルではなくただの文字列 / 空の multipart のいずれも同じ。
+
+```
+{"code":"CB_IL02","id":"...","message":"不正なリクエストです。"}
+{"code":"CB_IL02","id":"...","message":"Invalid request."}
+```
+
+#### ダブルクォートを含むファイル名がアップロードできない理由
+
+kintone 側にファイル名の検証があるわけではなく、**クライアントが壊れた multipart を送っている**。
+
+- `@kintone/rest-api-client`（Node）は `form-data` パッケージを使う。これは part ヘッダーを
+  `'filename="' + name + '"'` と素で連結するのでエスケープされず、
+  `Content-Disposition: form-data; name="file"; filename="double"quote.txt"` という
+  2 つ目の `"` で値が終わってしまう壊れた quoted-string になる。kintone のパーサーはこれを
+  読めず「マルチパート形式である必要があります」= GAIA_HM02 を返す
+- 一方 WHATWG 準拠のクライアント（ブラウザ / undici の `FormData`）は `"` を `%22` へ逃がすので
+  multipart は壊れず、アップロードは成功する。このとき保存される名前は `double%22quote.txt` で、
+  **生の `"` はサーバーに届かない**
+
+つまりどの経路でも、生のダブルクォートを含むファイル名がレコードに保存されることはない。
 
 ---
 

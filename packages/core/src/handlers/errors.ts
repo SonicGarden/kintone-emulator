@@ -122,6 +122,29 @@ export const errorNoPermission = (locale: Locale = "ja") => {
   );
 };
 
+// ファイルアップロードのリクエストを multipart として解釈できなかったときのエラー
+// （HTTP 400, GAIA_HM02）。実機では「Content-Type が multipart でない」「boundary が本文と
+// 一致しない」「part ヘッダーの quoted-string が壊れている」のいずれでも同じコードが返る。
+export const errorInvalidUploadRequest = (locale: Locale = "ja") => {
+  const message = locale === "ja"
+    ? "アップロードするHTTPリクエストの形式が正しくありません。HTTPリクエストはマルチパート形式である必要があります。"
+    : "The HTTP request format to upload a file is not valid. The HTTP request must be in multipart format.";
+  return Response.json(
+    { code: "GAIA_HM02", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
+// multipart としては読めたが中身が期待どおりでないときのエラー（HTTP 400, CB_IL02）。
+// アップロードでは file パートが無い / ファイルではなくただの文字列だった場合に返る。
+export const errorInvalidRequest = (locale: Locale = "ja") => {
+  const message = locale === "ja" ? "不正なリクエストです。" : "Invalid request.";
+  return Response.json(
+    { code: "CB_IL02", id: generateErrorId(), message },
+    { status: 400 }
+  );
+};
+
 // ゲストスペース内のアプリへ非ゲストパスでアクセスしたときのエラー（HTTP 400, GAIA_IL23）
 export const errorGuestSpacePathRequired = (locale: Locale = "ja") => {
   const message = locale === "ja"

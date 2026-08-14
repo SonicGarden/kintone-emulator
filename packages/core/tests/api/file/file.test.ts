@@ -160,3 +160,103 @@ describeDualMode("添付ファイルのダウンロード", () => {
     expect(Buffer.from(downloaded).toString()).toBe("中身");
   });
 });
+
+describeDualMode("添付ファイルのアップロード（リクエスト形式エラー）", () => {
+  const SESSION = "file-upload-error";
+
+  beforeEach(async () => {
+    await resetTestEnvironment(SESSION);
+  });
+
+  const BOUNDARY = "----uploadErrorBoundary";
+
+  // Accept-Language は必ず明示する。省略すると undici が `*` を自動付与し、実 kintone は
+  // それを en、エミュレーターは ja と解釈するので、メッセージの比較が両モードで揃わない。
+  const upload = (body: BodyInit, contentType?: string, locale = "ja") =>
+    fetch(`${getTestBaseUrl(SESSION)}/k/v1/file.json`, {
+      method: "POST",
+      headers: {
+        ...getTestRequestHeaders(),
+        ...(contentType ? { "Content-Type": contentType } : {}),
+        "Accept-Language": locale,
+      },
+      body,
+    });
+
+  /** form-data パッケージが生成するのと同じ、filename をエスケープしない multipart */
+  const rawMultipart = (filename: string) =>
+    [
+      `--${BOUNDARY}`,
+      `Content-Disposition: form-data; name="file"; filename="${filename}"`,
+      "Content-Type: text/plain",
+      "",
+      "body",
+      `--${BOUNDARY}--`,
+      "",
+    ].join("\r\n");
+
+  test.each([
+    [
+      "part ヘッダーの quoted-string が壊れている",
+      () => upload(rawMultipart('double"quote.txt'), `multipart/form-data; boundary=${BOUNDARY}`),
+    ],
+    ["そもそも multipart ではない", () => upload(JSON.stringify({ file: "x" }), "application/json")],
+    [
+      "boundary が本文と一致しない",
+      () => upload(rawMultipart("plain.txt"), "multipart/form-data; boundary=mismatched"),
+    ],
+  ])("multipart として読めないリクエストは GAIA_HM02 (%s)", async (_label, send) => {
+    const response = await send();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "GAIA_HM02",
+      message:
+        "アップロードするHTTPリクエストの形式が正しくありません。HTTPリクエストはマルチパート形式である必要があります。",
+    });
+  });
+
+  test("multipart として読めないリクエストのメッセージは Accept-Language に従う", async () => {
+    const response = await upload(JSON.stringify({ file: "x" }), "application/json", "en");
+
+    expect(await response.json()).toMatchObject({
+      code: "GAIA_HM02",
+      message:
+        "The HTTP request format to upload a file is not valid. The HTTP request must be in multipart format.",
+    });
+  });
+
+  test.each([
+    ["file パートが無い", () => {
+      const form = new FormData();
+      form.append("notfile", new File([Buffer.from("body")], "a.txt", { type: "text/plain" }));
+      return form;
+    }],
+    ["file がファイルではなく文字列", () => {
+      const form = new FormData();
+      form.append("file", "just a string");
+      return form;
+    }],
+    ["空の multipart", () => new FormData()],
+  ])("multipart だが file を取り出せないリクエストは CB_IL02 (%s)", async (_label, build) => {
+    const response = await upload(build());
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "CB_IL02",
+      message: "不正なリクエストです。",
+    });
+  });
+
+  test("WHATWG 準拠のクライアントはダブルクォートを %22 に逃がすのでアップロードできる", async () => {
+    // ブラウザ / undici の FormData は multipart を壊さないため、実 kintone でもエラーにならない。
+    // 生のダブルクォートを含むファイル名がサーバーに届かないのはこのため。
+    const form = new FormData();
+    form.append("file", new File([Buffer.from("body")], 'double"quote.txt', { type: "text/plain" }));
+
+    const response = await upload(form);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ fileKey: expect.any(String) });
+  });
+});
