@@ -1111,10 +1111,37 @@ POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
 - 長い名前は複数の encoded-word に分割される。「枠いっぱいまで詰めて折る」のではなく
   **収まるまで文字列を半分ずつに割る**（JavaMail `MimeUtility.encodeWord` の `doEncode` と同じ挙動。
   枠は `75 - 7 - len("UTF-8")` = 63 バイト）ので、末尾の語だけ他より長くなる
-- 生のダブルクォートを含むファイル名はそもそも保存され得ない（下記「アップロードの
-  リクエスト形式エラー」参照）ので、ヘッダー側でエスケープする必要が生じない
+- **ヘッダーに載せる直前にファイル名を洗う**（保存されている名前そのものは変えない）。
+  対象は Windows でファイル名に使えない 9 文字 `\ / : * ? " < > |` で、生の文字だけでなく
+  **パーセントエンコード形（大文字小文字問わず）も同じく `_` にする**。
+  ダブルクォートもここで潰れるので quoted-string は壊れない
 - `Content-Type` は保存時のものに `;charset=utf-8` が付く（例 `text/plain;charset=utf-8`）。
   エミュレーターは保存した MIME タイプをそのまま返しており、ここは未追従
+
+#### ファイル名の洗い方（生レスポンス）
+
+| 保存されている name | `Content-Disposition` |
+|---|---|
+| `double%22quote.txt` | `attachment; filename="double_quote.txt"` |
+| `q%22uote.txt` | `attachment; filename="q_uote.txt"` |
+| `lower%22.txt` / `lower%3a.txt` / `lower%2f.txt` | `attachment; filename="lower_.txt"` |
+| `lt<gt>.txt` | `attachment; filename="lt_gt_.txt"` |
+| `colon:.txt` / `star*.txt` / `question?.txt` / `pipe\|.txt` | `attachment; filename="colon_.txt"` など |
+| `star%2A.txt` / `question%3F.txt` / `lt%3C.txt` / `gt%3E.txt` / `pipe%7C.txt` | 同上 |
+| `テスト%22引用符.txt` | `attachment; filename="=?UTF-8?B?44OG44K544OIX+W8leeUqOespi50eHQ=?="`（= `テスト_引用符.txt`） |
+
+**触らない例**（パーセントエンコードでも危険な文字でなければ素通し）:
+
+| 保存されている name | `Content-Disposition` |
+|---|---|
+| `pct%41letterA.txt` | `attachment; filename="pct%41letterA.txt"` |
+| `pct%2522double.txt` | `attachment; filename="pct%2522double.txt"` |
+| `lf%0A.txt` / `cr%0D.txt` / `tab%09.txt` | そのまま |
+| `percent%.txt` / `bad%zz.txt` / `trail%.txt` | そのまま |
+| `hash#.txt` / `at@.txt` / `tilde~.txt` / `eq=amp&.txt` / `paren().txt` / `bracket[].txt` / `brace{}.txt` / `plus+.txt` / `comma,.txt` | そのまま |
+
+つまり**パーセントデコードしてから洗っているのではない**（`%41` は `A` に戻らないし、`%2522` も
+`%22` に戻らない）。「危険な文字のエンコード形も名指しで潰す」実装になっている。
 
 #### 生レスポンス（ヘッダー抜粋）
 
@@ -1169,7 +1196,7 @@ attachment; filename="=?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= =?UTF-8?B?44G
 {"code":"CB_IL02","id":"...","message":"Invalid request."}
 ```
 
-#### ダブルクォートを含むファイル名がアップロードできない理由
+#### ダブルクォートを含むファイル名で SDK のアップロードが失敗する理由
 
 kintone 側にファイル名の検証があるわけではなく、**クライアントが壊れた multipart を送っている**。
 
@@ -1179,10 +1206,20 @@ kintone 側にファイル名の検証があるわけではなく、**クライ�
   2 つ目の `"` で値が終わってしまう壊れた quoted-string になる。kintone のパーサーはこれを
   読めず「マルチパート形式である必要があります」= GAIA_HM02 を返す
 - 一方 WHATWG 準拠のクライアント（ブラウザ / undici の `FormData`）は `"` を `%22` へ逃がすので
-  multipart は壊れず、アップロードは成功する。このとき保存される名前は `double%22quote.txt` で、
-  **生の `"` はサーバーに届かない**
+  multipart は壊れず、アップロードは成功する。ブラウザの実リクエストでも
+  `filename="double%22quote.txt"` が送られていることを DevTools で確認済み
 
-つまりどの経路でも、生のダブルクォートを含むファイル名がレコードに保存されることはない。
+#### 保存されるファイル名（アップロード時の正規化）
+
+- **WHATWG のエスケープを復元しない。** ブラウザが `filename="double%22quote.txt"` と送ると、
+  レコード取得の添付ファイル `name` も `double%22quote.txt` になる。
+  （undici の multipart パーサーは仕様どおり `%22` / `%0D` / `%0A` を元の文字へ復元するので、
+  エミュレーターは復元された分を入れ直して実機に揃えている）
+- **パス成分は落とす。** `back\slash.txt` → `slash.txt`、`slash/.txt` → `.txt`。
+  生の区切り文字のときだけで、`pct%5Cbackslash.txt` / `pct%2Fslash.txt` はそのまま残る
+
+したがって「生のダブルクォートを含む name」が保存されることはなく、ダウンロード時の
+`Content-Disposition` も（上記の `_` 置換と合わせて）quoted-string が壊れることはない。
 
 ---
 

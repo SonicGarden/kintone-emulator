@@ -159,6 +159,61 @@ describeDualMode("添付ファイルのダウンロード", () => {
     const downloaded = await client.file.downloadFile({ fileKey });
     expect(Buffer.from(downloaded).toString()).toBe("中身");
   });
+
+  /**
+   * WHATWG 準拠のクライアント（ブラウザ / undici の FormData）で 1 ファイル添付し、
+   * 保存された name とダウンロード時の Content-Disposition を返す。
+   * SDK (form-data パッケージ) はエスケープしないので、この経路の検証には使えない。
+   */
+  const uploadViaWhatwg = async (name: string) => {
+    const form = new FormData();
+    form.append("file", new File([Buffer.from("body")], name, { type: "text/plain" }));
+    const up = await fetch(`${getTestBaseUrl(SESSION)}/k/v1/file.json`, {
+      method: "POST",
+      headers: getTestRequestHeaders(),
+      body: form,
+    });
+    const { fileKey } = (await up.json()) as { fileKey: string };
+
+    const { id } = await client.record.addRecord({
+      app: appId,
+      record: { 添付ファイル: { value: [{ fileKey }] } },
+    });
+    const { record } = await client.record.getRecord({ app: appId, id });
+    const value = (record.添付ファイル as { value: { fileKey: string; name: string }[] }).value;
+
+    const dl = await download(value[0]!.fileKey);
+    return { storedName: value[0]!.name, contentDisposition: dl.headers.get("content-disposition") };
+  };
+
+  test("ダブルクォートはエスケープされたまま保存され、ヘッダーでは _ になる", async () => {
+    // ブラウザは filename="double%22quote.txt" として送り、kintone は復元せずそのまま保存する
+    expect(await uploadViaWhatwg('double"quote.txt')).toEqual({
+      storedName: "double%22quote.txt",
+      contentDisposition: 'attachment; filename="double_quote.txt"',
+    });
+  });
+
+  test("ファイル名に使えない文字はヘッダーでのみ _ になる", async () => {
+    expect(await uploadViaWhatwg("colon:star*.txt")).toEqual({
+      storedName: "colon:star*.txt",
+      contentDisposition: 'attachment; filename="colon_star_.txt"',
+    });
+  });
+
+  test("洗ったあとの非 ASCII ファイル名が encoded-word になる", async () => {
+    expect(await uploadViaWhatwg('テスト"引用符.txt')).toEqual({
+      storedName: "テスト%22引用符.txt",
+      contentDisposition: 'attachment; filename="=?UTF-8?B?44OG44K544OIX+W8leeUqOespi50eHQ=?="',
+    });
+  });
+
+  test("パス成分は落として保存される", async () => {
+    expect(await uploadViaWhatwg("back\\slash.txt")).toEqual({
+      storedName: "slash.txt",
+      contentDisposition: 'attachment; filename="slash.txt"',
+    });
+  });
 });
 
 describeDualMode("添付ファイルのアップロード（リクエスト形式エラー）", () => {
@@ -250,7 +305,9 @@ describeDualMode("添付ファイルのアップロード（リクエスト形�
 
   test("WHATWG 準拠のクライアントはダブルクォートを %22 に逃がすのでアップロードできる", async () => {
     // ブラウザ / undici の FormData は multipart を壊さないため、実 kintone でもエラーにならない。
-    // 生のダブルクォートを含むファイル名がサーバーに届かないのはこのため。
+    // ワイヤ上に生のダブルクォートが乗らないのはこのため。ただし「だからその先で気にしなくてよい」
+    // わけではなく、保存名とヘッダーの扱いは別途 normalizeUploadedFilename /
+    // content-disposition.ts が実機に合わせている（上の describe のテストを参照）。
     const form = new FormData();
     form.append("file", new File([Buffer.from("body")], 'double"quote.txt', { type: "text/plain" }));
 

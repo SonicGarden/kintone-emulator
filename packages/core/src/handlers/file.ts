@@ -12,6 +12,26 @@ import {
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
 
+// WHATWG の multipart 直列化が filename に施すエスケープ（ブラウザや undici の FormData が行う）。
+const WHATWG_FILENAME_ESCAPES: Record<string, string> = { '"': "%22", "\r": "%0D", "\n": "%0A" };
+
+/**
+ * アップロードされたファイル名を、実 kintone が保存するのと同じ形に正規化する。
+ *
+ * 1. パス成分を落とす。実機は `back\slash.txt` を `slash.txt`、`slash/.txt` を `.txt` として保存する
+ *    （生の区切り文字のときだけ。`%5C` や `%2F` は文字列として残る）。区切り文字で終わる名前
+ *    （`a/` など）では空文字列になり得るが、この形は実機で未確認
+ * 2. WHATWG のエスケープを戻す。undici の multipart パーサーは仕様どおり `%22` / `%0D` / `%0A` を
+ *    元の文字へ復元するが、実機 (Java) は復元せずエスケープされたまま保存する。
+ *    そのままだとレコード取得の name が実機と食い違い、`"` を含む名前は Content-Disposition の
+ *    quoted-string も壊す。パーサーが戻した分だけ入れ直して実機に揃える。
+ */
+export const normalizeUploadedFilename = (filename: string): string =>
+  filename
+    .split(/[\\/]/)
+    .pop()!
+    .replace(/["\r\n]/g, (char) => WHATWG_FILENAME_ESCAPES[char]!);
+
 // アップロードキー: 実 kintone の一時保管領域キーに合わせて UUID 形式。
 const generateUploadKey = () => crypto.randomUUID();
 // ダウンロードキー: 実 kintone のレコード取得時キーに合わせた長い 16 進文字列。
@@ -64,7 +84,14 @@ export const post = async ({ request, params }: HandlerArgs) => {
 
   const uploadKey = generateUploadKey();
   const downloadKey = generateDownloadKey();
-  const inserted = insertFile(dbSession(params.session), file.name, buffer, file.type, uploadKey, downloadKey);
+  const inserted = insertFile(
+    dbSession(params.session),
+    normalizeUploadedFilename(file.name),
+    buffer,
+    file.type,
+    uploadKey,
+    downloadKey,
+  );
   if (!inserted) {
     return Response.json({ message: 'Failed to upload file.' }, { status: 500 });
   }

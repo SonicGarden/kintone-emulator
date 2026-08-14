@@ -6,17 +6,22 @@
 //   - 非 ASCII を含むファイル名 … 名前全体を RFC 2047 の encoded-word (B encoding / UTF-8) にする
 //     例: `attachment; filename="=?UTF-8?B?44OG44K544OILnR4dA==?="`
 //
-// Why not ダブルクォートをエスケープする: quoted-string を壊し得るのはダブルクォートだけだが、
-// 生のダブルクォートを含むファイル名はそもそも保存され得ない。WHATWG 準拠のクライアント
-// （ブラウザ / undici の FormData）は multipart の `filename="..."` を組み立てる際にダブルクォートを
-// `%22` へ逃がすのでサーバーには届かず、逃がさないクライアント（form-data パッケージ = Node の
-// @kintone/rest-api-client）が送る multipart は壊れていて、アップロードが 400 GAIA_HM02 で弾かれる。
-// エスケープを足すと「実機では起こり得ない入力」への対処がコードに残るだけになる。
+// Why not ダブルクォートをエスケープする: 実機はエスケープせず `_` に置換する（下記
+// INVALID_FILENAME_CHARS）。ファイル名側で潰れるので quoted-string が壊れることはない。
 //
 // Why not RFC 5987 (`filename*=UTF-8''...`): そちらが HTTP 的には現代的な書式だが、
 // 実 kintone は encoded-word を返す。エミュレーターが標準寄りの書式を返すと、
 // ヘッダーをパースする利用側コードが「エミュレーターでは通るのに実 kintone で壊れる」
 // という取りこぼし方をする。忠実さを優先して実機に合わせる。
+
+// 実機はヘッダーに載せる直前にファイル名を洗う（保存されている名前そのものは変えない）。対象は
+// Windows でファイル名に使えない 9 文字 `\ / : * ? " < > |` で、生の文字だけでなく
+// パーセントエンコード形（大文字小文字を問わない）も同じく `_` にする。
+// 例: 保存名 `double%22quote.txt` → ヘッダー `double_quote.txt`
+//
+// Why not 素直にパーセントデコードしてから洗う: 実機は `%41` を `A` に戻さないし、`%2522` も
+// `%22` に戻さない。デコードではなく「危険な文字のエンコード形も名指しで潰す」実装になっている。
+const INVALID_FILENAME_CHARS = /[\\/:*?"<>|]|%(?:22|2a|2f|3a|3c|3e|3f|5c|7c)/gi;
 
 const MIME_CHARSET = "UTF-8";
 const ENCODED_WORD_PREFIX = `=?${MIME_CHARSET}?B?`;
@@ -71,7 +76,11 @@ const pushEncodedWords = (text: string, out: string[]): void => {
  * HTTP ヘッダーは ByteString しか持てないため、ファイル名を素通しすると Response の生成時点で
  * TypeError になり、ルーターの catch が 500 を返してしまう。
  */
-export const attachmentContentDisposition = (filename: string): string => {
+export const attachmentContentDisposition = (rawFilename: string): string => {
+  // 洗ってから ASCII 判定する。`_` への置換で非 ASCII が消えることはないので判定の順序は
+  // 結果を変えないが、実機の出力（例 `テスト_引用符.txt` の encoded-word）と一致させるには
+  // 洗ったあとの名前を符号化する必要がある。
+  const filename = rawFilename.replace(INVALID_FILENAME_CHARS, "_");
   if (isPrintableAscii(filename)) return `attachment; filename="${filename}"`;
 
   const words: string[] = [];
