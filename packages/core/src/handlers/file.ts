@@ -32,6 +32,28 @@ export const normalizeUploadedFilename = (filename: string): string =>
     .pop()!
     .replace(/["\r\n]/g, (char) => WHATWG_FILENAME_ESCAPES[char]!);
 
+// 実機が `;charset=utf-8`（空白なし・小文字）を付ける text 型。これ以外の text/* は
+// `; charset=UTF-8`（空白あり・大文字）になる。2 つの経路がある理由は分からないが、
+// text/plain・text/html・text/xml と、csv/tsv/css/js/markdown/yaml で実測して分かれた。
+const COMPACT_CHARSET_TYPES = new Set(["text/plain", "text/html", "text/xml"]);
+
+/**
+ * ダウンロード応答の Content-Type を実 kintone に合わせる。
+ * 実機は text/* にだけ charset を付ける（`application/json` には付かない）。
+ *
+ * Why not 保存時に付けておく: レコード取得の添付ファイル `contentType` には charset が付かない
+ * （`text/plain` のまま）。付くのはダウンロード応答のヘッダーだけなので、ここで組み立てる。
+ */
+export const downloadContentType = (contentType: string): string => {
+  // 実機の保存 MIME は拡張子由来でパラメーターを持たないため、パラメーター付きは実機では
+  // 起こらない。エミュレーターはクライアント申告をそのまま保存するので来る可能性があり、
+  // その場合は（付いているのが charset かどうかによらず）一切足さずに素通しする。
+  if (!contentType.startsWith("text/") || contentType.includes(";")) return contentType;
+  return COMPACT_CHARSET_TYPES.has(contentType)
+    ? `${contentType};charset=utf-8`
+    : `${contentType}; charset=UTF-8`;
+};
+
 // アップロードキー: 実 kintone の一時保管領域キーに合わせて UUID 形式。
 const generateUploadKey = () => crypto.randomUUID();
 // ダウンロードキー: 実 kintone のレコード取得時キーに合わせた長い 16 進文字列。
@@ -52,7 +74,7 @@ export const get = ({ request, params }: HandlerArgs) => {
   body.set(file.data);
   return new Response(body, {
     headers: {
-      'Content-Type': file.content_type,
+      'Content-Type': downloadContentType(file.content_type),
       'Content-Disposition': attachmentContentDisposition(file.filename),
     },
   });

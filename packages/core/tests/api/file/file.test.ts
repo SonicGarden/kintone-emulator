@@ -165,9 +165,9 @@ describeDualMode("添付ファイルのダウンロード", () => {
    * 保存された name とダウンロード時の Content-Disposition を返す。
    * SDK (form-data パッケージ) はエスケープしないので、この経路の検証には使えない。
    */
-  const uploadViaWhatwg = async (name: string) => {
+  const uploadViaWhatwg = async (name: string, type = "text/plain") => {
     const form = new FormData();
-    form.append("file", new File([Buffer.from("body")], name, { type: "text/plain" }));
+    form.append("file", new File([Buffer.from("body")], name, { type }));
     const up = await fetch(`${getTestBaseUrl(SESSION)}/k/v1/file.json`, {
       method: "POST",
       headers: getTestRequestHeaders(),
@@ -180,38 +180,63 @@ describeDualMode("添付ファイルのダウンロード", () => {
       record: { 添付ファイル: { value: [{ fileKey }] } },
     });
     const { record } = await client.record.getRecord({ app: appId, id });
-    const value = (record.添付ファイル as { value: { fileKey: string; name: string }[] }).value;
+    const value = (
+      record.添付ファイル as { value: { fileKey: string; name: string; contentType: string }[] }
+    ).value;
 
     const dl = await download(value[0]!.fileKey);
-    return { storedName: value[0]!.name, contentDisposition: dl.headers.get("content-disposition") };
+    return {
+      storedName: value[0]!.name,
+      storedContentType: value[0]!.contentType,
+      contentDisposition: dl.headers.get("content-disposition"),
+      contentType: dl.headers.get("content-type"),
+    };
   };
 
   test("ダブルクォートはエスケープされたまま保存され、ヘッダーでは _ になる", async () => {
     // ブラウザは filename="double%22quote.txt" として送り、kintone は復元せずそのまま保存する
-    expect(await uploadViaWhatwg('double"quote.txt')).toEqual({
+    expect(await uploadViaWhatwg('double"quote.txt')).toMatchObject({
       storedName: "double%22quote.txt",
       contentDisposition: 'attachment; filename="double_quote.txt"',
     });
   });
 
   test("ファイル名に使えない文字はヘッダーでのみ _ になる", async () => {
-    expect(await uploadViaWhatwg("colon:star*.txt")).toEqual({
+    expect(await uploadViaWhatwg("colon:star*.txt")).toMatchObject({
       storedName: "colon:star*.txt",
       contentDisposition: 'attachment; filename="colon_star_.txt"',
     });
   });
 
   test("洗ったあとの非 ASCII ファイル名が encoded-word になる", async () => {
-    expect(await uploadViaWhatwg('テスト"引用符.txt')).toEqual({
+    expect(await uploadViaWhatwg('テスト"引用符.txt')).toMatchObject({
       storedName: "テスト%22引用符.txt",
       contentDisposition: 'attachment; filename="=?UTF-8?B?44OG44K544OIX+W8leeUqOespi50eHQ=?="',
     });
   });
 
   test("パス成分は落として保存される", async () => {
-    expect(await uploadViaWhatwg("back\\slash.txt")).toEqual({
+    expect(await uploadViaWhatwg("back\\slash.txt")).toMatchObject({
       storedName: "slash.txt",
       contentDisposition: 'attachment; filename="slash.txt"',
+    });
+  });
+
+  // 保存された contentType には charset が付かず、ダウンロード応答のヘッダーにだけ付く。
+  // 実機は MIME を拡張子から導くので、拡張子と申告 MIME が一致するものだけを使う。
+  //
+  // application/json をここで扱わないのは、e2e (react-router-serve) の express 層が
+  // JSON 応答に `; charset=utf-8` を足してしまい、ハンドラーの出力を検証できないため。
+  // 「application/json には charset が付かない」は downloadContentType の単体テストで押さえている。
+  test.each([
+    ["a.txt", "text/plain", "text/plain;charset=utf-8"],
+    ["a.html", "text/html", "text/html;charset=utf-8"],
+    ["a.csv", "text/csv", "text/csv; charset=UTF-8"],
+    ["a.pdf", "application/pdf", "application/pdf"],
+  ])("%j の Content-Type は %j で保存され %j で返る", async (name, stored, downloaded) => {
+    expect(await uploadViaWhatwg(name, stored)).toMatchObject({
+      storedContentType: stored,
+      contentType: downloaded,
     });
   });
 });

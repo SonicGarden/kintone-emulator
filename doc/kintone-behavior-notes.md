@@ -1136,8 +1136,45 @@ Node.js の `fetch` は `accept-language: *` を自動付与する。**そして
   対象は Windows でファイル名に使えない 9 文字 `\ / : * ? " < > |` で、生の文字だけでなく
   **パーセントエンコード形（大文字小文字問わず）も同じく `_` にする**。
   ダブルクォートもここで潰れるので quoted-string は壊れない
-- `Content-Type` は保存時のものに `;charset=utf-8` が付く（例 `text/plain;charset=utf-8`）。
-  エミュレーターは保存した MIME タイプをそのまま返しており、ここは未追従
+- `Content-Type` は `text/*` にだけ charset が付く（下記）。レコード取得の添付ファイル
+  `contentType` には付かないので、付くのはダウンロード応答のヘッダーだけ
+
+#### ダウンロード応答の `Content-Type`
+
+**`text/*` にだけ charset が付き、しかも書式が 2 通りある**（検証日時 2026-08-14）。
+
+| 保存されている MIME | ダウンロード応答の `Content-Type` |
+|---|---|
+| `text/plain` / `text/html` / `text/xml` | `<type>;charset=utf-8`（空白なし・小文字） |
+| その他の `text/*`（`text/csv` `text/tab-separated-values` `text/css` `text/javascript` `text/markdown` `text/yaml` で確認） | `<type>; charset=UTF-8`（空白あり・大文字） |
+| `text/*` 以外（`application/json` `application/pdf` `application/octet-stream` `application/x-zip-compressed` `image/png` `image/svg+xml`） | そのまま（charset は付かない） |
+
+`application/json` にも付かないので「テキストなら付く」ではなく「`text/*` なら付く」。
+書式が分かれる理由は不明だが、上記 9 型で再現を確認している。
+
+> **エミュレーター側の注意（express 層の乖離）**: `packages/server` を
+> `react-router-serve` で動かすと、**express が `application/json` の応答に
+> `; charset=utf-8` を足す**。ハンドラーは実機どおり `application/json` を返しているが、
+> このプロセス経由（`pnpm start` / `pnpm test:e2e`）では書き換わる。in-process サーバー
+> （`startServer`、`pnpm test` や `@sonicgarden/kintone-emulator` を直接使う経路）では起きない。
+> JSON 添付ファイルのダウンロードに限らず、通常の JSON API 応答にも影響する。未対応。
+
+#### 保存される MIME タイプ（エミュレーター未追従）
+
+**実機は MIME を拡張子から導き、クライアントが申告した Content-Type を採用しない。**
+
+| 送ったファイル名 | 送った Content-Type | 実機が保存する `contentType` |
+|---|---|---|
+| `mismatch.png` | `text/plain` | `image/png` |
+| `mismatch.txt` | `image/png` | `text/plain` |
+| `notype.txt` | （申告なし） | `text/plain` |
+| `a.xml` | `application/xml` | `text/xml` |
+| `a.zip` | `application/zip` | `application/x-zip-compressed` |
+
+kintone は独自の拡張子 → MIME 表を持っている（`.xml` → `text/xml`、`.zip` →
+`application/x-zip-compressed` など Windows 寄りの割り当て）。**エミュレーターは
+クライアント申告をそのまま保存しているので、ここは乖離している。** 追従するには
+kintone の変換表を洗い出す必要があるため未対応。
 
 #### ファイル名の洗い方（生レスポンス）
 
