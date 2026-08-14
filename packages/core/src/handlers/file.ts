@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { dbSession } from "../db/client";
 import { findFile, insertFile } from "../db/files";
+import { attachmentContentDisposition } from "./content-disposition";
 import { errorInvalidInput, errorMessages, errorNotFoundFile } from "./errors";
 import type { HandlerArgs } from "./types";
 import { detectLocale } from "./validate";
@@ -26,7 +27,7 @@ export const get = ({ request, params }: HandlerArgs) => {
   return new Response(body, {
     headers: {
       'Content-Type': file.content_type,
-      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Disposition': attachmentContentDisposition(file.filename),
     },
   });
 };

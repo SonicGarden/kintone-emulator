@@ -1095,6 +1095,51 @@ POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
 - Node.js `fetch` は `accept-language: *` を自動付与する
 - ヘッダー無しとして扱いたいロジックでは `"*"` もデフォルト扱いにする必要がある
 
+### 添付ファイルダウンロードの `Content-Disposition`（検証日時 2026-08-14）
+
+`GET /k/v1/file.json?fileKey=<ダウンロードキー>` の応答ヘッダー。
+
+- printable ASCII のみのファイル名 → `attachment; filename="<名前そのまま>"`。
+  空白・シングルクォート・セミコロンもエスケープしない
+- 非 ASCII を含むファイル名 → 名前**全体**を RFC 2047 の encoded-word（B encoding / UTF-8）にする。
+  RFC 5987 の `filename*=UTF-8''...` は**使わない**
+- Latin-1 の範囲（`ü` など）でも encoded-word になる
+- 長い名前は複数の encoded-word に分割される。「枠いっぱいまで詰めて折る」のではなく
+  **収まるまで文字列を半分ずつに割る**（JavaMail `MimeUtility.encodeWord` の `doEncode` と同じ挙動。
+  枠は `75 - 7 - len("UTF-8")` = 63 バイト）ので、末尾の語だけ他より長くなる
+- ダブルクォートを含むファイル名はアップロードの時点で
+  `400 GAIA_HM02 アップロードするHTTPリクエストの形式が正しくありません。` になる。
+  そのためヘッダー側でダブルクォートをエスケープする必要が生じない
+- `Content-Type` は保存時のものに `;charset=utf-8` が付く（例 `text/plain;charset=utf-8`）。
+  エミュレーターは保存した MIME タイプをそのまま返しており、ここは未追従
+
+#### 生レスポンス（ヘッダー抜粋）
+
+```
+# test.txt
+attachment; filename="test.txt"
+
+# space name.txt / quote'name.txt / semi;colon.txt
+attachment; filename="space name.txt"
+attachment; filename="quote'name.txt"
+attachment; filename="semi;colon.txt"
+
+# テスト.txt
+attachment; filename="=?UTF-8?B?44OG44K544OILnR4dA==?="
+
+# テスト ファイル(1).txt
+attachment; filename="=?UTF-8?B?44OG44K544OIIOODleOCoeOCpOODqygxKS50eHQ=?="
+
+# ümlaut.txt
+attachment; filename="=?UTF-8?B?w7xtbGF1dC50eHQ=?="
+
+# "あ" x60 + ".txt" ― 前半は 8 文字ずつ、末尾の語だけ 12 文字 + ".txt"
+attachment; filename="=?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= =?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= ...(同じ語が計 6 つ)... =?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC44GC44GC44GC44GCLnR4dA==?="
+```
+
+> 実機は encoded-word 間を折り返し（CRLF + SP）で区切っているが、Node の `fetch` で受けると
+> 単一の空白に正規化される。RFC 2047 上どちらも linear-white-space 区切りとして等価。
+
 ---
 
 ## Appendix: 観察用コマンド例
