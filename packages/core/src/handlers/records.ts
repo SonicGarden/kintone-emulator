@@ -1,4 +1,5 @@
 import { computeCalcFields } from "../calc/compute";
+import { findAppNumberPrecision } from "../db/apps";
 import { all, dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import type { FieldRow } from "../db/fields";
@@ -15,7 +16,7 @@ import { applyInitialStatus, getStatusConfig, withStatusFieldRow, type StatusCon
 import { buildFormattedRecord } from "./record-format";
 import type { HandlerArgs } from "./types";
 import type { ValidationErrors } from "./validate";
-import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, roundNumbers, validateRecord } from "./validate";
 import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 // ============================================================
@@ -230,6 +231,7 @@ const prepareRecordsForInsert = (
 ): { prepared: Array<Record<string, { value?: unknown }>>; errors: ValidationErrors } | { lookupError: Response } => {
   const prepared: Array<Record<string, { value?: unknown }>> = [];
   const errors: ValidationErrors = {};
+  const numberPrecision = findAppNumberPrecision(ctx.db, ctx.appId);
   for (let i = 0; i < records.length; i++) {
     const withStatus = applyInitialStatus(ctx.statusConfig, records[i]!);
     const withDefaults = applyDefaults(fieldRows, withStatus);
@@ -239,10 +241,11 @@ const prepareRecordsForInsert = (
     const normalized = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
     // FILE: アップロードキー → ダウンロードキー へ振り替えてから保存
     resolveUploadKeys(ctx.db, normalized, fieldRows);
-    prepared.push(normalized);
+    // 検証は丸める前の値で行う（最大値・最小値の判定。normalizeNumbers のコメント参照）
     const perRecordErrors = validateRecord(fieldRows, normalized, {
-      db: ctx.db, appId: ctx.appId, locale: ctx.locale,
+      db: ctx.db, appId: ctx.appId, locale: ctx.locale, numberPrecision,
     });
+    prepared.push(roundNumbers(fieldRows, normalized, numberPrecision));
     if (perRecordErrors) Object.assign(errors, prefixErrorKeys(perRecordErrors, i));
   }
   return { prepared, errors };
@@ -343,6 +346,7 @@ const prepareRecordsForUpdate = (
 ): { prepared: PreparedUpdate[]; errors: ValidationErrors } | { error: Response } => {
   const prepared: PreparedUpdate[] = [];
   const errors: ValidationErrors = {};
+  const numberPrecision = findAppNumberPrecision(ctx.db, ctx.appId);
   for (let i = 0; i < records.length; i++) {
     const item = records[i]!;
     const resolved = resolveUpdateTarget(ctx.db, ctx.appId, item, ctx.locale);
@@ -357,10 +361,12 @@ const prepareRecordsForUpdate = (
     // FILE: 新規添付のアップロードキーを振り替え（既存の download_key はそのまま保持）
     resolveUploadKeys(ctx.db, merged, fieldRows);
     const perRecordErrors = validateRecord(fieldRows, merged, {
-      db: ctx.db, appId: ctx.appId, excludeId: target.id, locale: ctx.locale,
+      db: ctx.db, appId: ctx.appId, excludeId: target.id, locale: ctx.locale, numberPrecision,
     });
     if (perRecordErrors) Object.assign(errors, prefixErrorKeys(perRecordErrors, i));
-    prepared.push({ targetId: target.id, createdAt: target.created_at, merged });
+    prepared.push({
+      targetId: target.id, createdAt: target.created_at, merged: roundNumbers(fieldRows, merged, numberPrecision),
+    });
   }
   return { prepared, errors };
 };

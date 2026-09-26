@@ -81,14 +81,14 @@ Remix のファイルベースルーティングで kintone API をエミュレ�
 | `($session).k.v1.file[.]json.tsx` | GET/POST `/{session}/k/v1/file.json` |
 | `($session).k.v1.record.comment[.]json.tsx` | POST/DELETE `/{session}/k/v1/record/comment.json` |
 | `($session).k.v1.record.comments[.]json.tsx` | GET `/{session}/k/v1/record/comments.json` |
-| `($session).setup.app[.]json.tsx` | POST `/{session}/setup/app.json`（`records` でレコード一括作成も可能） |
+| `($session).setup.app[.]json.tsx` | POST `/{session}/setup/app.json`（`records` でレコード一括作成、`numberPrecision` で数値精度の指定も可能） |
 
 ### データ層（`packages/core/src/db/`）
 
 - **`client.ts`** — SQLite 接続管理。`dbSession(session?)` でセッション別インメモリDBを返す。`run()`, `all()` でSQL操作を抽象化。singleton 管理も統合
 - **`tables.ts`** — DDL。`createTables()` / `dropTables()` でスキーマを管理
 - **`records.ts`** — レコードの CRUD 操作（findRecord, findRecords, findRecordsByClause, findRecordByKey, insertRecord, updateRecord）
-- **`apps.ts`** — アプリの CRUD 操作（findApp, findApps, insertApp）
+- **`apps.ts`** — アプリの CRUD 操作（findApp, findApps, insertApp, findAppNumberPrecision）
 - **`fields.ts`** — フィールドの CRUD 操作（findFields, findFieldTypes, insertFields, deleteFields）
 - **`files.ts`** — ファイルの CRUD 操作（findFile, insertFile）
 - **`comments.ts`** — コメントの CRUD 操作（findRecordExists, findComments, countComments, insertComment, deleteComment）
@@ -137,7 +137,7 @@ URLプレフィックス（`/{session}/`）でセッションを識別し、セ�
 - `fields` — フォームフィールド定義（`app_id`, `code`, `body` JSON）
 - `records` — レコードデータ（`app_id`, `body` JSON, `revision`）
 - `files` — アップロードファイル（`filename`, `content_type`, `data` BLOB）
-- `apps` — アプリ定義（`name`, `revision`, `layout`, `status` JSON）
+- `apps` — アプリ定義（`name`, `revision`, `layout`, `status` JSON, `number_precision` JSON）
 - `comments` — レコードコメント（`app_id`, `record_id`, `message`, `mentions` JSON）
 
 ## テスト

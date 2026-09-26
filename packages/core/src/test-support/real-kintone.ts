@@ -9,6 +9,8 @@
 // vitest であれば `import.meta.env.MODE` / `import.meta.env.VITE_*` を渡すのが一般的。
 
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
+import type { NumberPrecision } from "../query/number";
+import { DEFAULT_NUMBER_PRECISION } from "../query/number";
 import { getTestEnv, isUsingRealKintone } from "./config";
 import {
   createApp as emulatorCreateApp,
@@ -166,6 +168,8 @@ export type CreateTestAppParams = {
   layout?: unknown[];
   status?: unknown;
   records?: unknown[];
+  /** アプリ設定の数値精度。省略時は既定値 (16 桁 / 小数 4 桁 / HALF_EVEN) */
+  numberPrecision?: NumberPrecision;
 };
 
 export type CreateTestAppResult = { appId: number; recordIds: number[] };
@@ -340,6 +344,11 @@ const lastSetupFieldsHashByAppId = new Map<number, string>();
 // プロセス管理（status）も同様にハッシュキャッシュ。
 // `params.status` が未指定のテストでは触らない（既存テストへの影響を避ける）
 const lastSetupStatusHashByAppId = new Map<number, string>();
+// 数値精度もハッシュキャッシュ。status と違い、未指定のテストでも既定値に戻す:
+// 共有プールのアプリに前のテストの精度が残ると、無関係なテストの NUMBER の保存値が変わるため。
+// キャッシュが無い (このプロセスで初めて触る) アプリは getAppSettings で現在値を確かめ、
+// 既定値のままなら deploy を省く。キャッシュは deploy が成功してから記録する
+const lastSetupPrecisionHashByAppId = new Map<number, string>();
 
 /** オブジェクトのキーを再帰的にソートして決定的な JSON 表現を得るためのヘルパー */
 const sortKeysDeep = (value: unknown): unknown => {
@@ -398,9 +407,26 @@ const setupRealKintoneAppWithId = async (
     }
   }
 
+  const precisionHash = JSON.stringify(sortKeysDeep(params.numberPrecision ?? DEFAULT_NUMBER_PRECISION));
+  let currentPrecisionHash = lastSetupPrecisionHashByAppId.get(appId);
+  if (currentPrecisionHash === undefined) {
+    // preview ではなく運用中の設定と比べる。前回の deploy が失敗していると preview だけが
+    // 目的の値になっていて、preview と比べると更新も deploy も省いてしまうため
+    const { numberPrecision } = await client.app.getAppSettings({ app: appId });
+    currentPrecisionHash = JSON.stringify(sortKeysDeep(numberPrecision));
+  }
+  if (currentPrecisionHash !== precisionHash) {
+    await client.app.updateAppSettings({
+      app: appId,
+      numberPrecision: params.numberPrecision ?? DEFAULT_NUMBER_PRECISION,
+    });
+    needsDeploy = true;
+  }
+
   if (needsDeploy) {
     await deployApp(client, appId);
   }
+  lastSetupPrecisionHashByAppId.set(appId, precisionHash);
 
   // 3. レコード一括追加（実 kintone では $id / システムフィールド / FILE は設定不可）
   const recordIds: number[] = [];

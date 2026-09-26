@@ -61,6 +61,7 @@ const CREATE_TABLE_APPS = dedent`
     status JSON DEFAULT '{"enable":false,"states":null,"actions":null,"revision":"3"}',
     space_id INTEGER,
     thread_id INTEGER,
+    number_precision JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )

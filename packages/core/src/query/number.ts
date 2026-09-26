@@ -74,3 +74,100 @@ export const sqliteNumCmp = (recordValue: unknown, literal: unknown): number | n
   if (!a || !b) return null;
   return compareDecimal(a, b);
 };
+
+// ============================================================
+// 書き込み時の正規化 (NUMBER の保存値)
+// ============================================================
+
+/** アプリ設定の数値精度 (`/k/v1/app/settings.json` の numberPrecision と同形) */
+export type NumberPrecision = {
+  digits: string;
+  decimalPlaces: string;
+  roundingMode: "HALF_EVEN" | "UP" | "DOWN";
+};
+
+/** 実 kintone でアプリを作った直後の値 */
+export const DEFAULT_NUMBER_PRECISION: NumberPrecision = { digits: "16", decimalPlaces: "4", roundingMode: "HALF_EVEN" };
+
+// 書き込み時に受け付ける書式は top-level と SUBTABLE 内で違う (実機観察)。
+// top-level は ASCII 数字で整数部が必須 (`.5` / `５` は「数字でなければなりません」)。
+// SUBTABLE 内は `.5` も全角数字も受け付ける (受け付けない値は "" で保存される)。
+// どちらも `0x10` / `Infinity` / `1_000` は受け付けないので、Number() での判定は使えない
+const WRITTEN_TOP_LEVEL = /^[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/;
+const WRITTEN_SUBTABLE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * 書き込まれた NUMBER の値を解釈する。前後の空白は無視する (実機は `" 5 "` を 5 として保存する)。
+ * 全角数字は U+FF10〜FF19 だけを変換する。他の文字体系の数字は実機で確かめていない
+ */
+export const parseWrittenNumber = (s: string, location: "top" | "subtable"): Decimal | null => {
+  const trimmed = s.trim();
+  if (location === "top") return WRITTEN_TOP_LEVEL.test(trimmed) ? parseDecimal(trimmed) : null;
+  const ascii = trimmed.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  return WRITTEN_SUBTABLE.test(ascii) ? parseDecimal(ascii) : null;
+};
+
+const ZERO: Decimal = { negative: false, digits: "", exponent: 0 };
+
+/** 数字列に 1 を足す。桁が増えたら true を返す ("99" → ["100", true]) */
+const incrementDigits = (digits: string): [string, boolean] => {
+  const chars = digits.split("");
+  for (let i = chars.length - 1; i >= 0; i--) {
+    if (chars[i] !== "9") {
+      chars[i] = String(Number(chars[i]) + 1);
+      return [chars.join(""), false];
+    }
+    chars[i] = "0";
+  }
+  return [`1${chars.join("")}`, true];
+};
+
+/**
+ * 小数第 places 位に丸める。mode は kintone の roundingMode で、実機で確かめた意味は次のとおり:
+ * HALF_EVEN = 最近接偶数への丸め、UP = 0 から遠い方へ切り上げ、DOWN = 0 に近い方へ切り捨て。
+ * 丸めて 0 になったら符号を落とす (実機は -0.00005 を "0" で保存する)
+ */
+export const roundDecimal = (d: Decimal, places: number, mode: NumberPrecision["roundingMode"]): Decimal => {
+  if (d.digits === "") return ZERO;
+  // 残す桁数 (仮数部の先頭から)。これ以降の桁を切る
+  const keep = d.exponent + places;
+  if (keep >= d.digits.length) return d;
+  const kept = keep > 0 ? d.digits.slice(0, keep) : "";
+  const dropped = keep > 0 ? d.digits.slice(keep) : d.digits;
+  // keep < 0 のときは切る位置より上に 0 が並ぶので、切る部分は 0.5 未満
+  const droppedIsBelowHalf = keep < 0 || dropped[0]! < "5";
+  // digits は末尾ゼロを除いてあるので、2 桁以上残っていれば 0.5 ちょうどではない
+  const droppedIsHalf = keep >= 0 && dropped === "5";
+  let roundUp: boolean;
+  switch (mode) {
+    case "DOWN": roundUp = false; break;
+    case "UP":   roundUp = true; break;
+    case "HALF_EVEN":
+      roundUp = droppedIsBelowHalf ? false
+        : droppedIsHalf ? Number(kept.at(-1) ?? "0") % 2 === 1
+        : true;
+      break;
+  }
+  // 切り上げの基準になる桁 (小数第 places 位) の指数。kept が空のときも同じ位置に 1 を立てる
+  const unitExponent = -places + 1;
+  if (!roundUp) {
+    if (kept === "") return ZERO;
+    return { negative: d.negative, digits: kept.replace(/0+$/, ""), exponent: d.exponent };
+  }
+  if (kept === "") return { negative: d.negative, digits: "1", exponent: unitExponent };
+  const [digits, carried] = incrementDigits(kept);
+  return { negative: d.negative, digits: digits.replace(/0+$/, ""), exponent: d.exponent + (carried ? 1 : 0) };
+};
+
+/** 整数部の桁数。0.x や 0 は 0 桁 */
+export const integerDigitCount = (d: Decimal): number => (d.digits === "" ? 0 : Math.max(d.exponent, 0));
+
+/** 指数表記を使わない通常の表記 (実機の保存値の形)。"1e3" → "1000"、"1.50" → "1.5" */
+export const formatPlainDecimal = (d: Decimal): string => {
+  if (d.digits === "") return "0";
+  const sign = d.negative ? "-" : "";
+  const { digits, exponent } = d;
+  if (exponent <= 0) return `${sign}0.${"0".repeat(-exponent)}${digits}`;
+  if (exponent >= digits.length) return `${sign}${digits}${"0".repeat(exponent - digits.length)}`;
+  return `${sign}${digits.slice(0, exponent)}.${digits.slice(exponent)}`;
+};
