@@ -124,18 +124,20 @@ describeDualMode("NUMBER の保存値: 既定の数値精度 (16 桁 / 小数 4 
   });
 
   test.each([
-    ["\uff11\uff12", "12"],
-    ["\uff11.\uff15", "1.5"],
-    ["-\uff15", "-5"],
-    ["\uff11e\uff13", "1000"],
-    ["1\uff12", "12"],
-    ["\uff10.\uff10\uff10\uff10\uff11\uff15", "0.0002"],
-    ["\u3000\uff15\u3000", "5"],
+    ["１２", "12"],
+    ["１.５", "1.5"],
+    ["-５", "-5"],
+    ["１e３", "1000"],
+    ["1２", "12"],
+    ["０.０００１５", "0.0002"],
+    // 前後に全角スペース (U+3000)。見えないのでエスケープで書く
+    ["\u3000５\u3000", "5"],
     // 全角の小数点・符号・e と、U+2212 のマイナスは受け付けない
-    ["\uff11\uff0e\uff15", ""],
-    ["\uff0d\uff15", ""],
-    ["\uff0b\uff15", ""],
-    ["\uff11\uff45\uff13", ""],
+    ["１．５", ""],
+    ["－５", ""],
+    ["＋５", ""],
+    ["１ｅ３", ""],
+    // U+2212 のマイナス「−5」。半角の - と見分けにくいのでエスケープで書く
     ["\u22125", ""],
   ])("SUBTABLE 内は全角数字を数字として読む: %j → %j", async (input, expected) => {
     expect(await writeSub(client, appId, input)).toBe(expected);
@@ -145,12 +147,12 @@ describeDualMode("NUMBER の保存値: 既定の数値精度 (16 桁 / 小数 4 
   });
 
   test.each([
-    ["r", "\uff11\uff11", { "record[r].value": NAN, "record.r.value": { messages: ["10以下である必要があります。"] } }],
-    ["n", "\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19\uff10\uff11\uff12\uff13", {
+    ["r", "１１", { "record[r].value": NAN, "record.r.value": { messages: ["10以下である必要があります。"] } }],
+    ["n", "１２３４５６７８９０１２３", {
       "record[n].value": NAN, "record.n.value": { messages: [DIGITS] },
     }],
     // 全角以外の不正な文字があると、範囲・桁数は判定しない
-    ["n", "\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19\uff10\uff11\uff12\uff13abc", { "record[n].value": NAN }],
+    ["n", "１２３４５６７８９０１２３abc", { "record[n].value": NAN }],
   ] as const)("top-level の全角数字は、数字でないエラーに加えて全角を読んだ値で範囲と桁数も判定する: %s %j", async (field, input, expected) => {
     await expect(client.record.addRecord({ app: appId, record: { [field]: { value: input } } }))
       .rejects.toSatisfy((e: { errors: unknown }) => {

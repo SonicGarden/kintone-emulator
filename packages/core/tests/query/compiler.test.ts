@@ -64,8 +64,8 @@ describe("compile: 基本", () => {
   });
 
   test("NUMBER のクエリ値の全角数字は半角にして比較する", () => {
-    expect(doCompile('num = "\uff11\uff10"').params).toEqual(["0.1e2"]);
-    expect(doCompile('num = "\uff11\uff0e\uff10"').where).toBe("0");
+    expect(doCompile('num = "１０"').params).toEqual(["0.1e2"]);
+    expect(doCompile('num = "１．０"').where).toBe("0");
   });
 
   test("NUMBER の空文字との大小比較は GAIA_IL08", () => {

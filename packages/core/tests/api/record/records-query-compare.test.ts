@@ -46,7 +46,8 @@ describeDualMode("クエリの比較: 型別ルール", () => {
         { label: { value: "empty" }, n: { value: "" }, t: { value: "abc " }, lk: { value: "https://a.jp/abc " },
           items: { value: [{ value: { qty: { value: "" }, name: { value: "abc " } } }] } },
         { label: { value: "-1" }, n: { value: "-1" }, t: { value: " abc" } },
-        { label: { value: "0" }, n: { value: "0" }, t: { value: "abc　" } },
+        // t は末尾に全角スペース (U+3000)
+        { label: { value: "0" }, n: { value: "0" }, t: { value: "abc\u3000" } },
         { label: { value: "0.5" }, n: { value: "0.5" }, t: { value: "abc\t" } },
         { label: { value: "big" }, n: { value: "999999999999.9999" }, t: { value: `${LONG}A` } },
         { label: { value: "big2" }, n: { value: "999999999999.9998" }, t: { value: `${LONG}B` } },
@@ -116,23 +117,24 @@ describeDualMode("クエリの比較: 型別ルール", () => {
     });
 
     test.each([
-      ['n = "\uff15"', ["5"]],
-      ['n = "\uff10.\uff15"', ["0.5"]],
+      ['n = "５"', ["5"]],
+      ['n = "０.５"', ["0.5"]],
       // 符号・小数点・指数は半角なら全角数字と組み合わせられる
-      ['n = "-\uff11"', ["-1"]],
-      ['n = "\uff15e\uff10"', ["5"]],
-      ['n in ("\uff15", "abc")', ["5"]],
-      ['qty in ("\uff15")', ["5"]],
+      ['n = "-１"', ["-1"]],
+      ['n = "５e０"', ["5"]],
+      ['n in ("５", "abc")', ["5"]],
+      ['qty in ("５")', ["5"]],
     ])("全角数字は半角と同じく数値として読む: %s", async (query, expected) => {
       expect(await labels(query)).toEqual(expected);
     });
 
     test.each([
-      'n != "\uff0d\uff11"',
-      'n != "\uff0b\uff15"',
-      'n != "\uff10\uff0e\uff15"',
-      'n != "\uff15\uff45\uff10"',
-      'n != "\u3000\uff15"',
+      'n != "－１"',
+      'n != "＋５"',
+      'n != "０．５"',
+      'n != "５ｅ０"',
+      // 先頭に全角スペース (U+3000)
+      'n != "\u3000５"',
     ])("全角の符号・小数点・e・空白は解釈できない値になる: %s", async (query) => {
       expect(await labels(query)).toEqual([]);
     });
@@ -213,7 +215,8 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       ['t not in ("abc")', ["-1", "0", "0.5", "big", "big2"]],
       // 先頭の空白・全角スペース・タブは区別する
       ['t = " abc"', ["-1"]],
-      ['t = "abc　"', ["0"]],
+      // 末尾に全角スペース (U+3000)
+      ['t = "abc\u3000"', ["0"]],
     ])("末尾の半角スペース: %s", async (query, expected) => {
       expect(await labels(query)).toEqual(expected);
     });

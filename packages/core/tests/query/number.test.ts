@@ -106,12 +106,12 @@ describe("parseWrittenNumber", () => {
   });
 
   test("top-digits は全角数字を読むが、書式は top-level と同じ", () => {
-    expect(formatPlainDecimal(parseWrittenNumber("\uff11\uff11", "top-digits")!)).toBe("11");
-    expect(parseWrittenNumber("\uff11\uff11", "top")).toBeNull();
-    expect(parseWrittenNumber("\uff11\uff11abc", "top-digits")).toBeNull();
+    expect(formatPlainDecimal(parseWrittenNumber("１１", "top-digits")!)).toBe("11");
+    expect(parseWrittenNumber("１１", "top")).toBeNull();
+    expect(parseWrittenNumber("１１abc", "top-digits")).toBeNull();
   });
 
-  test.each(["\uff0e", "\uff0d", "\uff0b", "\uff45"])("全角の %j は数字として扱わない", (c) => {
+  test.each(["．", "－", "＋", "ｅ"])("全角の %j は数字として扱わない", (c) => {
     expect(toHalfWidthDigits(`1${c}5`)).toBe(`1${c}5`);
   });
 });
