@@ -15,36 +15,76 @@ const FIELD_TYPES: FieldTypeMap = {
 
 const NOW = new Date("2026-04-24T02:00:00Z");
 
+// SINGLE_LINE_TEXT / LINK の = / in は末尾の半角スペースを除いた先頭 64 文字で比較する
+const text = (col: string) => `substr(rtrim(COALESCE(${col}, ''), ' '), 1, 64)`;
+
 const doCompile = (q: string) => {
   const ast = parseQuery(q);
   return compile(ast, { fieldTypes: FIELD_TYPES, expandCtx: { now: NOW } });
 };
 
 describe("compile: 基本", () => {
-  test("= 文字列", () => {
-    const c = doCompile('title = "foo"');
-    expect(c.where).toBe("body->>'$.title.value' = ?");
+  test("= 文字列は末尾の半角スペースを除いた先頭 64 文字で比較", () => {
+    const c = doCompile('title = "foo  "');
+    expect(c.where).toBe(`${text("body->>'$.title.value'")} = ?`);
     expect(c.params).toEqual(["foo"]);
   });
 
-  test("数値 >= と <= の AND（NUMBER は REAL にキャストして比較）", () => {
+  test("= 文字列のクエリ値はコードポイント単位で 64 文字に切り詰める", () => {
+    const c = doCompile(`title = "${"𠮷".repeat(65)}"`);
+    expect(c.params).toEqual(["𠮷".repeat(64)]);
+  });
+
+  test("数値 >= と <= の AND（NUMBER は kintone_num_cmp で比較し、未入力は -∞ 扱い）", () => {
     const c = doCompile("num >= 10 and num <= 20");
     expect(c.where).toBe(
-      "(CAST(body->>'$.num.value' AS REAL) >= ?) AND (CAST(body->>'$.num.value' AS REAL) <= ?)",
+      "(COALESCE(kintone_num_cmp(body->>'$.num.value', ?) >= 0, 0)) AND " +
+        "(COALESCE(kintone_num_cmp(body->>'$.num.value', ?) <= 0, 1))",
     );
-    expect(c.params).toEqual([10, 20]);
+    expect(c.params).toEqual(["0.1e2", "0.2e2"]);
+  });
+
+  test("NUMBER の = \"\" は未入力だけに一致", () => {
+    const c = doCompile('num = ""');
+    expect(c.where).toBe("COALESCE(body->>'$.num.value', '') = ''");
+    expect(c.params).toEqual([]);
+  });
+
+  test("NUMBER で数値として解釈できないクエリ値は != でも常に偽", () => {
+    expect(doCompile('num != "5 "').where).toBe("0");
+  });
+
+  test("NUMBER の in は解釈できない要素を無視する", () => {
+    const c = doCompile('num not in ("abc", "", "05")');
+    expect(c.where).toBe(
+      "NOT (COALESCE(body->>'$.num.value', '') = '' OR " +
+        "COALESCE(kintone_num_cmp(body->>'$.num.value', ?) = 0, 0))",
+    );
+    expect(c.params).toEqual(["0.5e1"]);
+  });
+
+  test("NUMBER の空文字との大小比較は GAIA_IL08", () => {
+    expect(() => doCompile('num > ""')).toThrow("クエリの指定が不正です。");
   });
 
   test("レコード番号フィールドは id カラムに", () => {
     const c = doCompile('レコード番号 = 5');
-    expect(c.where).toBe("id = ?");
-    expect(c.params).toEqual([5]);
+    expect(c.where).toBe("COALESCE(kintone_num_cmp(id, ?) = 0, 0)");
+    expect(c.params).toEqual(["0.5e1"]);
   });
 
   test("$id も id カラムに", () => {
     const c = doCompile("$id > 100");
-    expect(c.where).toBe("id > ?");
-    expect(c.params).toEqual([100]);
+    expect(c.where).toBe("COALESCE(kintone_num_cmp(id, ?) > 0, 0)");
+    expect(c.params).toEqual(["0.1e3"]);
+  });
+
+  test("レコード番号は指数表記を解釈しない", () => {
+    expect(doCompile('$id = "5e0"').where).toBe("0");
+  });
+
+  test("order by の NUMBER は REAL にキャストして並べる", () => {
+    expect(doCompile("order by num asc").orderBy).toBe("CAST(body->>'$.num.value' AS REAL) ASC");
   });
 
   test("作成日時 / 更新日時 は datetime(created_at|updated_at) に", () => {
@@ -69,13 +109,13 @@ describe("compile: 基本", () => {
 describe("compile: in / not in", () => {
   test("in 複数値", () => {
     const c = doCompile('title in ("a", "b", "c")');
-    expect(c.where).toBe("body->>'$.title.value' IN (?, ?, ?)");
+    expect(c.where).toBe(`${text("body->>'$.title.value'")} IN (?, ?, ?)`);
     expect(c.params).toEqual(["a", "b", "c"]);
   });
 
   test("not in", () => {
     const c = doCompile('title not in ("x")');
-    expect(c.where).toBe("body->>'$.title.value' NOT IN (?)");
+    expect(c.where).toBe(`${text("body->>'$.title.value'")} NOT IN (?)`);
     expect(c.params).toEqual(["x"]);
   });
 
@@ -214,7 +254,7 @@ describe("compile: order by / limit / offset", () => {
     const c = doCompile(
       'title = "x" order by $id asc, 更新日時 desc limit 50 offset 100',
     );
-    expect(c.where).toBe("body->>'$.title.value' = ?");
+    expect(c.where).toBe(`${text("body->>'$.title.value'")} = ?`);
     expect(c.orderBy).toBe("id ASC, datetime(updated_at) DESC");
     expect(c.limit).toBe(50);
     expect(c.offset).toBe(100);
@@ -236,7 +276,7 @@ describe("compile: SUBTABLE 内フィールド", () => {
     const c = doc('item_name in ("foo")');
     expect(c.where).toBe(
       "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
-        "WHERE sub.value->>'$.value.item_name.value' IN (?))",
+        `WHERE ${text("sub.value->>'$.value.item_name.value'")} IN (?))`,
     );
     expect(c.params).toEqual(["foo"]);
   });
@@ -246,7 +286,7 @@ describe("compile: SUBTABLE 内フィールド", () => {
     expect(c.where).toBe(
       "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub) AND " +
         "NOT EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
-        "WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+        `WHERE ${text("sub.value->>'$.value.item_name.value'")} IN (?)))`,
     );
     expect(c.params).toEqual(["foo"]);
   });
@@ -260,13 +300,13 @@ describe("compile: SUBTABLE 内フィールド", () => {
     expect(c.params).toEqual(["%foo%"]);
   });
 
-  test("SUBTABLE 内の > 比較も EXISTS で実現（NUMBER は REAL にキャスト）", () => {
+  test("SUBTABLE 内の > 比較も EXISTS で実現（NUMBER は kintone_num_cmp で比較）", () => {
     const c = doc('item_qty > 10');
     expect(c.where).toBe(
       "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
-        "WHERE CAST(sub.value->>'$.value.item_qty.value' AS REAL) > ?)",
+        "WHERE COALESCE(kintone_num_cmp(sub.value->>'$.value.item_qty.value', ?) > 0, 0))",
     );
-    expect(c.params).toEqual([10]);
+    expect(c.params).toEqual(["0.1e2"]);
   });
 
   test("SUBTABLE 内 MULTI_LINE_TEXT の is empty", () => {
@@ -300,9 +340,9 @@ describe("compile: SUBTABLE 内フィールド", () => {
   test("SUBTABLE と top-level の混合は AND で結合", () => {
     const c = doc('title = "top" and item_name in ("foo")');
     expect(c.where).toBe(
-      "(body->>'$.title.value' = ?) AND " +
+      `(${text("body->>'$.title.value'")} = ?) AND ` +
       "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub " +
-        "WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+        `WHERE ${text("sub.value->>'$.value.item_name.value'")} IN (?)))`,
     );
     expect(c.params).toEqual(["top", "foo"]);
   });
@@ -311,10 +351,10 @@ describe("compile: SUBTABLE 内フィールド", () => {
     const c = doc('item_name in ("foo") and item_qty > 10');
     expect(c.where).toBe(
       "EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE " +
-        "(sub.value->>'$.value.item_name.value' IN (?)) AND " +
-        "(CAST(sub.value->>'$.value.item_qty.value' AS REAL) > ?))",
+        `(${text("sub.value->>'$.value.item_name.value'")} IN (?)) AND ` +
+        "(COALESCE(kintone_num_cmp(sub.value->>'$.value.item_qty.value', ?) > 0, 0)))",
     );
-    expect(c.params).toEqual(["foo", 10]);
+    expect(c.params).toEqual(["foo", "0.1e2"]);
   });
 
   test("異なる SUBTABLE の AND はマージされず個別 EXISTS", () => {
@@ -326,8 +366,8 @@ describe("compile: SUBTABLE 内フィールド", () => {
       fieldTypes: {}, subtableFields: SUBTABLE_FIELDS_2,
     });
     expect(c.where).toBe(
-      "(EXISTS (SELECT 1 FROM json_each(body, '$.tblA.value') AS sub WHERE sub.value->>'$.value.a_name.value' IN (?))) AND " +
-      "(EXISTS (SELECT 1 FROM json_each(body, '$.tblB.value') AS sub WHERE sub.value->>'$.value.b_name.value' IN (?)))",
+      `(EXISTS (SELECT 1 FROM json_each(body, '$.tblA.value') AS sub WHERE ${text("sub.value->>'$.value.a_name.value'")} IN (?))) AND ` +
+      `(EXISTS (SELECT 1 FROM json_each(body, '$.tblB.value') AS sub WHERE ${text("sub.value->>'$.value.b_name.value'")} IN (?)))`,
     );
     expect(c.params).toEqual(["x", "y"]);
   });
@@ -339,9 +379,17 @@ describe("compile: SUBTABLE 内フィールド", () => {
       "((EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub) AND " +
         "NOT EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE " +
         "(sub.value->>'$.value.item_memo.value' IS NULL OR trim(sub.value->>'$.value.item_memo.value') = '')))) AND " +
-      "(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE sub.value->>'$.value.item_name.value' IN (?)))",
+      `(EXISTS (SELECT 1 FROM json_each(body, '$.items.value') AS sub WHERE ${text("sub.value->>'$.value.item_name.value'")} IN (?)))`,
     );
     expect(c.params).toEqual(["foo"]);
+  });
+
+  test("同一 SUBTABLE の AND にまとめた条件でも選択肢に無い値は GAIA_IQ10", () => {
+    expect(() => compile(parseQuery('item_qty > 10 and item_dd in ("unknown")'), {
+      fieldTypes: FTYPES,
+      subtableFields: { ...SUBTABLE_FIELDS, item_dd: { subtableCode: "items", type: "DROP_DOWN" } },
+      fieldOptions: { item_dd: new Set(["a", "b"]) },
+    })).toThrow("フィールド「item_dd」の項目に「unknown」は存在しません。");
   });
 
   test("SUBTABLE 内を order by に指定するとエラー", () => {

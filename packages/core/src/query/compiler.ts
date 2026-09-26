@@ -4,6 +4,8 @@
 import type { Condition, Expr, FieldRef, OrderBy, Query, Value } from "./ast";
 import type { ExpandContext } from "./functions";
 import { evalFunction } from "./functions";
+import type { Decimal } from "./number";
+import { formatDecimal, parseDecimal, parseRecordNumber } from "./number";
 
 // クエリでサポートされる演算子のセット
 export class CompileError extends Error {
@@ -73,22 +75,50 @@ export type Compiled = {
 /**
  * フィールド参照を SQL の列式に変換する。
  * 比較対象の値の型（日付系かどうか）に応じて datetime() でラップするかを決める。
+ * compare は `=` / `in` などの比較を実機の型別ルールで組み立てる必要があるフィールドの種別
+ * （buildNumericCondition / buildTextCondition を参照）。
  */
-type FieldExpr = { expr: string; wrap?: "datetime" | "date" };
-
-/** NUMBER / CALC は TEXT で保存されているので REAL にキャストしないと SQLite が文字列比較で誤る */
-const numericCast = (expr: string, type: string): string => {
-  if (type === "NUMBER" || type === "CALC") return `CAST(${expr} AS REAL)`;
-  return expr;
+type FieldExpr = {
+  expr: string;
+  wrap?: "datetime" | "date";
+  compare?: "number" | "recordNumber" | "text";
 };
+
+/** 列式に対する比較の種別。未指定のフィールド型は素の SQL 比較にする */
+const compareKind = (type: string): FieldExpr["compare"] => {
+  switch (type) {
+    case "NUMBER":
+    case "CALC":             return "number";
+    case "SINGLE_LINE_TEXT":
+    case "LINK":             return "text";
+    default:                 return undefined;
+  }
+};
+
+/** order by 用の列式。NUMBER / CALC は TEXT で保存されているので REAL にキャストしないと文字列順になる */
+const orderExpr = (ref: FieldExpr): string =>
+  ref.compare === "number" ? `CAST(${ref.expr} AS REAL)` : wrapped(ref);
+
+// 文字列の `=` / `!=` / `in` / `not in` は、末尾の半角スペースを除いた先頭 64 文字で比較される（実機観察。
+// 64 文字はヘルプの「［＝（等しい）］を使用する場合の注意事項」の仕様）。先頭の空白・全角スペース・タブは区別される。
+// 除去と切り詰めのどちらを先に行うかは実機で確かめていない（64 文字目付近に空白があるときだけ結果が変わる）
+const TEXT_COMPARE_LENGTH = 64;
+
+// Array.from でコードポイント単位に切る。SQLite の substr も文字単位なので、サロゲートペアを
+// 2 文字と数える String#slice だと列側と数え方がずれる
+const normalizeTextLiteral = (s: string): string =>
+  Array.from(s.replace(/ +$/, "")).slice(0, TEXT_COMPARE_LENGTH).join("");
+
+const normalizedTextColumn = (col: string): string =>
+  `substr(rtrim(COALESCE(${col}, ''), ' '), 1, ${TEXT_COMPARE_LENGTH})`;
 
 /** トップレベルフィールドの SQL 列式を生成 */
 const topLevelFieldExpr = (field: FieldRef, fieldTypes: FieldTypeMap): FieldExpr => {
-  if (field.type === "id") return { expr: "id" };
+  if (field.type === "id") return { expr: "id", compare: "recordNumber" };
   const code = field.code;
   const type = fieldTypes[code];
   switch (type) {
-    case "RECORD_NUMBER": return { expr: "id" };
+    case "RECORD_NUMBER": return { expr: "id", compare: "recordNumber" };
     case "CREATED_TIME":  return { expr: "created_at", wrap: "datetime" };
     case "UPDATED_TIME":  return { expr: "updated_at", wrap: "datetime" };
     case "DATETIME":      return { expr: `body->>'$.${code}.value'`, wrap: "datetime" };
@@ -97,7 +127,7 @@ const topLevelFieldExpr = (field: FieldRef, fieldTypes: FieldTypeMap): FieldExpr
     // で未選択レコードがヒットする。COALESCE で空文字列に正規化して比較する
     case "DROP_DOWN":     return { expr: `COALESCE(body->>'$.${code}.value', '')` };
     case "STATUS":        return { expr: `body->>'$.${code}.value'` };
-    default:              return { expr: numericCast(`body->>'$.${code}.value'`, type ?? "") };
+    default:              return { expr: `body->>'$.${code}.value'`, compare: compareKind(type ?? "") };
   }
 };
 
@@ -107,7 +137,7 @@ const subtableInnerExpr = (innerCode: string, type: string): FieldExpr => {
   switch (type) {
     case "DATETIME": return { expr: base, wrap: "datetime" };
     case "DATE":     return { expr: base, wrap: "date" };
-    default:         return { expr: numericCast(base, type) };
+    default:         return { expr: base, compare: compareKind(type) };
   }
 };
 
@@ -226,7 +256,7 @@ class Compiler {
       );
     }
     const ref = topLevelFieldExpr(o.field, this.ctx.fieldTypes);
-    return `${wrapped(ref)} ${o.direction.toUpperCase()}`;
+    return `${orderExpr(ref)} ${o.direction.toUpperCase()}`;
   }
 
   private compileExpr(e: Expr): string {
@@ -293,6 +323,8 @@ class Compiler {
     const inners = conds.map((c) => {
       const resolved = resolveField(c.field, this.ctx);
       if (resolved.location !== "subtable") throw new Error("unreachable");
+      // compileCondition と同じ順序で検証する（値の検証 GAIA_IQ10 が演算子の検証より先）
+      this.assertOptionValuesValid(c, resolved);
       assertOperatorAllowed(c.field, resolved, conditionOp(c));
       const innerCode = (c.field as { code: string }).code;
       const ref = subtableInnerExpr(innerCode, resolved.type);
@@ -377,6 +409,14 @@ class Compiler {
 
   /** top-level フィールドに対する条件を SQL 式として生成 */
   private buildSimpleCondition(c: Condition, ref: FieldExpr): string {
+    if (c.type === "cmp" || c.type === "in") {
+      if (ref.compare === "number") return this.buildNumericCondition(c, ref.expr, parseDecimal);
+      if (ref.compare === "recordNumber") return this.buildNumericCondition(c, ref.expr, parseRecordNumber);
+      if (ref.compare === "text") {
+        const text = this.buildTextCondition(c, ref.expr);
+        if (text) return text;
+      }
+    }
     const col = wrapped(ref);
     switch (c.type) {
       case "cmp": {
@@ -446,6 +486,79 @@ class Compiler {
     // 空配列のレコードは返さないのが実 kintone の挙動
     const hasRows = `EXISTS (SELECT 1 FROM ${enumerator} AS sub)`;
     return `(${hasRows} AND NOT ${existsClause})`;
+  }
+
+  /**
+   * NUMBER / CALC / RECORD_NUMBER の比較。実機の挙動（doc/kintone-query-behavior.md「数値の比較」）:
+   * - 未入力は数直線上に無い特殊な値。`=` は `= ""` にだけ一致し、`!=` は常に一致し、
+   *   大小比較では -∞ 扱い（`<` / `<=` に常に一致、`>` / `>=` に一致しない）
+   * - クエリ値が数値として解釈できないと、`=` だけでなく `!=` も大小比較も 0 件になる。
+   *   `!=` を NOT(=) にしないのはこのため。一方 `in` はその要素を無視するだけなので `not in ("abc")` は全件
+   * - 空文字と大小比較すると GAIA_IL08
+   *
+   * kintone_num_cmp は未入力のとき NULL を返すので、演算子ごとの未入力の扱いを COALESCE の既定値で表す。
+   */
+  private buildNumericCondition(
+    c: Condition & { type: "cmp" | "in" },
+    col: string,
+    parse: (s: string) => Decimal | null,
+  ): string {
+    const isEmpty = `COALESCE(${col}, '') = ''`;
+    const equals = (d: Decimal) =>
+      `COALESCE(kintone_num_cmp(${col}, ${this.placeholder(formatDecimal(d))}) = 0, 0)`;
+
+    if (c.type === "in") {
+      const alternatives = c.values.flatMap((v) => {
+        const literal = this.numericLiteral(v);
+        if (literal === "") return [isEmpty];
+        const d = parse(literal);
+        return d ? [equals(d)] : [];
+      });
+      const positive = alternatives.length > 0 ? alternatives.join(" OR ") : "0";
+      return c.negate ? `NOT (${positive})` : `(${positive})`;
+    }
+
+    const literal = this.numericLiteral(c.value);
+    if (literal === "") {
+      if (c.op === "=") return isEmpty;
+      if (c.op === "!=") return `NOT (${isEmpty})`;
+      throw new CompileError("クエリの指定が不正です。", "GAIA_IL08");
+    }
+    const d = parse(literal);
+    if (!d) return "0";
+    const cmp = `kintone_num_cmp(${col}, ${this.placeholder(formatDecimal(d))})`;
+    // 第 2 引数は未入力 (cmp が NULL) のときの結果
+    switch (c.op) {
+      case "=":  return `COALESCE(${cmp} = 0, 0)`;
+      case "!=": return `COALESCE(${cmp} != 0, 1)`;
+      case "<":  return `COALESCE(${cmp} < 0, 1)`;
+      case "<=": return `COALESCE(${cmp} <= 0, 1)`;
+      case ">":  return `COALESCE(${cmp} > 0, 0)`;
+      case ">=": return `COALESCE(${cmp} >= 0, 0)`;
+    }
+  }
+
+  /**
+   * 数値比較のクエリ値を文字列で取り出す。引用符なしの数値は lexer が Number にしているので
+   * 16 桁を超えると丸まるが、AST に元の表記を持たせるほどの需要は無いので String() で戻すだけにしている
+   */
+  private numericLiteral(v: Value): string {
+    const r = this.resolveValue(v, undefined);
+    return String(r.kind === "range" ? r.start : r.literal);
+  }
+
+  /** SINGLE_LINE_TEXT / LINK の `=` / `!=` / `in` / `not in`。それ以外の演算子は null を返して通常の比較に任せる */
+  private buildTextCondition(c: Condition & { type: "cmp" | "in" }, col: string): string | null {
+    const normalized = normalizedTextColumn(col);
+    const literal = (v: Value) => {
+      const r = this.resolveValue(v, undefined);
+      return this.placeholder(normalizeTextLiteral(String(r.kind === "range" ? r.start : r.literal)));
+    };
+    if (c.type === "in") {
+      return `${normalized} ${c.negate ? "NOT IN" : "IN"} (${c.values.map(literal).join(", ")})`;
+    }
+    if (c.op !== "=" && c.op !== "!=") return null;
+    return `${normalized} ${c.op} ${literal(c.value)}`;
   }
 
   private wrapLiteral(placeholder: string, wrap?: "datetime" | "date"): string {
