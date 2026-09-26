@@ -167,7 +167,7 @@ export const roundNumbers = (fieldRows: FieldRow[], record: RecordInput, precisi
     return formatPlainDecimal(roundDecimal(d, Number(precision.decimalPlaces), precision.roundingMode));
   });
 
-// API の仕様では値は文字列だが、JSON の数値で送られても文字列として扱う。
+// 実機は JSON の数値で送られても文字列と同じく正規化・丸めして文字列で保存する。
 // 数値のまま素通しすると、正規化と丸めを経ずに JS の number が保存されてしまう
 const numberCellString = (v: unknown): string | null => {
   if (typeof v === "number") return String(v);

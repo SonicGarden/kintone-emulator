@@ -1,9 +1,7 @@
 import { KintoneRestAPIClient } from "@kintone/rest-api-client";
 import { beforeAll, describe, expect, test } from "vitest";
 import type { NumberPrecision } from "../../../src/query/number";
-import {
-  createTestApp, describeDualMode, describeEmulatorOnly, getTestClient, resetTestEnvironment,
-} from "../../real-kintone";
+import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } from "../../real-kintone";
 
 // NUMBER の保存値の正規化・丸め・桁数検証 (doc/kintone-behavior-notes.md「NUMBER の保存値」)。
 // 実 kintone は精度を変えるたびに deploy が要るので、精度ごとに beforeAll で 1 度だけアプリを作る
@@ -216,11 +214,25 @@ describeDualMode("NUMBER の保存値: 数値精度 30 桁 / 小数 10 桁", () 
   });
 });
 
-describeEmulatorOnly("NUMBER の保存値: 文字列以外の値", () => {
-  test("JSON の数値で送っても文字列として正規化・丸めする", async () => {
-    const { client, appId } = await setup("record-number-precision-json-number");
-    const { id } = await client.record.addRecord({ app: appId, record: { n: { value: 1.23456 as never } } });
+describeDualMode("NUMBER の保存値: 文字列以外の値", () => {
+  let client: KintoneRestAPIClient;
+  let appId: number;
+
+  beforeAll(async () => {
+    ({ client, appId } = await setup("record-number-precision-json-number"));
+  }, 120_000);
+
+  test("JSON の数値で送っても文字列と同じく正規化・丸めする", async () => {
+    const { id } = await client.record.addRecord({
+      app: appId,
+      record: {
+        n: { value: 1.23456 as never },
+        items: { value: [{ value: { qty: { value: 0.00015 as never } } }] },
+      } as never,
+    });
     const { record } = await client.record.getRecord({ app: appId, id });
     expect(record.n!.value).toBe("1.2346");
+    expect((record.items!.value as unknown as Array<{ value: { qty: { value: string } } }>)[0]!.value.qty.value)
+      .toBe("0.0002");
   });
 });
