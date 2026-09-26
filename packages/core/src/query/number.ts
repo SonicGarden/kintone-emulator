@@ -133,11 +133,18 @@ const incrementDigits = (digits: string): [string, boolean] => {
 };
 
 /**
- * 小数第 places 位に丸める。mode は kintone の roundingMode で、実機で確かめた意味は次のとおり:
- * HALF_EVEN = 最近接偶数への丸め、UP = 0 から遠い方へ切り上げ、DOWN = 0 に近い方へ切り捨て。
+ * 丸めかた。HALF_EVEN / UP / DOWN は kintone の roundingMode、HALF_UP は計算式の ROUND 関数用
+ * (実機は ROUND(-2.5, 0) = -3、ROUND(1.25, 1) = 1.3 で、0 から遠い方への四捨五入)
+ */
+export type RoundingMode = NumberPrecision["roundingMode"] | "HALF_UP";
+
+/**
+ * 小数第 places 位に丸める (places が負なら整数部の位)。mode の意味は実機で確かめたとおり:
+ * HALF_EVEN = 最近接偶数への丸め、UP = 0 から遠い方へ切り上げ、DOWN = 0 に近い方へ切り捨て、
+ * HALF_UP = 0 から遠い方への四捨五入。
  * 丸めて 0 になったら符号を落とす (実機は -0.00005 を "0" で保存する)
  */
-export const roundDecimal = (d: Decimal, places: number, mode: NumberPrecision["roundingMode"]): Decimal => {
+export const roundDecimal = (d: Decimal, places: number, mode: RoundingMode): Decimal => {
   if (d.digits === "") return ZERO;
   // 残す桁数 (仮数部の先頭から)。これ以降の桁を切る
   const keep = d.exponent + places;
@@ -157,6 +164,7 @@ export const roundDecimal = (d: Decimal, places: number, mode: NumberPrecision["
         : droppedIsHalf ? Number(kept.at(-1) ?? "0") % 2 === 1
         : true;
       break;
+    case "HALF_UP": roundUp = !droppedIsBelowHalf; break;
   }
   // 切り上げの基準になる桁 (小数第 places 位) の指数。kept が空のときも同じ位置に 1 を立てる
   const unitExponent = -places + 1;
@@ -181,3 +189,79 @@ export const formatPlainDecimal = (d: Decimal): string => {
   if (exponent >= digits.length) return `${sign}${digits}${"0".repeat(exponent - digits.length)}`;
   return `${sign}${digits.slice(0, exponent)}.${digits.slice(exponent)}`;
 };
+
+// ============================================================
+// 四則演算 (計算フィールド用)
+// ============================================================
+// Decimal を「整数 coef × 10^-scale」に直して BigInt で計算する。
+// 計算式の値は演算のたびに数値精度 (整数部 20 桁 / 小数部 10 桁まで) に丸めて桁数を検査するので、
+// BigInt の桁数は入力長の数倍に収まる
+
+type Scaled = { coef: bigint; scale: number };
+
+const toScaled = (d: Decimal): Scaled => {
+  if (d.digits === "") return { coef: 0n, scale: 0 };
+  const shift = d.exponent - d.digits.length;
+  const magnitude = shift >= 0 ? BigInt(d.digits + "0".repeat(shift)) : BigInt(d.digits);
+  return { coef: d.negative ? -magnitude : magnitude, scale: shift >= 0 ? 0 : -shift };
+};
+
+const fromScaled = ({ coef, scale }: Scaled): Decimal => {
+  const negative = coef < 0n;
+  const d = parseDecimal(`${negative ? -coef : coef}e-${scale}`)!;
+  return d.digits === "" ? d : { ...d, negative };
+};
+
+const align = (a: Scaled, b: Scaled): [bigint, bigint, number] => {
+  const scale = Math.max(a.scale, b.scale);
+  return [a.coef * 10n ** BigInt(scale - a.scale), b.coef * 10n ** BigInt(scale - b.scale), scale];
+};
+
+export const addDecimal = (a: Decimal, b: Decimal): Decimal => {
+  const [x, y, scale] = align(toScaled(a), toScaled(b));
+  return fromScaled({ coef: x + y, scale });
+};
+
+export const negateDecimal = (d: Decimal): Decimal => (d.digits === "" ? d : { ...d, negative: !d.negative });
+
+export const subtractDecimal = (a: Decimal, b: Decimal): Decimal => addDecimal(a, negateDecimal(b));
+
+export const multiplyDecimal = (a: Decimal, b: Decimal): Decimal => {
+  const x = toScaled(a);
+  const y = toScaled(b);
+  return fromScaled({ coef: x.coef * y.coef, scale: x.scale + y.scale });
+};
+
+/** a / b を小数第 places 位に mode で丸めた値。b が 0 なら null */
+export const divideDecimal = (a: Decimal, b: Decimal, places: number, mode: RoundingMode): Decimal | null => {
+  if (b.digits === "") return null;
+  const x = toScaled(a);
+  const y = toScaled(b);
+  // a / b × 10^places = (x.coef × 10^(y.scale + places)) / (y.coef × 10^x.scale)
+  const numerator = x.coef * 10n ** BigInt(Math.max(0, y.scale + places));
+  const denominator = y.coef * 10n ** BigInt(x.scale + Math.max(0, -(y.scale + places)));
+  const negative = (numerator < 0n) !== (denominator < 0n);
+  const n = numerator < 0n ? -numerator : numerator;
+  const m = denominator < 0n ? -denominator : denominator;
+  let q = n / m;
+  const r = n % m;
+  const twice = r * 2n;
+  const roundUp = r === 0n ? false
+    : mode === "DOWN" ? false
+    : mode === "UP" ? true
+    : mode === "HALF_UP" ? twice >= m
+    : twice > m || (twice === m && q % 2n === 1n);
+  if (roundUp) q += 1n;
+  return fromScaled({ coef: negative ? -q : q, scale: places });
+};
+
+/** 整数乗。負の指数は 1 / base^|exp| を小数第 places 位に丸める。0 の負の乗は null */
+export const powerDecimal = (base: Decimal, exponent: number, places: number, mode: RoundingMode): Decimal | null => {
+  const one = parseDecimal("1")!;
+  let result = one;
+  for (let i = 0; i < Math.abs(exponent); i++) result = multiplyDecimal(result, base);
+  return exponent >= 0 ? result : divideDecimal(one, result, places, mode);
+};
+
+/** Decimal を JS の number にする。日時の書式化など、整数の秒として扱う箇所だけで使う */
+export const decimalToNumber = (d: Decimal): number => Number(formatPlainDecimal(d));
