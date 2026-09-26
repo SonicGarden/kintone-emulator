@@ -95,6 +95,14 @@ GET /k/v1/file.json?fileKey=xxx  (en)
 
 検証アカウントは「Web ブラウザーの設定に従う」設定で、他の API は `Accept-Language` ヘッダー無し時に日本語が返るが、**429 だけはヘッダー無しで英語が返った**。429 は他の API 経路（アプリレベル）と異なる層で生成されており、デフォルトロケールの解決が違う可能性がある。エミュレーターはこの細かい挙動までは再現せず、auth エラーの方針 (commit `0cc7617`) に揃えて `ja` または ヘッダー無し → 日本語 / `en` → 英語 で実装している。
 
+> **追記（2026-08-14）: この「429 だけ特殊」は 429 の特殊性ではない可能性が高い。**
+> 後述の「undici fetch の自動ヘッダー」で分かったとおり、実機は `Accept-Language: *` を
+> 「ヘッダー無し」と区別して en に倒す。429 の検証は concurrency 300〜500 を張る
+> TypeScript スクリプトで行われており Node の `fetch` を使っていたはずで、その場合
+> `accept-language: *` が自動付与される。一方この節以外の生レスポンスは Appendix のとおり
+> `curl`（ヘッダー無し）で採取されている。つまり「429 だけ英語」ではなく
+> 「429 の測定だけ `*` を送っていた」で説明がつく。429 自体での再測定はしていないので断定はしない。
+
 #### 生レスポンス
 
 ```
@@ -1092,8 +1100,184 @@ POST /k/v1/preview/app/form/fields.json  body={app:<APP_ID>,...}
 
 ### undici fetch の自動ヘッダー
 
-- Node.js `fetch` は `accept-language: *` を自動付与する
-- ヘッダー無しとして扱いたいロジックでは `"*"` もデフォルト扱いにする必要がある
+Node.js の `fetch` は `accept-language: *` を自動付与する。**そして実機はこの `*` を
+「ヘッダー無し」とは別物として扱い、en に倒す**（検証日時 2026-08-14、`node:https` で
+ヘッダーを直接制御して測定。検証アカウントの表示言語設定は「Webブラウザーの設定に従う」）。
+
+| `Accept-Language` | 実機 |
+|---|---|
+| （ヘッダーを送らない） | ja |
+| `*` | **en** |
+| `ja` | ja |
+| `en` | en |
+
+3 つの経路（`POST /k/v1/file.json` の GAIA_HM02、`GET /k/v1/app.json` の GAIA_AP01、
+`GET /k/v1/file.json` の GAIA_BL01）すべてで同じ結果だったので、特定 API の癖ではない。
+
+- **エミュレーターの `detectLocale` は `*` を ja 扱いにするので乖離している**（`"*"` を
+  「ヘッダー無し」と同一視しているため）。実機に合わせるなら `*` → en だが、`Accept-Language`
+  を明示せず raw `fetch` を使っている既存テストが日本語メッセージを期待しているため、
+  そちらの追従とセットで直す必要がある
+- dual-mode テストでメッセージ本文を比較する場合は `Accept-Language` を明示すること
+
+### 添付ファイルダウンロードの `Content-Disposition`（検証日時 2026-08-14）
+
+`GET /k/v1/file.json?fileKey=<ダウンロードキー>` の応答ヘッダー。
+
+- printable ASCII のみのファイル名 → `attachment; filename="<名前そのまま>"`。
+  空白・シングルクォート・セミコロンもエスケープしない
+- 非 ASCII を含むファイル名 → 名前**全体**を RFC 2047 の encoded-word（B encoding / UTF-8）にする。
+  RFC 5987 の `filename*=UTF-8''...` は**使わない**
+- Latin-1 の範囲（`ü` など）でも encoded-word になる
+- 長い名前は複数の encoded-word に分割される。「枠いっぱいまで詰めて折る」のではなく
+  **収まるまで文字列を半分ずつに割る**（JavaMail `MimeUtility.encodeWord` の `doEncode` と同じ挙動。
+  枠は `75 - 7 - len("UTF-8")` = 63 バイト）ので、末尾の語だけ他より長くなる
+- **ヘッダーに載せる直前にファイル名を洗う**（保存されている名前そのものは変えない）。
+  対象は Windows でファイル名に使えない 9 文字 `\ / : * ? " < > |` で、生の文字だけでなく
+  **パーセントエンコード形（大文字小文字問わず）も同じく `_` にする**。
+  ダブルクォートもここで潰れるので quoted-string は壊れない
+- `Content-Type` は `text/*` にだけ charset が付く（下記）。レコード取得の添付ファイル
+  `contentType` には付かないので、付くのはダウンロード応答のヘッダーだけ
+
+#### ダウンロード応答の `Content-Type`
+
+**`text/*` にだけ charset が付き、しかも書式が 2 通りある**（検証日時 2026-08-14）。
+
+| 保存されている MIME | ダウンロード応答の `Content-Type` |
+|---|---|
+| `text/plain` / `text/html` / `text/xml` | `<type>;charset=utf-8`（空白なし・小文字） |
+| その他の `text/*`（`text/csv` `text/tab-separated-values` `text/css` `text/javascript` `text/markdown` `text/yaml` で確認） | `<type>; charset=UTF-8`（空白あり・大文字） |
+| `text/*` 以外（`application/json` `application/pdf` `application/octet-stream` `application/x-zip-compressed` `image/png` `image/svg+xml`） | そのまま（charset は付かない） |
+
+`application/json` にも付かないので「テキストなら付く」ではなく「`text/*` なら付く」。
+書式が分かれる理由は不明だが、上記 9 型で再現を確認している。
+
+> **エミュレーター側の注意（express 層の乖離）**: `packages/server` を
+> `react-router-serve` で動かすと、**express が `application/json` の応答に
+> `; charset=utf-8` を足す**。ハンドラーは実機どおり `application/json` を返しているが、
+> このプロセス経由（`pnpm start` / `pnpm test:e2e`）では書き換わる。in-process サーバー
+> （`startServer`、`pnpm test` や `@sonicgarden/kintone-emulator` を直接使う経路）では起きない。
+> JSON 添付ファイルのダウンロードに限らず、通常の JSON API 応答にも影響する。未対応。
+
+#### 保存される MIME タイプ（エミュレーター未追従）
+
+**実機は MIME を拡張子から導き、クライアントが申告した Content-Type を採用しない。**
+
+| 送ったファイル名 | 送った Content-Type | 実機が保存する `contentType` |
+|---|---|---|
+| `mismatch.png` | `text/plain` | `image/png` |
+| `mismatch.txt` | `image/png` | `text/plain` |
+| `notype.txt` | （申告なし） | `text/plain` |
+| `a.xml` | `application/xml` | `text/xml` |
+| `a.zip` | `application/zip` | `application/x-zip-compressed` |
+
+kintone は独自の拡張子 → MIME 表を持っている（`.xml` → `text/xml`、`.zip` →
+`application/x-zip-compressed` など Windows 寄りの割り当て）。**エミュレーターは
+クライアント申告をそのまま保存しているので、ここは乖離している。** 追従するには
+kintone の変換表を洗い出す必要があるため未対応。
+
+#### ファイル名の洗い方（生レスポンス）
+
+| 保存されている name | `Content-Disposition` |
+|---|---|
+| `double%22quote.txt` | `attachment; filename="double_quote.txt"` |
+| `q%22uote.txt` | `attachment; filename="q_uote.txt"` |
+| `lower%22.txt` / `lower%3a.txt` / `lower%2f.txt` | `attachment; filename="lower_.txt"` |
+| `lt<gt>.txt` | `attachment; filename="lt_gt_.txt"` |
+| `colon:.txt` / `star*.txt` / `question?.txt` / `pipe\|.txt` | `attachment; filename="colon_.txt"` など |
+| `star%2A.txt` / `question%3F.txt` / `lt%3C.txt` / `gt%3E.txt` / `pipe%7C.txt` | 同上 |
+| `テスト%22引用符.txt` | `attachment; filename="=?UTF-8?B?44OG44K544OIX+W8leeUqOespi50eHQ=?="`（= `テスト_引用符.txt`） |
+
+**触らない例**（パーセントエンコードでも危険な文字でなければ素通し）:
+
+| 保存されている name | `Content-Disposition` |
+|---|---|
+| `pct%41letterA.txt` | `attachment; filename="pct%41letterA.txt"` |
+| `pct%2522double.txt` | `attachment; filename="pct%2522double.txt"` |
+| `lf%0A.txt` / `cr%0D.txt` / `tab%09.txt` | そのまま |
+| `percent%.txt` / `bad%zz.txt` / `trail%.txt` | そのまま |
+| `hash#.txt` / `at@.txt` / `tilde~.txt` / `eq=amp&.txt` / `paren().txt` / `bracket[].txt` / `brace{}.txt` / `plus+.txt` / `comma,.txt` | そのまま |
+
+つまり**パーセントデコードしてから洗っているのではない**（`%41` は `A` に戻らないし、`%2522` も
+`%22` に戻らない）。「危険な文字のエンコード形も名指しで潰す」実装になっている。
+
+#### 生レスポンス（ヘッダー抜粋）
+
+```
+# test.txt
+attachment; filename="test.txt"
+
+# space name.txt / quote'name.txt / semi;colon.txt
+attachment; filename="space name.txt"
+attachment; filename="quote'name.txt"
+attachment; filename="semi;colon.txt"
+
+# テスト.txt
+attachment; filename="=?UTF-8?B?44OG44K544OILnR4dA==?="
+
+# テスト ファイル(1).txt
+attachment; filename="=?UTF-8?B?44OG44K544OIIOODleOCoeOCpOODqygxKS50eHQ=?="
+
+# ümlaut.txt
+attachment; filename="=?UTF-8?B?w7xtbGF1dC50eHQ=?="
+
+# "あ" x60 + ".txt" ― 前半は 8 文字ずつ、末尾の語だけ 12 文字 + ".txt"
+attachment; filename="=?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= =?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC?= ...(同じ語が計 6 つ)... =?UTF-8?B?44GC44GC44GC44GC44GC44GC44GC44GC44GC44GC44GC44GCLnR4dA==?="
+```
+
+> 実機は encoded-word 間を折り返し（CRLF + SP）で区切っているが、Node の `fetch` で受けると
+> 単一の空白に正規化される。RFC 2047 上どちらも linear-white-space 区切りとして等価。
+
+### 添付ファイルアップロードのリクエスト形式エラー（検証日時 2026-08-14）
+
+`POST /k/v1/file.json` は失敗の段階によって 2 つのコードを返し分ける。
+
+**multipart として解釈できない → `400 GAIA_HM02`**
+
+| ケース |
+|---|
+| `Content-Type` が multipart でない（例 `application/json`） |
+| `boundary` が本文と一致しない |
+| part ヘッダーの quoted-string が壊れている（`filename="double"quote.txt"`） |
+
+```
+{"code":"GAIA_HM02","id":"...","message":"アップロードするHTTPリクエストの形式が正しくありません。HTTPリクエストはマルチパート形式である必要があります。"}
+{"code":"GAIA_HM02","id":"...","message":"The HTTP request format to upload a file is not valid. The HTTP request must be in multipart format."}
+```
+
+**multipart としては読めたが `file` を取り出せない → `400 CB_IL02`**
+
+`file` パートが無い / `file` がファイルではなくただの文字列 / 空の multipart のいずれも同じ。
+
+```
+{"code":"CB_IL02","id":"...","message":"不正なリクエストです。"}
+{"code":"CB_IL02","id":"...","message":"Invalid request."}
+```
+
+#### ダブルクォートを含むファイル名で SDK のアップロードが失敗する理由
+
+kintone 側にファイル名の検証があるわけではなく、**クライアントが壊れた multipart を送っている**。
+
+- `@kintone/rest-api-client`（Node）は `form-data` パッケージを使う。これは part ヘッダーを
+  `'filename="' + name + '"'` と素で連結するのでエスケープされず、
+  `Content-Disposition: form-data; name="file"; filename="double"quote.txt"` という
+  2 つ目の `"` で値が終わってしまう壊れた quoted-string になる。kintone のパーサーはこれを
+  読めず「マルチパート形式である必要があります」= GAIA_HM02 を返す
+- 一方 WHATWG 準拠のクライアント（ブラウザ / undici の `FormData`）は `"` を `%22` へ逃がすので
+  multipart は壊れず、アップロードは成功する。ブラウザの実リクエストでも
+  `filename="double%22quote.txt"` が送られていることを DevTools で確認済み
+
+#### 保存されるファイル名（アップロード時の正規化）
+
+- **WHATWG のエスケープを復元しない。** ブラウザが `filename="double%22quote.txt"` と送ると、
+  レコード取得の添付ファイル `name` も `double%22quote.txt` になる。
+  （undici の multipart パーサーは仕様どおり `%22` / `%0D` / `%0A` を元の文字へ復元するので、
+  エミュレーターは復元された分を入れ直して実機に揃えている）
+- **パス成分は落とす。** `back\slash.txt` → `slash.txt`、`slash/.txt` → `.txt`。
+  生の区切り文字のときだけで、`pct%5Cbackslash.txt` / `pct%2Fslash.txt` はそのまま残る
+
+したがって「生のダブルクォートを含む name」が保存されることはなく、ダウンロード時の
+`Content-Disposition` も（上記の `_` 置換と合わせて）quoted-string が壊れることはない。
 
 ---
 
