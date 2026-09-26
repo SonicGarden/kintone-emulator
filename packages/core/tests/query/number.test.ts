@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   compareDecimal, formatPlainDecimal, integerDigitCount, parseDecimal, parseRecordNumber, parseWrittenNumber, roundDecimal,
+  toHalfWidthDigits,
 } from "../../src/query/number";
 
 const cmp = (a: string, b: string) => compareDecimal(parseDecimal(a)!, parseDecimal(b)!);
@@ -102,5 +103,15 @@ describe("parseWrittenNumber", () => {
 
   test.each(["0x10", "Infinity", "1_000"])("SUBTABLE 内も %j は受け付けない", (s) => {
     expect(parseWrittenNumber(s, "subtable")).toBeNull();
+  });
+
+  test("top-digits は全角数字を読むが、書式は top-level と同じ", () => {
+    expect(formatPlainDecimal(parseWrittenNumber("\uff11\uff11", "top-digits")!)).toBe("11");
+    expect(parseWrittenNumber("\uff11\uff11", "top")).toBeNull();
+    expect(parseWrittenNumber("\uff11\uff11abc", "top-digits")).toBeNull();
+  });
+
+  test.each(["\uff0e", "\uff0d", "\uff0b", "\uff45"])("全角の %j は数字として扱わない", (c) => {
+    expect(toHalfWidthDigits(`1${c}5`)).toBe(`1${c}5`);
   });
 });

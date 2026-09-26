@@ -15,6 +15,13 @@ const NUMBER_LITERAL = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/;
 // RECORD_NUMBER / $id は整数だけを受け付ける。`462e0` / `462.0` は一致しない (実機観察)
 const RECORD_NUMBER_LITERAL = /^[+-]?\d+$/;
 
+/**
+ * 全角数字 (U+FF10〜FF19) を半角にする。実機はクエリ値と SUBTABLE 内の書き込み値で全角数字を数字として読む。
+ * 全角の `．` `－` `＋` `ｅ` は読まない (実機観察) ので変換しない。他の文字体系の数字は確かめていない
+ */
+export const toHalfWidthDigits = (s: string): string =>
+  s.replace(/[\uff10-\uff19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+
 /** NUMBER / CALC の値・クエリ値を解釈する。数値として解釈できなければ null */
 export const parseDecimal = (s: string): Decimal | null => {
   const m = NUMBER_LITERAL.exec(s);
@@ -92,19 +99,22 @@ export const DEFAULT_NUMBER_PRECISION: NumberPrecision = { digits: "16", decimal
 // 書き込み時に受け付ける書式は top-level と SUBTABLE 内で違う (実機観察)。
 // top-level は ASCII 数字で整数部が必須 (`.5` / `５` は「数字でなければなりません」)。
 // SUBTABLE 内は `.5` も全角数字も受け付ける (受け付けない値は "" で保存される)。
-// どちらも `0x10` / `Infinity` / `1_000` は受け付けないので、Number() での判定は使えない
+// どちらも `0x10` / `Infinity` / `1_000` は受け付けないので、Number() での判定は使えない。
+// "top-digits" は top-level の範囲・桁数の判定用。実機は top-level の全角数字を「数字でなければなりません」で
+// 弾きつつ、全角数字を読んだ値で最大値・最小値と有効桁数も判定してエラーを重ねて返す
 const WRITTEN_TOP_LEVEL = /^[+-]?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?$/;
 const WRITTEN_SUBTABLE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 /**
  * 書き込まれた NUMBER の値を解釈する。前後の空白は無視する (実機は `" 5 "` を 5 として保存する)。
- * 全角数字は U+FF10〜FF19 だけを変換する。他の文字体系の数字は実機で確かめていない
+ * "top-digits" の書式は top-level と同じで、`.5` を範囲・桁数の判定で読むかは確かめていない
  */
-export const parseWrittenNumber = (s: string, location: "top" | "subtable"): Decimal | null => {
+export const parseWrittenNumber = (s: string, location: "top" | "top-digits" | "subtable"): Decimal | null => {
   const trimmed = s.trim();
   if (location === "top") return WRITTEN_TOP_LEVEL.test(trimmed) ? parseDecimal(trimmed) : null;
-  const ascii = trimmed.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-  return WRITTEN_SUBTABLE.test(ascii) ? parseDecimal(ascii) : null;
+  const ascii = toHalfWidthDigits(trimmed);
+  const pattern = location === "top-digits" ? WRITTEN_TOP_LEVEL : WRITTEN_SUBTABLE;
+  return pattern.test(ascii) ? parseDecimal(ascii) : null;
 };
 
 const ZERO: Decimal = { negative: false, digits: "", exponent: 0 };

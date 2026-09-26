@@ -8,6 +8,9 @@ import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } 
 
 const LONG = "x".repeat(64);
 
+/** 半角数字を全角数字 (U+FF10〜FF19) にする */
+const fullWidth = (s: string) => s.replace(/[0-9]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+
 describeDualMode("クエリの比較: 型別ルール", () => {
   const SESSION = "records-query-compare";
   let client: KintoneRestAPIClient;
@@ -112,6 +115,28 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       expect(await labels(query)).toEqual(expected);
     });
 
+    test.each([
+      ['n = "\uff15"', ["5"]],
+      ['n = "\uff10.\uff15"', ["0.5"]],
+      // 符号・小数点・指数は半角なら全角数字と組み合わせられる
+      ['n = "-\uff11"', ["-1"]],
+      ['n = "\uff15e\uff10"', ["5"]],
+      ['n in ("\uff15", "abc")', ["5"]],
+      ['qty in ("\uff15")', ["5"]],
+    ])("全角数字は半角と同じく数値として読む: %s", async (query, expected) => {
+      expect(await labels(query)).toEqual(expected);
+    });
+
+    test.each([
+      'n != "\uff0d\uff11"',
+      'n != "\uff0b\uff15"',
+      'n != "\uff10\uff0e\uff15"',
+      'n != "\uff15\uff45\uff10"',
+      'n != "\u3000\uff15"',
+    ])("全角の符号・小数点・e・空白は解釈できない値になる: %s", async (query) => {
+      expect(await labels(query)).toEqual([]);
+    });
+
     test.each(['n > ""', 'n < ""', 'n >= ""', 'n <= ""'])("空文字との大小比較 %s は GAIA_IL08", async (query) => {
       await expect(labels(query)).rejects.toMatchObject({ code: "GAIA_IL08" });
     });
@@ -137,6 +162,13 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       [(i: string) => `レコード番号 in ("0${i}")`],
       [(i: string) => `$id = "0${i}"`],
     ])("先頭ゼロと符号は正規化する: %s", async (q) => {
+      expect(await labels(q(id()))).toEqual(["empty"]);
+    });
+
+    test.each([
+      [(i: string) => `レコード番号 = "${fullWidth(i)}"`],
+      [(i: string) => `$id = "+${fullWidth(i)}"`],
+    ])("全角数字も数値として読む: %s", async (q) => {
       expect(await labels(q(id()))).toEqual(["empty"]);
     });
 

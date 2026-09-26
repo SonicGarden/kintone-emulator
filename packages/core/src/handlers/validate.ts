@@ -388,11 +388,15 @@ const validateRanges = (
     if (def.type !== "NUMBER") continue;
     const raw = record[code]?.value;
     if (raw == null || raw === "") continue;
-    const d = parseWrittenNumber(String(raw), location);
+    let d = parseWrittenNumber(String(raw), location);
     if (!d) {
-      // SUBTABLE 内の解釈不能値は normalizeNumbers が "" にしているのでここには来ない
+      // SUBTABLE 内の解釈不能値は normalizeNumbers が "" にしているのでここには来ない。
+      // 仮に来ても、top-level の書式は SUBTABLE の書式の部分集合なので下の "top-digits" も必ず失敗する
       addError(errors, `record[${code}].value`, m.nan);
-      continue;
+      // 実機は全角数字の値を「数字でなければなりません」で弾いたうえで、全角数字を読んだ値で
+      // 範囲と有効桁数も判定する (エラーが重なって返る)。全角以外の不正な文字があれば判定しない
+      d = parseWrittenNumber(String(raw), "top-digits");
+      if (!d) continue;
     }
     const max = parseBound(def.maxValue);
     const min = parseBound(def.minValue);
