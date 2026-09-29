@@ -2,6 +2,7 @@
 // baseUrl のホストは `configureTestEnv({ emulatorHost })` で指定する（未指定なら
 // `process.env.TEST_PORT` を参照した `localhost:<port>` にフォールバック）。
 
+import type { NumberPrecision } from "../query/number";
 import { getTestEnv } from "./config";
 
 const getHost = (): string => {
@@ -66,6 +67,7 @@ export const createApp = async (
     spaceId?: number;
     threadId?: number;
     webhooks?: { url: string; events: string[] }[];
+    numberPrecision?: NumberPrecision;
   },
 ): Promise<CreateAppResult> => {
   const response = await fetch(`${baseUrl}/setup/app.json`, {

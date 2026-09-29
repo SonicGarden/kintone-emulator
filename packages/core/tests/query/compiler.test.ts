@@ -63,6 +63,11 @@ describe("compile: 基本", () => {
     expect(c.params).toEqual(["0.5e1"]);
   });
 
+  test("NUMBER のクエリ値の全角数字は半角にして比較する", () => {
+    expect(doCompile('num = "１０"').params).toEqual(["0.1e2"]);
+    expect(doCompile('num = "１．０"').where).toBe("0");
+  });
+
   test("NUMBER の空文字との大小比較は GAIA_IL08", () => {
     expect(() => doCompile('num > ""')).toThrow("クエリの指定が不正です。");
   });

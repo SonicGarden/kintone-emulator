@@ -1,5 +1,6 @@
 import type { KintoneRecordField } from '@kintone/rest-api-client';
 import { computeCalcFields } from "../calc/compute";
+import { findAppNumberPrecision } from "../db/apps";
 import { dbSession } from "../db/client";
 import { findFields } from "../db/fields";
 import { findRecord, findRecordByKey, insertRecord, updateRecord } from "../db/records";
@@ -11,7 +12,7 @@ import { applyInitialStatus, getStatusConfig, withStatusFieldRow } from "./proce
 import { buildFormattedRecord } from "./record-format";
 import { FIELD_CODE_PATTERN } from "./records";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, validateRecord, validationErrorResponse } from "./validate";
+import { applyDefaults, attachFieldTypes, detectLocale, formatKintoneDateTime, mergeSubtableRows, normalizeDropDown, normalizeNumbers, roundNumbers, validateRecord, validationErrorResponse } from "./validate";
 import { dispatchWebhookEvent, webhookUrlOptions } from "./webhook-dispatch";
 
 type Record = {
@@ -68,9 +69,11 @@ export const post = async ({ request, params }: HandlerArgs) => {
   const withDefaults = applyDefaults(fieldRows, withStatus);
   const lookupResult = applyLookups(fieldRows, withDefaults, { db, locale });
   if (lookupResult.error) return lookupResult.error;
-  const record = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
-  const errors = validateRecord(fieldRows, record, { db, appId: body.app, locale });
+  const normalized = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, lookupResult.record));
+  const numberPrecision = findAppNumberPrecision(db, body.app);
+  const errors = validateRecord(fieldRows, normalized, { db, appId: body.app, locale, numberPrecision });
   if (errors) return validationErrorResponse(errors, locale);
+  const record = roundNumbers(fieldRows, normalized, numberPrecision);
 
   // FILE: アップロードキー → ダウンロードキー へ振り替えてから保存
   resolveUploadKeys(db, record, fieldRows);
@@ -128,15 +131,18 @@ export const put = async ({ request, params }: HandlerArgs) => {
   const lookupResult = applyLookups(fieldRows, incomingRecord, { db, locale });
   if (lookupResult.error) return lookupResult.error;
   const beforeNormalize = { ...existingBody, ...lookupResult.record };
-  const mergedRecord = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, beforeNormalize));
+  const normalized = normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, beforeNormalize));
+  const numberPrecision = findAppNumberPrecision(db, body.app);
 
-  const errors = validateRecord(fieldRows, mergedRecord, {
+  const errors = validateRecord(fieldRows, normalized, {
     db,
     appId: body.app,
     excludeId: target.id,
     locale,
+    numberPrecision,
   });
   if (errors) return validationErrorResponse(errors, locale);
+  const mergedRecord = roundNumbers(fieldRows, normalized, numberPrecision);
 
   // FILE: 新規添付のアップロードキーを振り替え（既存の download_key はそのまま保持）
   resolveUploadKeys(db, mergedRecord, fieldRows);

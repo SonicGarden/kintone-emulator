@@ -18,7 +18,7 @@
 | `getTestBaseUrl(session)` | emulator は `http://<host>/<session>-<pid>`、real は `https://<domain>.cybozu.com` |
 | `getTestAuth()` | emulator: `{ apiToken: "test" }` / real: `{ username, password }` |
 | `getTestClient(session)` | 上記を組み合わせた `KintoneRestAPIClient` |
-| `createTestApp(session, params)` | emulator: `/setup/app.json`、real: `addFormFields + deploy + addRecords` を一貫した API で実行。`{ appId, recordIds }` を返す |
+| `createTestApp(session, params)` | emulator: `/setup/app.json`、real: `addFormFields + deploy + addRecords` を一貫した API で実行。`{ appId, recordIds }` を返す。`numberPrecision` でアプリの数値精度を指定できる（real では省略時も既定値に戻す） |
 | `createTestSpaceApp(session, params)` | スペース所属（通常 / ゲスト）アプリを準備。emulator は `setupSpace + createApp`、real は env の `spaceApps` / `guestSpaceApps` から指定 index を選んで setup。`{ appId, spaceId, recordIds }` を返す |
 | `getTestSpaceApps()` / `getTestGuestSpaceApps()` | env で渡された通常 / ゲストスペース所属アプリ一覧を返す |
 | `setupTestAuth(session, user, password)` | emulator 専用の `/setup/auth.json`（real では no-op） |

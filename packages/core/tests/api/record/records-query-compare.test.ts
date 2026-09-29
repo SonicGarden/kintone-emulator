@@ -8,6 +8,9 @@ import { createTestApp, describeDualMode, getTestClient, resetTestEnvironment } 
 
 const LONG = "x".repeat(64);
 
+/** 半角数字を全角数字 (U+FF10〜FF19) にする */
+const fullWidth = (s: string) => s.replace(/[0-9]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+
 describeDualMode("クエリの比較: 型別ルール", () => {
   const SESSION = "records-query-compare";
   let client: KintoneRestAPIClient;
@@ -43,7 +46,8 @@ describeDualMode("クエリの比較: 型別ルール", () => {
         { label: { value: "empty" }, n: { value: "" }, t: { value: "abc " }, lk: { value: "https://a.jp/abc " },
           items: { value: [{ value: { qty: { value: "" }, name: { value: "abc " } } }] } },
         { label: { value: "-1" }, n: { value: "-1" }, t: { value: " abc" } },
-        { label: { value: "0" }, n: { value: "0" }, t: { value: "abc　" } },
+        // t は末尾に全角スペース (U+3000)
+        { label: { value: "0" }, n: { value: "0" }, t: { value: "abc\u3000" } },
         { label: { value: "0.5" }, n: { value: "0.5" }, t: { value: "abc\t" } },
         { label: { value: "big" }, n: { value: "999999999999.9999" }, t: { value: `${LONG}A` } },
         { label: { value: "big2" }, n: { value: "999999999999.9998" }, t: { value: `${LONG}B` } },
@@ -72,6 +76,18 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       ['n > "999999999999.9998"', ["big"]],
       ['n = "999999999999.99990"', ["big"]],
     ])("%s は正規化後の値で比較する", async (query, expected) => {
+      expect(await labels(query)).toEqual(expected);
+    });
+
+    test.each([
+      // 保存時と違い、クエリ値はアプリの数値精度 (既定は小数 4 桁) で丸めない
+      ['n = "0.50001"', []],
+      ['n = "4.99999"', []],
+      ['n < "0.50001"', ["empty", "-1", "0", "0.5", "unset"]],
+      ['n > "0.49999"', ["5", "0.5", "big", "big2"]],
+      // 整数部が桁数を超えるクエリ値もエラーにせずそのまま比べる
+      ['n < "1234567890123"', ["5", "empty", "-1", "0", "0.5", "big", "big2", "unset"]],
+    ])("クエリ値は丸めずに比べる: %s", async (query, expected) => {
       expect(await labels(query)).toEqual(expected);
     });
 
@@ -112,6 +128,29 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       expect(await labels(query)).toEqual(expected);
     });
 
+    test.each([
+      ['n = "５"', ["5"]],
+      ['n = "０.５"', ["0.5"]],
+      // 符号・小数点・指数は半角なら全角数字と組み合わせられる
+      ['n = "-１"', ["-1"]],
+      ['n = "５e０"', ["5"]],
+      ['n in ("５", "abc")', ["5"]],
+      ['qty in ("５")', ["5"]],
+    ])("全角数字は半角と同じく数値として読む: %s", async (query, expected) => {
+      expect(await labels(query)).toEqual(expected);
+    });
+
+    test.each([
+      'n != "－１"',
+      'n != "＋５"',
+      'n != "０．５"',
+      'n != "５ｅ０"',
+      // 先頭に全角スペース (U+3000)
+      'n != "\u3000５"',
+    ])("全角の符号・小数点・e・空白は解釈できない値になる: %s", async (query) => {
+      expect(await labels(query)).toEqual([]);
+    });
+
     test.each(['n > ""', 'n < ""', 'n >= ""', 'n <= ""'])("空文字との大小比較 %s は GAIA_IL08", async (query) => {
       await expect(labels(query)).rejects.toMatchObject({ code: "GAIA_IL08" });
     });
@@ -137,6 +176,13 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       [(i: string) => `レコード番号 in ("0${i}")`],
       [(i: string) => `$id = "0${i}"`],
     ])("先頭ゼロと符号は正規化する: %s", async (q) => {
+      expect(await labels(q(id()))).toEqual(["empty"]);
+    });
+
+    test.each([
+      [(i: string) => `レコード番号 = "${fullWidth(i)}"`],
+      [(i: string) => `$id = "+${fullWidth(i)}"`],
+    ])("全角数字も数値として読む: %s", async (q) => {
       expect(await labels(q(id()))).toEqual(["empty"]);
     });
 
@@ -181,7 +227,8 @@ describeDualMode("クエリの比較: 型別ルール", () => {
       ['t not in ("abc")', ["-1", "0", "0.5", "big", "big2"]],
       // 先頭の空白・全角スペース・タブは区別する
       ['t = " abc"', ["-1"]],
-      ['t = "abc　"', ["0"]],
+      // 末尾に全角スペース (U+3000)
+      ['t = "abc\u3000"', ["0"]],
     ])("末尾の半角スペース: %s", async (query, expected) => {
       expect(await labels(query)).toEqual(expected);
     });

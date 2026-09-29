@@ -5,7 +5,7 @@ import type { Condition, Expr, FieldRef, OrderBy, Query, Value } from "./ast";
 import type { ExpandContext } from "./functions";
 import { evalFunction } from "./functions";
 import type { Decimal } from "./number";
-import { formatDecimal, parseDecimal, parseRecordNumber } from "./number";
+import { formatDecimal, parseDecimal, parseRecordNumber, toHalfWidthDigits } from "./number";
 
 // クエリでサポートされる演算子のセット
 export class CompileError extends Error {
@@ -539,12 +539,13 @@ class Compiler {
   }
 
   /**
-   * 数値比較のクエリ値を文字列で取り出す。引用符なしの数値は lexer が Number にしているので
-   * 16 桁を超えると丸まるが、AST に元の表記を持たせるほどの需要は無いので String() で戻すだけにしている
+   * 数値比較のクエリ値を文字列で取り出す。実機は全角数字を数字として読むので半角にしておく。
+   * 引用符なしの数値は lexer が Number にしているので 16 桁を超えると丸まるが、
+   * AST に元の表記を持たせるほどの需要は無いので String() で戻すだけにしている
    */
   private numericLiteral(v: Value): string {
     const r = this.resolveValue(v, undefined);
-    return String(r.kind === "range" ? r.start : r.literal);
+    return toHalfWidthDigits(String(r.kind === "range" ? r.start : r.literal));
   }
 
   /** SINGLE_LINE_TEXT / LINK の `=` / `!=` / `in` / `not in`。それ以外の演算子は null を返して通常の比較に任せる */

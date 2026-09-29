@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import type { FieldRow } from "../db/fields";
 import { findRecordsByKey } from "../db/records";
+import type { Decimal, NumberPrecision } from "../query/number";
+import {
+  compareDecimal, DEFAULT_NUMBER_PRECISION, formatPlainDecimal, integerDigitCount, parseDecimal, parseWrittenNumber,
+  roundDecimal,
+} from "../query/number";
 
 // 検証・defaultValue の対象外のタイプ（自動計算・レイアウトなど）
 const SKIP_TYPES = new Set([
@@ -51,6 +56,7 @@ type Messages = {
   maxValue: (v: string) => string;
   minValue: (v: string) => string;
   nan: string;
+  digits: string;
   notInOptions: (v: string) => string;
 };
 
@@ -64,6 +70,7 @@ const MESSAGES: Record<Locale, Messages> = {
     maxValue:  (v) => `${v}以下である必要があります。`,
     minValue:  (v) => `${v}以上である必要があります。`,
     nan:       "数字でなければなりません。",
+    digits:    "有効桁数を超えています。",
     notInOptions: (v) => `"${v}"は選択肢にありません。`,
   },
   en: {
@@ -75,6 +82,7 @@ const MESSAGES: Record<Locale, Messages> = {
     maxValue:  (v) => `The value must be ${v} or less.`,
     minValue:  (v) => `The value must be ${v} or more.`,
     nan:       "Only numbers are allowed.",
+    digits:    "The number of digits exceeds the maximum allowed.",
     notInOptions: (v) => `The value, "${v}", is not in options.`,
   },
 };
@@ -129,14 +137,49 @@ const nowTime = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes()
 // SUBTABLE 行 ID。既存 ID は保持し、無ければ生成
 const generateRowId = () => crypto.randomBytes(6).toString("hex");
 
-// NUMBER を実 kintone の保存時挙動に合わせて正規化する。
+// NUMBER を実 kintone の保存時挙動に合わせて正規化する。値は失わない (丸めは roundNumbers で行う)。
+// 丸めをここでしないのは、実機が最大値・最小値を丸める前の値で判定するため
+// (maxValue 10 に 10.00004 を書くと、小数第 4 位に丸めれば 10 なのにエラーになる)。
 // 共通:
-//   - Number() で解釈可能 → String(Number(value)) に置換（例: "1.5e1" → "15", " 42 " → "42"）
+//   - 解釈可能 → 指数表記を展開した通常の表記に置換（例: "1.5e1" → "15", " 42 " → "42"）
 // top-level NUMBER:
-//   - 解釈不能（"abc" 等） → そのまま残す（後段の validateRanges が `record[<code>].value` でエラー化）
+//   - 解釈不能（"abc" / ".5" 等） → そのまま残す（後段の validateRanges が `record[<code>].value` でエラー化）
 // SUBTABLE 内 NUMBER:
 //   - 解釈不能 → "" に置換（実機はエラーにならず空文字列で保存する）
-export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): RecordInput => {
+// 受け付ける書式は parseWrittenNumber を参照。
+export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): RecordInput =>
+  mapNumberCells(fieldRows, record, (v, location) => {
+    const d = parseWrittenNumber(v, location);
+    if (!d) return location === "subtable" ? "" : v;
+    // `1e999999` のような値を展開すると巨大な文字列になる。桁数の検証で弾かれるか
+    // 丸めで 0 になる値なので、元の表記のまま後段に渡す
+    return Math.abs(d.exponent) <= MAX_EXPANDED_EXPONENT ? formatPlainDecimal(d) : v;
+  });
+
+/** 数値精度の digits の上限は 30 なので、これを超える指数は必ず桁数超過か丸めで 0 になる */
+const MAX_EXPANDED_EXPONENT = 64;
+
+/** 検証を通ったレコードの NUMBER をアプリの数値精度で丸める。保存直前に呼ぶ */
+export const roundNumbers = (fieldRows: FieldRow[], record: RecordInput, precision: NumberPrecision): RecordInput =>
+  mapNumberCells(fieldRows, record, (v, location) => {
+    const d = parseWrittenNumber(v, location);
+    if (!d) return v;
+    return formatPlainDecimal(roundDecimal(d, Number(precision.decimalPlaces), precision.roundingMode));
+  });
+
+// 実機は JSON の数値で送られても文字列と同じく正規化・丸めして文字列で保存する。
+// 数値のまま素通しすると、正規化と丸めを経ずに JS の number が保存されてしまう
+const numberCellString = (v: unknown): string | null => {
+  if (typeof v === "number") return String(v);
+  return typeof v === "string" && v !== "" ? v : null;
+};
+
+/** top-level と SUBTABLE 内の NUMBER の、空でない値を置き換える */
+const mapNumberCells = (
+  fieldRows: FieldRow[],
+  record: RecordInput,
+  fn: (value: string, location: "top" | "subtable") => string,
+): RecordInput => {
   const result: RecordInput = { ...record };
   for (const row of fieldRows) {
     const def = JSON.parse(row.body) as FieldDef;
@@ -144,13 +187,9 @@ export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): Re
     if (def.type === "NUMBER") {
       const cell = result[row.code];
       if (cell == null) continue;
-      const v = cell.value;
-      if (typeof v !== "string" || v === "") continue;
-      const n = Number(v);
-      if (Number.isFinite(n)) {
-        result[row.code] = { ...cell, value: String(n) };
-      }
-      // 非数値は放置（validateRanges がエラー化する）
+      const v = numberCellString(cell.value);
+      if (v == null) continue;
+      result[row.code] = { ...cell, value: fn(v, "top") };
       continue;
     }
 
@@ -166,10 +205,9 @@ export const normalizeNumbers = (fieldRows: FieldRow[], record: RecordInput): Re
         for (const code of numberCodes) {
           const cell = val[code];
           if (cell == null) continue;
-          const v = cell.value;
-          if (typeof v !== "string" || v === "") continue;
-          const n = Number(v);
-          val[code] = { ...cell, value: Number.isFinite(n) ? String(n) : "" };
+          const v = numberCellString(cell.value);
+          if (v == null) continue;
+          val[code] = { ...cell, value: fn(v, "subtable") };
         }
         return { ...r, value: val };
       });
@@ -330,27 +368,48 @@ const validateLengths = (fields: ParsedField[], record: RecordInput, errors: Val
   }
 };
 
-const validateRanges = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages, prefix: string) => {
+const parseBound = (v: string | undefined): Decimal | null =>
+  v != null && v !== "" ? parseDecimal(v) : null;
+
+// 最大値・最小値は丸める前の値で、桁数は丸めた後の値で判定する（実機観察）。
+// 丸めた後で見るのは、16 桁 / 小数 4 桁の設定で 999999999999.99995 が 1000000000000 に繰り上がって
+// 整数部 13 桁になり弾かれる一方、5 桁 / 小数 2 桁の設定で 1.99999 が 2 として保存されるため
+// （丸める前の全体の桁数で判定すると後者も弾かれてしまう）
+const validateRanges = (
+  fields: ParsedField[],
+  record: RecordInput,
+  errors: ValidationErrors,
+  m: Messages,
+  prefix: string,
+  precision: NumberPrecision,
+) => {
+  const location = prefix === "record" ? "top" : "subtable";
   for (const { code, def } of fields) {
     if (def.type !== "NUMBER") continue;
     const raw = record[code]?.value;
     if (raw == null || raw === "") continue;
-    const s = String(raw);
-    const n = Number(s);
-    if (!Number.isFinite(n)) {
-      // ブラケット記法は top-level のみ（SUBTABLE 内の非数値は実 kintone でも NaN を許容する模様）
-      if (prefix === "record") {
-        addError(errors, `record[${code}].value`, m.nan);
-      }
-      continue;
+    let d = parseWrittenNumber(String(raw), location);
+    if (!d) {
+      // SUBTABLE 内の解釈不能値は normalizeNumbers が "" にしているのでここには来ない。
+      // 仮に来ても、top-level の書式は SUBTABLE の書式の部分集合なので下の "top-digits" も必ず失敗する
+      addError(errors, `record[${code}].value`, m.nan);
+      // 実機は全角数字の値を「数字でなければなりません」で弾いたうえで、全角数字を読んだ値で
+      // 範囲と有効桁数も判定する (エラーが重なって返る)。全角以外の不正な文字があれば判定しない
+      d = parseWrittenNumber(String(raw), "top-digits");
+      if (!d) continue;
     }
-    const max = def.maxValue != null && def.maxValue !== "" ? Number(def.maxValue) : null;
-    const min = def.minValue != null && def.minValue !== "" ? Number(def.minValue) : null;
-    if (max != null && n > max) {
+    const max = parseBound(def.maxValue);
+    const min = parseBound(def.minValue);
+    if (max && compareDecimal(d, max) > 0) {
       addError(errors, `${prefix}.${code}.value`, m.maxValue(def.maxValue!));
     }
-    if (min != null && n < min) {
+    if (min && compareDecimal(d, min) < 0) {
       addError(errors, `${prefix}.${code}.value`, m.minValue(def.minValue!));
+    }
+    const decimalPlaces = Number(precision.decimalPlaces);
+    const rounded = roundDecimal(d, decimalPlaces, precision.roundingMode);
+    if (integerDigitCount(rounded) > Number(precision.digits) - decimalPlaces) {
+      addError(errors, `${prefix}.${code}.value`, m.digits);
     }
   }
 };
@@ -388,7 +447,7 @@ const validateUnique = (
   record: RecordInput,
   errors: ValidationErrors,
   m: Messages,
-  ctx: ValidateContext
+  ctx: ValidateContext & { numberPrecision: NumberPrecision }
 ) => {
   // unique は top-level かつ、実機が unique 属性を保持する 5 タイプに限定:
   //   SINGLE_LINE_TEXT / NUMBER / LINK / DATE / DATETIME
@@ -397,14 +456,22 @@ const validateUnique = (
   for (const { code, def } of fields) {
     if (!def.unique) continue;
     if (!UNIQUE_TYPES.has(def.type)) continue;
-    const v = record[code]?.value;
-    if (typeof v !== "string" || v === "") continue;
+    const raw = record[code]?.value;
+    if (typeof raw !== "string" || raw === "") continue;
+    // 保存済みの値は丸めてあるので、NUMBER は丸めた後の値で重複を探す
+    const v = def.type === "NUMBER" ? roundedNumberString(raw, ctx.numberPrecision) : raw;
     const rows = findRecordsByKey(ctx.db, ctx.appId, code, v);
     const duplicate = rows.some((r) => ctx.excludeId == null || String(r.id) !== String(ctx.excludeId));
     if (duplicate) {
       addError(errors, `record.${code}.value`, m.unique);
     }
   }
+};
+
+const roundedNumberString = (v: string, precision: NumberPrecision): string => {
+  const d = parseWrittenNumber(v, "top");
+  if (!d) return v;
+  return formatPlainDecimal(roundDecimal(d, Number(precision.decimalPlaces), precision.roundingMode));
 };
 
 const UNIQUE_TYPES = new Set([
@@ -416,7 +483,13 @@ const UNIQUE_TYPES = new Set([
 ]);
 
 // SUBTABLE 各行の内部フィールドに対して required / 長さ / 範囲 / options を再帰検証
-const validateSubtables = (fields: ParsedField[], record: RecordInput, errors: ValidationErrors, m: Messages) => {
+const validateSubtables = (
+  fields: ParsedField[],
+  record: RecordInput,
+  errors: ValidationErrors,
+  m: Messages,
+  precision: NumberPrecision,
+) => {
   for (const { code, def } of fields) {
     if (def.type !== "SUBTABLE" || !def.fields) continue;
     const rows = record[code]?.value;
@@ -427,7 +500,7 @@ const validateSubtables = (fields: ParsedField[], record: RecordInput, errors: V
       const rowPrefix = `record.${code}.value[${i}].value`;
       validateRequired(subFields, rowValue, errors, m, rowPrefix);
       validateLengths(subFields, rowValue, errors, m, rowPrefix);
-      validateRanges(subFields, rowValue, errors, m, rowPrefix);
+      validateRanges(subFields, rowValue, errors, m, rowPrefix, precision);
       validateOptions(subFields, rowValue, errors, m, rowPrefix);
     });
   }
@@ -438,6 +511,11 @@ export type ValidateContext = {
   appId: number | string;
   excludeId?: number | string;
   locale?: Locale;
+  /**
+   * アプリの数値精度 (findAppNumberPrecision)。NUMBER の桁数検証と重複判定に使う。
+   * 省略可能にしているのは、validateRecord がパッケージの公開エントリに含まれるため
+   */
+  numberPrecision?: NumberPrecision;
 };
 
 export const validateRecord = (
@@ -448,12 +526,13 @@ export const validateRecord = (
   const fields = parseFields(fieldRows);
   const errors: ValidationErrors = {};
   const m = MESSAGES[ctx.locale ?? "ja"];
+  const numberPrecision = ctx.numberPrecision ?? DEFAULT_NUMBER_PRECISION;
   validateRequired(fields, record, errors, m, "record");
   validateLengths(fields, record, errors, m, "record");
-  validateRanges(fields, record, errors, m, "record");
+  validateRanges(fields, record, errors, m, "record", numberPrecision);
   validateOptions(fields, record, errors, m, "record");
-  validateUnique(fields, record, errors, m, ctx);
-  validateSubtables(fields, record, errors, m);
+  validateUnique(fields, record, errors, m, { ...ctx, numberPrecision });
+  validateSubtables(fields, record, errors, m, numberPrecision);
   return Object.keys(errors).length > 0 ? errors : null;
 };
 

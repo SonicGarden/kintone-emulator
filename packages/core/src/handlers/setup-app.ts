@@ -5,11 +5,13 @@ import { dbSession } from "../db/client";
 import { findFields, insertFields } from "../db/fields";
 import type { FieldProperties } from "../db/fields";
 import { insertRecord } from "../db/records";
+import type { NumberPrecision } from "../query/number";
+import { DEFAULT_NUMBER_PRECISION } from "../query/number";
 import { errorFieldNotFound, errorInvalidCalcFormat, errorInvalidFormula } from "./errors";
 import { validateLookupMappings } from "./lookup-validation";
 import { applyInitialStatus, type StatusConfig } from "./process-status";
 import type { HandlerArgs } from "./types";
-import { applyDefaults, detectLocale, normalizeDropDown } from "./validate";
+import { applyDefaults, detectLocale, normalizeDropDown, normalizeNumbers, roundNumbers } from "./validate";
 import { parseWebhookEntries, replaceWebhooks } from "./webhook";
 
 // 実 kintone ではアプリ作成時にシステムフィールド（レコード番号 / 作成日時 / 更新日時 等）が常に存在する。
@@ -39,6 +41,31 @@ const toPositiveInt = (value: unknown): number | undefined => {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0) return undefined;
   return n;
+};
+
+const ROUNDING_MODES = new Set(["HALF_EVEN", "UP", "DOWN"]);
+
+/**
+ * `numberPrecision` を実 kintone のアプリ設定と同じ範囲で検証し、文字列に揃える。
+ * 範囲は kintone の設定画面の上限 (digits 1〜30 / decimalPlaces 0〜10)。
+ * digits < decimalPlaces の組み合わせを実機がどう扱うかは確かめていないので、ここでは拒否する
+ */
+const parseNumberPrecision = (raw: unknown): NumberPrecision | { error: string } | undefined => {
+  if (raw == null) return undefined;
+  const r = raw as Partial<Record<keyof NumberPrecision, unknown>>;
+  const digits = Number(r.digits ?? DEFAULT_NUMBER_PRECISION.digits);
+  const decimalPlaces = Number(r.decimalPlaces ?? DEFAULT_NUMBER_PRECISION.decimalPlaces);
+  const roundingMode = String(r.roundingMode ?? DEFAULT_NUMBER_PRECISION.roundingMode);
+  if (!Number.isInteger(digits) || digits < 1 || digits > 30) return { error: "numberPrecision.digits must be 1-30." };
+  if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 10 || decimalPlaces > digits) {
+    return { error: "numberPrecision.decimalPlaces must be 0-10 and not exceed digits." };
+  }
+  if (!ROUNDING_MODES.has(roundingMode)) return { error: "numberPrecision.roundingMode must be HALF_EVEN, UP or DOWN." };
+  return {
+    digits: String(digits),
+    decimalPlaces: String(decimalPlaces),
+    roundingMode: roundingMode as NumberPrecision["roundingMode"],
+  };
 };
 
 export const post = async ({ request, params }: HandlerArgs) => {
@@ -71,6 +98,11 @@ export const post = async ({ request, params }: HandlerArgs) => {
       webhookEntries = parsed;
     }
 
+    const numberPrecision = parseNumberPrecision(body.numberPrecision);
+    if (numberPrecision && "error" in numberPrecision) {
+      return Response.json({ message: numberPrecision.error }, { status: 400 });
+    }
+
     const inserted = db.transaction(() => {
       const app = insertApp(db, {
         name: body.name,
@@ -79,6 +111,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
         id: toPositiveInt(body.id),
         spaceId: toPositiveInt(body.spaceId),
         threadId: toPositiveInt(body.threadId),
+        numberPrecision,
       });
       if (!app) throw new Error('Failed to create app.');
 
@@ -98,7 +131,12 @@ export const post = async ({ request, params }: HandlerArgs) => {
           const { $id, ...recordBody } = record;
           const recordId = toPositiveInt($id?.value);
           const withStatus = applyInitialStatus(statusConfig ?? null, recordBody);
-          const withDefaults = normalizeDropDown(fieldRows, applyDefaults(fieldRows, withStatus));
+          // setup は検証しない（テストの前提データを入れるため）が、保存値の形は addRecords と揃える
+          const withDefaults = roundNumbers(
+            fieldRows,
+            normalizeDropDown(fieldRows, normalizeNumbers(fieldRows, applyDefaults(fieldRows, withStatus))),
+            numberPrecision ?? DEFAULT_NUMBER_PRECISION,
+          );
           const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
           computeCalcFields(fieldRows, withDefaults, { createdAt: now, updatedAt: now });
           const insertedRecord = insertRecord(db, app.id.toString(), withDefaults, recordId);
