@@ -71,7 +71,7 @@ const prefixErrorKeys = (errors: ValidationErrors, index: number): ValidationErr
 // GET: レコード一覧取得（クエリ）
 // ============================================================
 
-type ListQueryParams = { app: string | null; rawQuery: string | null; fields: string[] };
+type ListQueryParams = { app: string | null; rawQuery: string | null; fields: string[]; withTotalCount: boolean };
 
 const parseListParams = (request: Request): ListQueryParams => {
   const url = new URL(request.url);
@@ -83,6 +83,7 @@ const parseListParams = (request: Request): ListQueryParams => {
     app: url.searchParams.get("app"),
     rawQuery: url.searchParams.get("query"),
     fields,
+    withTotalCount: url.searchParams.get("totalCount") === "true",
   };
 };
 
@@ -132,22 +133,43 @@ const validateQueryLimits = (ast: Query, locale: "ja" | "en"): Response | null =
   return null;
 };
 
+/** コンパイル済みの WHERE / ORDER を SQL に組み立てる（LIMIT / OFFSET は含まない） */
+const buildListSql = (compiled: ReturnType<typeof compile>): string => {
+  const whereClause = compiled.where ? `AND ${compiled.where}` : "";
+  const orderClause = compiled.orderBy ? `ORDER BY ${compiled.orderBy}` : "";
+  return [
+    "SELECT id, revision, body, created_at, updated_at FROM records WHERE app_id = ?",
+    whereClause, orderClause,
+  ].filter(Boolean).join(" ");
+};
+
 /** コンパイル済みの WHERE / ORDER / LIMIT / OFFSET を SQL に組み立てて実行 */
 const runListQuery = (
   db: ReturnType<typeof dbSession>,
   app: string,
   compiled: ReturnType<typeof compile>,
 ): RecordRow[] => {
-  const whereClause = compiled.where ? `AND ${compiled.where}` : "";
-  const orderClause = compiled.orderBy ? `ORDER BY ${compiled.orderBy}` : "";
-  const limitClause = compiled.limit != null ? `LIMIT ${compiled.limit}` : "";
+  // 実機は limit 省略時 100 件。省略時に LIMIT を付けないと全件返るうえ、
+  // SQLite は LIMIT なしの OFFSET を構文エラーにする
+  const limitClause = `LIMIT ${compiled.limit ?? 100}`;
   const offsetClause = compiled.offset != null ? `OFFSET ${compiled.offset}` : "";
-  const sql = [
-    "SELECT id, revision, body, created_at, updated_at FROM records WHERE app_id = ?",
-    whereClause, orderClause, limitClause, offsetClause,
-  ].filter(Boolean).join(" ");
+  const sql = [buildListSql(compiled), limitClause, offsetClause].filter(Boolean).join(" ");
   return all<RecordRow>(db, sql, app, ...compiled.params);
 };
+
+/**
+ * 実機の totalCount は limit / offset を無視した、クエリ条件に合う全件数。
+ * WHERE だけで COUNT を組まず一覧と同じ SQL を包むのは、compiled.params が
+ * ORDER BY 側のプレースホルダも含み得るため（WHERE のみだと個数がずれる）。
+ */
+const countListQuery = (
+  db: ReturnType<typeof dbSession>,
+  app: string,
+  compiled: ReturnType<typeof compile>,
+): number =>
+  all<{ count: number }>(
+    db, `SELECT COUNT(*) AS count FROM (${buildListSql(compiled)})`, app, ...compiled.params,
+  )[0]!.count;
 
 /** DB レコード行を API レスポンス形式のフィールド付きオブジェクトに変換 */
 const toResponseRecords = (db: ReturnType<typeof dbSession>, rows: RecordRow[], fieldRows: FieldRow[], fields: string[]) =>
@@ -188,7 +210,7 @@ const queryErrorResponse = (e: unknown, locale: "ja" | "en"): Response => {
 
 export const get = ({ request, params }: HandlerArgs) => {
   const db = dbSession(params.session);
-  const { app, rawQuery, fields } = parseListParams(request);
+  const { app, rawQuery, fields, withTotalCount } = parseListParams(request);
   const locale = detectLocale(request.headers.get("accept-language"));
 
   if (!app) {
@@ -210,7 +232,7 @@ export const get = ({ request, params }: HandlerArgs) => {
     const compiled = compile(ast, queryCtx);
     const rows = runListQuery(db, app, compiled);
     return Response.json({
-      totalCount: rows.length.toString(),
+      totalCount: withTotalCount ? countListQuery(db, app, compiled).toString() : null,
       records: toResponseRecords(db, rows, fieldRows, fields),
     });
   } catch (e) {

@@ -132,6 +132,50 @@ describeDualMode("アプリのレコード一覧のAPI", () => {
     });
   });
 
+  describe("totalCount", () => {
+    beforeEach(async () => {
+      await client.record.addRecords({
+        app: appId,
+        records: [
+          { test: { value: "a" } },
+          { test: { value: "a" } },
+          { test: { value: "a" } },
+          { test: { value: "b" } },
+        ],
+      });
+    });
+
+    test("totalCount を指定しないと null", async () => {
+      const result = await client.record.getRecords({ app: appId });
+      expect(result.totalCount).toBeNull();
+    });
+
+    test("limit / offset に関係なくクエリ条件に合う全件数を返す", async () => {
+      const result = await client.record.getRecords({
+        app: appId, query: 'test = "a" limit 1 offset 1', totalCount: true,
+      });
+      expect(result.records).toHaveLength(1);
+      expect(result.totalCount).toBe("3");
+    });
+
+    test("offset がクエリ結果の件数を超えても全件数を返す", async () => {
+      const result = await client.record.getRecords({
+        app: appId, query: 'test = "a" offset 10', totalCount: true,
+      });
+      expect(result.records).toHaveLength(0);
+      expect(result.totalCount).toBe("3");
+    });
+  });
+
+  test("limit を省略すると 100 件まで返す", async () => {
+    const records = Array.from({ length: 100 }, (_, i) => ({ test: { value: `r${i}` } }));
+    await client.record.addRecords({ app: appId, records });
+    await client.record.addRecords({ app: appId, records: records.slice(0, 1) });
+    const result = await client.record.getRecords({ app: appId, totalCount: true });
+    expect(result.records).toHaveLength(100);
+    expect(result.totalCount).toBe("101");
+  });
+
   describe("レコード削除", () => {
     test("レコードを削除できる", async () => {
       const { id: id1 } = await client.record.addRecord({ app: appId, record: { test: { value: "test1" } } });
