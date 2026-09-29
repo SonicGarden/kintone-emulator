@@ -79,7 +79,7 @@ export const post = async ({ request, params }: HandlerArgs) => {
   resolveUploadKeys(db, record, fieldRows);
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  computeCalcFields(fieldRows, record, { createdAt: now, updatedAt: now });
+  computeCalcFields(fieldRows, record, { createdAt: now, updatedAt: now, numberPrecision });
   const inserted = insertRecord(db, body.app, record);
   if (!inserted) {
     return Response.json({ message: 'Failed to create record.' }, { status: 500 });
@@ -151,6 +151,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   computeCalcFields(fieldRows, mergedRecord, {
     createdAt: formatKintoneDateTime(target.created_at),
     updatedAt: now,
+    numberPrecision,
   });
   const updated = updateRecord(db, body.app, String(target.id), mergedRecord);
   if (!updated) {

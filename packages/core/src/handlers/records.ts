@@ -274,12 +274,13 @@ export const post = async ({ request, params }: HandlerArgs) => {
   if (Object.keys(prep.errors).length > 0) return errorInvalidInput(prep.errors, locale);
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const numberPrecision = findAppNumberPrecision(db, body.app);
   try {
     const result = db.transaction(() => {
       const ids: string[] = [];
       const revisions: string[] = [];
       for (const rec of prep.prepared) {
-        computeCalcFields(fieldRows, rec, { createdAt: now, updatedAt: now });
+        computeCalcFields(fieldRows, rec, { createdAt: now, updatedAt: now, numberPrecision });
         const inserted = insertRecord(db, body.app, rec);
         if (!inserted) throw new Error("insert failed");
         ids.push(inserted.id.toString());
@@ -393,6 +394,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
   if (Object.keys(prep.errors).length > 0) return errorInvalidInput(prep.errors, locale);
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const numberPrecision = findAppNumberPrecision(db, body.app);
   try {
     const result = db.transaction(() => {
       const updated: Array<{ id: string; revision: string }> = [];
@@ -400,6 +402,7 @@ export const put = async ({ request, params }: HandlerArgs) => {
         computeCalcFields(fieldRows, merged, {
           createdAt: formatKintoneDateTime(createdAt),
           updatedAt: now,
+          numberPrecision,
         });
         const u = updateRecord(db, body.app, String(targetId), merged);
         if (!u) throw new Error("update failed");

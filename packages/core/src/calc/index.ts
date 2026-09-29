@@ -11,4 +11,4 @@ export {
 } from "./validate";
 export { validateFieldsForInsert, type FieldValidationIssue } from "./field-validation";
 export { computeCalcFields } from "./compute";
-export { CalcEvalError, evaluateNumeric, formatNumberAsKintone } from "./evaluator";
+export { CalcEvalError, evaluate } from "./evaluator";

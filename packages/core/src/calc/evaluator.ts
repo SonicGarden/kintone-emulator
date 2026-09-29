@@ -1,11 +1,42 @@
-// Phase 4: 文字列対応評価器。`&` 結合 / DATE_FORMAT / YEN / IF の文字列分岐に対応。
-// 戻り値型は number | string。SUM 用に SUBTABLE 内 NUMBER は number[] として保持する。
+// 計算式の評価器。値は数値 / 文字列 / 真偽値 / 未入力 (null) / SUBTABLE 列の配列を区別する。
+//
+// 数値は JS の number ではなく 10 進数 (query/number.ts の Decimal) で持つ。実機は数値リテラルと
+// 演算の途中結果を 1 つずつアプリの数値精度で丸め、整数部の桁数超過をエラーにする
+// (既定の精度で 1/3*3 = 0.9999、0.00015*10000 = 2、999999999999*10/10 = "")。
+// 浮動小数点で計算してから最後に丸めると、この途中の丸めと桁数超過を再現できない。
 
+import {
+  type Decimal,
+  type NumberPrecision,
+  addDecimal,
+  compareDecimal,
+  DEFAULT_NUMBER_PRECISION,
+  decimalToNumber,
+  divideDecimal,
+  formatPlainDecimal,
+  integerDigitCount,
+  multiplyDecimal,
+  negateDecimal,
+  parseDecimal,
+  powerDecimal,
+  roundDecimal,
+  subtractDecimal,
+  type RoundingMode,
+} from "../query/number";
 import type { CalcNode } from "./ast";
 
-export type CalcValue = string | number | number[] | string[];
+/** フィールドから渡す値。null は未入力 */
+export type CalcValue =
+  | { kind: "number"; value: Decimal }
+  | { kind: "string"; value: string }
+  | { kind: "bool"; value: boolean }
+  | { kind: "null" }
+  | { kind: "numbers"; value: Decimal[] }
+  | { kind: "strings"; value: string[] };
 export type CalcValues = Record<string, CalcValue | undefined>;
-export type CalcResult = number | string;
+
+/** 式の評価結果 (配列は SUM / CONTAINS の引数にしか現れない) */
+export type CalcResult = Exclude<CalcValue, { kind: "numbers" } | { kind: "strings" }>;
 
 export class CalcEvalError extends Error {
   constructor(
@@ -16,158 +47,209 @@ export class CalcEvalError extends Error {
   }
 }
 
-export const evaluate = (node: CalcNode, values: CalcValues): CalcResult => {
-  switch (node.type) {
-    case "number": return node.value;
-    case "string": return node.value;
-    case "bool":   return node.value ? 1 : 0;
-    case "field":  return scalarToValue(values[node.code]);
-    case "unary": {
-      const v = asNumber(evaluate(node.expr, values));
-      return node.op === "-" ? -v : v;
+export type EvalContext = { numberPrecision: NumberPrecision };
+
+const DEFAULT_CONTEXT: EvalContext = { numberPrecision: DEFAULT_NUMBER_PRECISION };
+
+const NULL: CalcResult = { kind: "null" };
+const ZERO = parseDecimal("0")!;
+
+export const evaluate = (node: CalcNode, values: CalcValues, ctx: EvalContext = DEFAULT_CONTEXT): CalcResult =>
+  new Evaluator(values, ctx).eval(node);
+
+class Evaluator {
+  private readonly places: number;
+  private readonly mode: RoundingMode;
+
+  constructor(private readonly values: CalcValues, private readonly ctx: EvalContext) {
+    this.places = Number(ctx.numberPrecision.decimalPlaces);
+    this.mode = ctx.numberPrecision.roundingMode;
+  }
+
+  /**
+   * 数値をアプリの数値精度に丸め、整数部の桁数超過をエラーにする。
+   * リテラル・フィールド値・演算と関数の結果のすべてに通す (実機は途中の値ごとに丸める)
+   */
+  private normalize(d: Decimal): CalcResult {
+    const rounded = roundDecimal(d, this.places, this.mode);
+    const maxIntegerDigits = Number(this.ctx.numberPrecision.digits) - this.places;
+    if (integerDigitCount(rounded) > maxIntegerDigits) {
+      throw new CalcEvalError("number of digits exceeded", "overflow");
     }
-    case "binary": return evaluateBinary(node.op, node.left, node.right, values);
-    case "call":   return evaluateCall(node.name.toUpperCase(), node.args, values);
-    default:
-      throw new CalcEvalError(`unsupported node ${(node as CalcNode).type}`, "unsupported");
+    return { kind: "number", value: rounded };
   }
-};
 
-/** 数値専用の評価（Phase 2/3 互換 API）。文字列が返ってきたら type_mismatch として例外。*/
-export const evaluateNumeric = (node: CalcNode, values: CalcValues): number => {
-  const r = evaluate(node, values);
-  if (typeof r === "string") throw new CalcEvalError("expected number, got string", "type_mismatch");
-  return r;
-};
-
-const evaluateBinary = (
-  op: string,
-  left: CalcNode,
-  right: CalcNode,
-  values: CalcValues,
-): CalcResult => {
-  if (op === "&") return asString(evaluate(left, values)) + asString(evaluate(right, values));
-
-  const l = asNumber(evaluate(left, values));
-  const r = asNumber(evaluate(right, values));
-  switch (op) {
-    case "+": return l + r;
-    case "-": return l - r;
-    case "*": return l * r;
-    case "/":
-      if (r === 0) throw new CalcEvalError("divide by zero", "divide_by_zero");
-      return l / r;
-    case "^": {
-      const exp = Math.trunc(r);
-      if (exp > 100 || exp < -100) throw new CalcEvalError("exponent out of range", "overflow");
-      return Math.pow(l, exp);
+  eval(node: CalcNode): CalcResult {
+    switch (node.type) {
+      // lexer が Number にしているので、16 桁を超えるリテラルは丸まっている。計算式に書く桁数としては十分
+      case "number": return this.normalize(parseDecimal(String(node.value))!);
+      case "string": return { kind: "string", value: node.value };
+      case "bool":   return { kind: "bool", value: node.value };
+      case "field":  return this.field(node.code);
+      case "unary": {
+        const v = this.num(this.eval(node.expr));
+        return this.normalize(node.op === "-" ? negateDecimal(v) : v);
+      }
+      case "binary": return this.binary(node.op, node.left, node.right);
+      case "call":   return this.call(node.name.toUpperCase(), node.args);
+      default:
+        throw new CalcEvalError(`unsupported node ${(node as CalcNode).type}`, "unsupported");
     }
-    case "=":  return l === r ? 1 : 0;
-    case "!=": return l !== r ? 1 : 0;
-    case "<":  return l <  r ? 1 : 0;
-    case "<=": return l <= r ? 1 : 0;
-    case ">":  return l >  r ? 1 : 0;
-    case ">=": return l >= r ? 1 : 0;
-    default:
-      throw new CalcEvalError(`unsupported operator ${op}`, "unsupported");
   }
-};
 
-const evaluateCall = (name: string, args: CalcNode[], values: CalcValues): CalcResult => {
-  switch (name) {
-    case "SUM":         return evaluateSum(args, values);
-    case "IF":          return evaluate(args[asNumber(evaluate(args[0]!, values)) !== 0 ? 1 : 2]!, values);
-    case "AND":         return args.every((a) => asNumber(evaluate(a, values)) !== 0) ? 1 : 0;
-    case "OR":          return args.some((a)  => asNumber(evaluate(a, values)) !== 0) ? 1 : 0;
-    case "NOT":         return asNumber(evaluate(args[0]!, values)) === 0 ? 1 : 0;
-    case "ROUND":       return roundWith(args, values, "half-up");
-    case "ROUNDUP":     return roundWith(args, values, "up");
-    case "ROUNDDOWN":   return roundWith(args, values, "down");
-    case "YEN":         return yen(args, values);
-    case "DATE_FORMAT": return dateFormat(args, values);
-    case "CONTAINS":    return contains(args, values);
-    default:
-      throw new CalcEvalError(`unsupported function ${name}`, "unsupported");
+  private field(code: string): CalcResult {
+    const v = this.values[code];
+    if (v == null) return NULL;
+    switch (v.kind) {
+      case "number": return this.normalize(v.value);
+      // SUBTABLE 列を SUM / CONTAINS 以外で参照したときは 0 扱い (従来の挙動。実機で確かめていない)
+      case "numbers":
+      case "strings": return { kind: "number", value: ZERO };
+      default: return v;
+    }
   }
-};
 
-const evaluateSum = (args: CalcNode[], values: CalcValues): number => {
-  let sum = 0;
-  for (const a of args) {
-    if (a.type === "field") {
-      const v = values[a.code];
-      if (Array.isArray(v)) {
-        for (const x of v) sum += typeof x === "number" ? x : 0;
+  /**
+   * 算術・比較のオペランドとしての数値。未入力は 0 (実機は n + 1 を 1、n = 0 を真にする)。
+   * 真偽値はエラー (実機は (1>0) + 1 を "" にする)
+   */
+  private num(v: CalcResult): Decimal {
+    switch (v.kind) {
+      case "number": return v.value;
+      case "null":   return ZERO;
+      case "bool":   throw new CalcEvalError("boolean used as number", "type_mismatch");
+      case "string": return parseDecimal(v.value.trim()) ?? ZERO;
+    }
+  }
+
+  /** IF の条件・AND / OR / NOT の引数。真偽値以外はエラー (実機は IF(1, …) / AND(1, 1) を "" にする) */
+  private bool(v: CalcResult): boolean {
+    if (v.kind !== "bool") throw new CalcEvalError("condition must be boolean", "type_mismatch");
+    return v.value;
+  }
+
+  private binary(op: string, left: CalcNode, right: CalcNode): CalcResult {
+    if (op === "&") {
+      return { kind: "string", value: asString(this.eval(left)) + asString(this.eval(right)) };
+    }
+    const l = this.num(this.eval(left));
+    const r = this.num(this.eval(right));
+    switch (op) {
+      case "+": return this.normalize(addDecimal(l, r));
+      case "-": return this.normalize(subtractDecimal(l, r));
+      case "*": return this.normalize(multiplyDecimal(l, r));
+      case "/": {
+        const q = divideDecimal(l, r, this.places, this.mode);
+        if (!q) throw new CalcEvalError("divide by zero", "divide_by_zero");
+        return this.normalize(q);
+      }
+      case "^": {
+        // 指数の小数部は切り捨て (実機観察: 4 ^ 1.5 = 4)
+        const exp = Math.trunc(decimalToNumber(r));
+        if (exp > 100 || exp < -100) throw new CalcEvalError("exponent out of range", "overflow");
+        // 途中の累乗ではなく結果だけを丸めて桁数を見る (実機は小数 2 桁の設定でも 2 ^ -20 を計算できる)
+        const p = powerDecimal(l, exp, this.places, this.mode);
+        if (!p) throw new CalcEvalError("divide by zero", "divide_by_zero");
+        return this.normalize(p);
+      }
+      case "=":  return { kind: "bool", value: compareDecimal(l, r) === 0 };
+      case "!=": return { kind: "bool", value: compareDecimal(l, r) !== 0 };
+      case "<":  return { kind: "bool", value: compareDecimal(l, r) < 0 };
+      case "<=": return { kind: "bool", value: compareDecimal(l, r) <= 0 };
+      case ">":  return { kind: "bool", value: compareDecimal(l, r) > 0 };
+      case ">=": return { kind: "bool", value: compareDecimal(l, r) >= 0 };
+      default:
+        throw new CalcEvalError(`unsupported operator ${op}`, "unsupported");
+    }
+  }
+
+  private call(name: string, args: CalcNode[]): CalcResult {
+    switch (name) {
+      case "SUM":         return this.sum(args);
+      // 分岐先の値は未入力も含めてそのまま返す (実機は IF(1>0, n, 2) を n が未入力なら "" にする)
+      case "IF":          return this.eval(args[this.bool(this.eval(args[0]!)) ? 1 : 2]!);
+      case "AND":         return { kind: "bool", value: args.map((a) => this.bool(this.eval(a))).every(Boolean) };
+      case "OR":          return { kind: "bool", value: args.map((a) => this.bool(this.eval(a))).some(Boolean) };
+      case "NOT":         return { kind: "bool", value: !this.bool(this.eval(args[0]!)) };
+      case "ROUND":       return this.normalize(this.roundArgs(args, "HALF_UP"));
+      case "ROUNDUP":     return this.normalize(this.roundArgs(args, "UP"));
+      case "ROUNDDOWN":   return this.normalize(this.roundArgs(args, "DOWN"));
+      case "YEN":         return { kind: "string", value: this.yen(args) };
+      case "DATE_FORMAT": return { kind: "string", value: this.dateFormat(args) };
+      case "CONTAINS":    return { kind: "bool", value: this.contains(args) };
+      default:
+        throw new CalcEvalError(`unsupported function ${name}`, "unsupported");
+    }
+  }
+
+  private sum(args: CalcNode[]): CalcResult {
+    let total = ZERO;
+    for (const a of args) {
+      const v = a.type === "field" ? this.values[a.code] : undefined;
+      if (v?.kind === "numbers") {
+        // 行が 1 つも無い SUBTABLE 列は、未入力 (0 扱い) ではなくエラーとして伝わる
+        // (実機は SUM(qty) + 1 も "" にする。空の行が 1 つあれば 0)
+        if (v.value.length === 0) throw new CalcEvalError("empty subtable", "type_mismatch");
+        for (const x of v.value) total = addDecimal(total, x);
         continue;
       }
+      total = addDecimal(total, this.num(this.eval(a)));
     }
-    sum += asNumber(evaluate(a, values));
+    return this.normalize(total);
   }
-  return sum;
-};
 
-const roundWith = (
-  args: CalcNode[],
-  values: CalcValues,
-  mode: "half-up" | "up" | "down",
-): number => {
-  const x = asNumber(evaluate(args[0]!, values));
-  const digits = Math.trunc(asNumber(evaluate(args[1]!, values)));
-  const factor = Math.pow(10, digits);
-  const scaled = x * factor;
-  const rounded = mode === "half-up" ? Math.round(scaled)
-    : mode === "up"   ? Math.ceil(scaled)
-    : Math.floor(scaled);
-  return rounded / factor;
-};
-
-const yen = (args: CalcNode[], values: CalcValues): string => {
-  const x = roundWith(args, values, "half-up");
-  if (!Number.isFinite(x)) throw new CalcEvalError("invalid number", "type_mismatch");
-  const digits = Math.trunc(asNumber(evaluate(args[1]!, values)));
-  const sign = x < 0 ? "-" : "";
-  const abs = Math.abs(x);
-  const fixed = abs.toFixed(Math.max(0, digits));
-  const [int, frac] = fixed.split(".");
-  const withCommas = int!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${sign}¥${frac ? `${withCommas}.${frac}` : withCommas}`;
-};
-
-// CONTAINS(field, value) → 0/1
-// 実機では CHECK_BOX / MULTI_SELECT（複数選択 = string[]）にのみ有効。
-// DROP_DOWN / RADIO_BUTTON / SINGLE_LINE_TEXT 等の単一値フィールドでは型不適合で空文字列になるため、
-// ここでは type_mismatch として例外を投げて呼び出し側で "" に変換させる。
-const contains = (args: CalcNode[], values: CalcValues): number => {
-  const target = args[0]!;
-  if (target.type !== "field") {
-    throw new CalcEvalError("CONTAINS requires a field reference", "type_mismatch");
+  private roundArgs(args: CalcNode[], mode: RoundingMode): Decimal {
+    const x = this.num(this.eval(args[0]!));
+    const places = Math.trunc(decimalToNumber(this.num(this.eval(args[1]!))));
+    return roundDecimal(x, places, mode);
   }
-  const v = values[target.code];
-  if (!Array.isArray(v)) {
-    throw new CalcEvalError("CONTAINS requires a multi-select field", "type_mismatch");
+
+  private yen(args: CalcNode[]): string {
+    const x = this.roundArgs(args, "HALF_UP");
+    const places = Math.max(0, Math.trunc(decimalToNumber(this.num(this.eval(args[1]!)))));
+    const plain = formatPlainDecimal(x);
+    const sign = plain.startsWith("-") ? "-" : "";
+    const [int, frac = ""] = plain.replace(/^-/, "").split(".");
+    const withCommas = int!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const fixedFrac = places > 0 ? `.${frac.padEnd(places, "0")}` : "";
+    return `${sign}¥${withCommas}${fixedFrac}`;
   }
-  const needleResult = evaluate(args[1]!, values);
-  const needle = typeof needleResult === "string" ? needleResult : asString(needleResult);
-  return (v as Array<string | number>).some((x) => String(x) === needle) ? 1 : 0;
-};
 
-// DATE_FORMAT(timestamp_or_field, format, timezone) → string
-// format トークン: YYYY YY MM M dd d HH H mm m ss s MMM
-// timezone: "UTC" / "system" / IANA タイムゾーン (Asia/Tokyo 等)
-const dateFormat = (args: CalcNode[], values: CalcValues): string => {
-  const sec = asNumber(evaluate(args[0]!, values));
-  const fmt = asString(evaluate(args[1]!, values));
-  const tzArg = asString(evaluate(args[2]!, values));
-  const timeZone = tzArg === "system" ? "UTC" : tzArg;
-  const date = new Date(Math.floor(sec) * 1000);
-  if (Number.isNaN(date.getTime())) throw new CalcEvalError("invalid date", "type_mismatch");
+  // CONTAINS は真偽値を返す。IF の条件には真偽値しか書けないので、数値を返すと
+  // IF(CONTAINS(...), …) が常にエラーになってしまう
+  // 実機では CHECK_BOX / MULTI_SELECT（複数選択）と SUBTABLE 内の文字列列にのみ有効。
+  // 単一値フィールドでは型不適合で空文字列になるため、例外を投げて呼び出し側で "" に変換させる。
+  private contains(args: CalcNode[]): boolean {
+    const target = args[0]!;
+    if (target.type !== "field") {
+      throw new CalcEvalError("CONTAINS requires a field reference", "type_mismatch");
+    }
+    const v = this.values[target.code];
+    if (v?.kind !== "strings") {
+      throw new CalcEvalError("CONTAINS requires a multi-select field", "type_mismatch");
+    }
+    const needle = asString(this.eval(args[1]!));
+    return v.value.some((x) => x === needle);
+  }
 
-  const parts = extractDateParts(date, timeZone);
-  return fmt.replace(
-    /YYYY|YY|MMM|MM|M|dd|d|HH|H|mm|m|ss|s/g,
-    (token) => parts[token] ?? token,
-  );
-};
+  // DATE_FORMAT(timestamp_or_field, format, timezone) → string
+  // format トークン: YYYY YY MM M dd d HH H mm m ss s MMM
+  // timezone: "UTC" / "system" / IANA タイムゾーン (Asia/Tokyo 等)
+  private dateFormat(args: CalcNode[]): string {
+    const sec = decimalToNumber(this.num(this.eval(args[0]!)));
+    const fmt = asString(this.eval(args[1]!));
+    const tzArg = asString(this.eval(args[2]!));
+    const timeZone = tzArg === "system" ? "UTC" : tzArg;
+    const date = new Date(Math.floor(sec) * 1000);
+    if (Number.isNaN(date.getTime())) throw new CalcEvalError("invalid date", "type_mismatch");
+
+    const parts = extractDateParts(date, timeZone);
+    return fmt.replace(
+      /YYYY|YY|MMM|MM|M|dd|d|HH|H|mm|m|ss|s/g,
+      (token) => parts[token] ?? token,
+    );
+  }
+}
 
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -216,28 +298,15 @@ const extractDateParts = (date: Date, timeZone: string): Record<string, string> 
   };
 };
 
-const scalarToValue = (v: CalcValue | undefined): CalcResult => {
-  if (v == null) return 0;
-  // 配列を SUM 以外 / CONTAINS 以外で参照すると 0 / "" 相当（CONTAINS は値を直接参照する）
-  if (Array.isArray(v)) return 0;
-  return v;
-};
-
-export const asNumber = (v: CalcResult): number => {
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  if (v === "") return 0;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
-
+/**
+ * `&` での連結と文字列の自動計算 (SINGLE_LINE_TEXT の expression) の結果に使う文字列表現。
+ * 未入力は ""、真偽値は "true" / "false" (実機は (1>0) & "x" を "truex" にする)
+ */
 export const asString = (v: CalcResult): string => {
-  if (typeof v === "string") return v;
-  return formatNumberAsKintone(v);
-};
-
-export const formatNumberAsKintone = (n: number): string => {
-  if (!Number.isFinite(n)) return "";
-  if (Number.isInteger(n)) return String(n);
-  const rounded = Math.round(n * 10000) / 10000;
-  return String(rounded);
+  switch (v.kind) {
+    case "string": return v.value;
+    case "number": return formatPlainDecimal(v.value);
+    case "bool":   return v.value ? "true" : "false";
+    case "null":   return "";
+  }
 };

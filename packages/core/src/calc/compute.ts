@@ -7,15 +7,17 @@
 // 参照する（実機ヘルプ準拠）。
 
 import type { FieldRow } from "../db/fields";
+import type { NumberPrecision } from "../query/number";
+import { DEFAULT_NUMBER_PRECISION, decimalToNumber, formatPlainDecimal, parseDecimal } from "../query/number";
 import { collectFieldRefs, type CalcNode } from "./ast";
 import {
   asString,
   CalcEvalError,
   evaluate,
-  formatNumberAsKintone,
   type CalcResult,
   type CalcValue,
   type CalcValues,
+  type EvalContext,
 } from "./evaluator";
 import { parseExpression } from "./parser";
 
@@ -42,6 +44,8 @@ const DATE_TYPES = new Set(["DATE", "DATETIME", "CREATED_TIME", "UPDATED_TIME", 
 export type ComputeMeta = {
   createdAt?: string;
   updatedAt?: string;
+  /** アプリの数値精度。計算の途中の値と結果をこれで丸める */
+  numberPrecision?: NumberPrecision;
 };
 
 export const computeCalcFields = (
@@ -53,6 +57,7 @@ export const computeCalcFields = (
   const topAcs = collectTopLevelAutoCalc(fieldDefs);
   const subAcs = collectSubtableInnerAutoCalc(fieldDefs);
   if (topAcs.length === 0 && subAcs.size === 0) return;
+  const ctx: EvalContext = { numberPrecision: meta.numberPrecision ?? DEFAULT_NUMBER_PRECISION };
 
   // 1. SUBTABLE 内 autoCalc を行単位で評価（top-level CALC が SUM(inner_calc) を使うかもしれないので先）
   for (const [subtableCode, innerAcs] of subAcs) {
@@ -60,7 +65,7 @@ export const computeCalcFields = (
     if (!subtableDef?.fields) continue;
     const rows = (record[subtableCode]?.value as SubtableRow[] | undefined) ?? [];
     for (const row of rows) {
-      computeRow(innerAcs, fieldDefs, subtableDef.fields, record, row, meta);
+      computeRow(innerAcs, fieldDefs, subtableDef.fields, record, row, meta, ctx);
     }
   }
 
@@ -68,9 +73,9 @@ export const computeCalcFields = (
   if (topAcs.length > 0) {
     const values = buildTopLevelValuesMap(fieldDefs, record, meta);
     for (const ac of topAcs) {
-      const stored = computeOne(ac, values);
+      const { stored, value } = computeOne(ac, values, ctx);
       record[ac.code] = { type: ac.type, value: stored };
-      values[ac.code] = stored;
+      values[ac.code] = value;
     }
   }
 };
@@ -152,24 +157,23 @@ const computeRow = (
   record: RecordBody,
   row: SubtableRow,
   meta: ComputeMeta,
+  ctx: EvalContext,
 ): void => {
   const values: CalcValues = {};
   // top-level fields をスカラ正規化（subtable 配列展開はしない）
   for (const [code, def] of fieldDefs) {
     if (def.type === "SUBTABLE") continue;
-    const v = scalarValueFor(def, record[code], meta);
-    if (v !== undefined) values[code] = v;
+    values[code] = scalarValueFor(def, record[code], meta);
   }
   // 同じ行の inner fields を加える
   for (const [innerCode, innerDef] of Object.entries(innerFieldDefs)) {
-    const v = scalarValueFor(innerDef, row.value?.[innerCode], meta);
-    if (v !== undefined) values[innerCode] = v;
+    values[innerCode] = scalarValueFor(innerDef, row.value?.[innerCode], meta);
   }
   const rowBody = (row.value ??= {});
   for (const ac of innerAcs) {
-    const stored = computeOne(ac, values);
+    const { stored, value } = computeOne(ac, values, ctx);
     rowBody[ac.code] = { type: ac.type, value: stored };
-    values[ac.code] = stored;
+    values[ac.code] = value;
   }
 };
 
@@ -190,64 +194,76 @@ const buildTopLevelValuesMap = (
       }
       continue;
     }
-    const v = scalarValueFor(def, record[code], meta);
-    if (v !== undefined) values[code] = v;
+    values[code] = scalarValueFor(def, record[code], meta);
   }
   return values;
 };
 
-// SUBTABLE 列を SUM / CONTAINS 用に集約。NUMBER → number[]、SLT/DROP_DOWN/RADIO_BUTTON → string[]、
-// それ以外（CHECK_BOX 等）は実機が deploy 時に拒否するため対象外。
+// SUBTABLE 列を SUM / CONTAINS 用に集約。NUMBER → 数値の配列 (空のセルは 0)、
+// SLT/DROP_DOWN/RADIO_BUTTON → 文字列の配列、それ以外（CHECK_BOX 等）は実機が deploy 時に拒否するため対象外。
 const subtableColumnArray = (
   innerType: string | undefined,
   innerCode: string,
   rows: SubtableRow[],
-): number[] | string[] | undefined => {
+): CalcValue | undefined => {
   if (innerType === "NUMBER" || innerType === "CALC") {
-    return rows.map((r) => Number(r.value?.[innerCode]?.value ?? 0))
-      .filter((n) => Number.isFinite(n));
+    return {
+      kind: "numbers",
+      value: rows.map((r) => parseDecimal(String(r.value?.[innerCode]?.value ?? "").trim()) ?? ZERO),
+    };
   }
   if (innerType === "SINGLE_LINE_TEXT" || innerType === "DROP_DOWN" || innerType === "RADIO_BUTTON") {
-    return rows
-      .map((r) => r.value?.[innerCode]?.value)
-      .filter((v): v is string => typeof v === "string");
+    return {
+      kind: "strings",
+      value: rows
+        .map((r) => r.value?.[innerCode]?.value)
+        .filter((v): v is string => typeof v === "string"),
+    };
   }
   return undefined;
 };
 
+const ZERO = parseDecimal("0")!;
+const NULL: CalcValue = { kind: "null" };
+
 // ---------- value normalization ----------
 
+// 未入力は 0 ではなく null にする。実機は式がフィールドの単独参照 (`n` / `d`) のとき
+// 未入力なら結果を "" にし、算術 (`n + 1`) のときだけ 0 として扱う (evaluator.ts の num)
 const scalarValueFor = (
   def: FieldDef,
   cell: RecordCell,
   meta: ComputeMeta,
-): CalcValue | undefined => {
+): CalcValue => {
   // CREATED_TIME / UPDATED_TIME は cell が無くても meta からフォールバック
   if (def.type === "CREATED_TIME") {
-    return dateValueToSeconds("DATETIME", cell?.value ?? meta.createdAt);
+    return secondsValue(dateValueToSeconds("DATETIME", cell?.value ?? meta.createdAt));
   }
   if (def.type === "UPDATED_TIME") {
-    return dateValueToSeconds("DATETIME", cell?.value ?? meta.updatedAt);
+    return secondsValue(dateValueToSeconds("DATETIME", cell?.value ?? meta.updatedAt));
   }
-  if (cell === undefined) return undefined;
+  if (cell === undefined) return NULL;
   const raw = cell.value;
-  if (def.type && DATE_TYPES.has(def.type)) return dateValueToSeconds(def.type, raw);
-  if (def.type === "NUMBER" || def.type === "CALC") return toNumberOrZero(raw);
-  if (def.type === "CHECK_BOX" || def.type === "MULTI_SELECT") {
-    return Array.isArray(raw) ? (raw as unknown[]).map(String) : undefined;
+  if (def.type && DATE_TYPES.has(def.type)) return secondsValue(dateValueToSeconds(def.type, raw));
+  if (def.type === "NUMBER" || def.type === "CALC") {
+    if (raw == null || raw === "") return NULL;
+    const d = parseDecimal(String(raw).trim());
+    return d ? { kind: "number", value: d } : NULL;
   }
-  if (typeof raw === "string" || typeof raw === "number") return raw;
-  return undefined;
+  if (def.type === "CHECK_BOX" || def.type === "MULTI_SELECT") {
+    return Array.isArray(raw) ? { kind: "strings", value: (raw as unknown[]).map(String) } : NULL;
+  }
+  if (typeof raw === "string") return { kind: "string", value: raw };
+  if (typeof raw === "number") return { kind: "number", value: parseDecimal(String(raw)) ?? ZERO };
+  return NULL;
 };
 
-const toNumberOrZero = (raw: unknown): number => {
-  if (raw == null || raw === "") return 0;
-  const n = typeof raw === "number" ? raw : Number(raw);
-  return Number.isFinite(n) ? n : 0;
-};
+const secondsValue = (sec: number | null): CalcValue =>
+  sec == null ? NULL : { kind: "number", value: parseDecimal(String(sec))! };
 
-const dateValueToSeconds = (fieldType: string, raw: unknown): number => {
-  if (raw == null || raw === "") return 0;
+/** 日時の値を UNIX 秒にする。未入力は null、解釈できない値は 0 (従来の挙動) */
+const dateValueToSeconds = (fieldType: string, raw: unknown): number | null => {
+  if (raw == null || raw === "") return null;
   const s = String(raw);
   if (fieldType === "TIME") {
     const m = /^(\d{1,2}):(\d{2})$/.exec(s);
@@ -264,32 +280,45 @@ const dateValueToSeconds = (fieldType: string, raw: unknown): number => {
 
 // ---------- output formatting ----------
 
-const computeOne = (ac: AutoCalcField, values: CalcValues): string => {
+/**
+ * 1 つの autoCalc を評価する。stored はレコードに保存する文字列、value は後続の式から参照される値。
+ * value を stored から作り直さないのは、DATETIME などの format で書式化した文字列を
+ * 数値に戻せないため (CALC を参照する CALC は計算結果の数値を受け取る)
+ */
+const computeOne = (ac: AutoCalcField, values: CalcValues, ctx: EvalContext): { stored: string; value: CalcValue } => {
   let result: CalcResult;
   try {
-    result = evaluate(ac.ast, values);
+    result = evaluate(ac.ast, values, ctx);
   } catch (e) {
-    if (e instanceof CalcEvalError) return "";
+    // 計算エラー (0 除算・桁数超過・型の不一致) は実機も "" で保存する
+    if (e instanceof CalcEvalError) return { stored: "", value: NULL };
     throw e;
   }
-  if (ac.type === "SINGLE_LINE_TEXT") return asString(result);
-  return formatCalcOutput(result, ac.format);
+  if (ac.type === "SINGLE_LINE_TEXT") {
+    const stored = asString(result);
+    return { stored, value: { kind: "string", value: stored } };
+  }
+  const stored = formatCalcOutput(result, ac.format);
+  if (stored === "") return { stored, value: NULL };
+  // 真偽値の CALC は "1" / "0" で保存されるので、参照先にも数値として渡す
+  if (result.kind === "bool") return { stored, value: { kind: "number", value: parseDecimal(stored)! } };
+  return { stored, value: result };
 };
 
 // CALC は format が数値系のときのみ数値結果を整形して返す。
 // 文字列結果（DATE_FORMAT / YEN / & / IF の文字列分岐）は CALC 上では "" になる（実機挙動）。
+// 未入力（単独参照した未入力のフィールド）も ""。真偽値は "1" / "0"。
 const formatCalcOutput = (result: CalcResult, format: string): string => {
-  if (typeof result === "string") return "";
-  if (!Number.isFinite(result)) return "";
+  if (result.kind === "string" || result.kind === "null") return "";
+  if (result.kind === "bool") return result.value ? "1" : "0";
+  const sec = decimalToNumber(result.value);
   switch (format) {
-    case "NUMBER":
-    case "NUMBER_DIGIT":   return formatNumberAsKintone(result);
-    case "DATETIME":       return formatDateTime(result);
-    case "DATE":           return formatDate(result);
-    case "TIME":           return formatTime(result);
+    case "DATETIME":       return formatDateTime(sec);
+    case "DATE":           return formatDate(sec);
+    case "TIME":           return formatTime(sec);
     case "HOUR_MINUTE":
-    case "DAY_HOUR_MINUTE": return formatHourMinute(result);
-    default:               return formatNumberAsKintone(result);
+    case "DAY_HOUR_MINUTE": return formatHourMinute(sec);
+    default:               return formatPlainDecimal(result.value);
   }
 };
 
